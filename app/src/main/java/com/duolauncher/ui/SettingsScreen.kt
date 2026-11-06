@@ -444,7 +444,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     }
 
     if (editUpdateUrl) {
-        DuoDialog("更新源地址", dark, onDismiss = { editUpdateUrl = false }) {
+        DuoDialog("更新源地址", dark, opaque = true, onDismiss = { editUpdateUrl = false }) {
             Text(
                 "可填 GitHub 仓库主页、Releases 网页地址或 api.github.com 接口地址；网页地址会自动转成接口地址，也支持自建镜像的 JSON 地址。",
                 fontSize = 12.sp, color = glassSubTextColor(dark)
@@ -454,7 +454,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                 Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
                     if (urlDraft.isEmpty()) Text("https://…", fontSize = 12.sp, color = glassSubTextColor(dark))
                     BasicTextField(
-                        urlDraft, { urlDraft = it }, singleLine = true,
+                        urlDraft, { urlDraft = it }, maxLines = 3,
                         textStyle = TextStyle(fontSize = 12.sp, color = glassTextColor(dark)),
                         cursorBrush = SolidColor(glassBlue),
                         modifier = Modifier.fillMaxWidth()
@@ -468,7 +468,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                 }
                 Spacer(Modifier.weight(1f))
                 GlassPrimaryButton("保存", dark, onClick = {
-                    val t = urlDraft.trim()
+                    // 多行输入框里可能混进换行/空格，存盘前一并去掉
+                    val t = urlDraft.replace(Regex("\\s+"), "")
                     if (t.isBlank()) {
                         nav.toast("地址不能为空")
                     } else {
