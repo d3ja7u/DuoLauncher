@@ -28,13 +28,23 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: 安装 SDK 平台 34
+      #  runner 镜像自带 Android SDK（ANDROID_HOME 已预设），无需 setup-android。
+      #  该 action 会尝试装已被新版 cmdline-tools 移除的 `tools` 包而失败，这里直接用预装的 sdkmanager。
+      - name: 准备 Android SDK 34
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          export ANDROID_HOME="$SDK" ANDROID_SDK_ROOT="$SDK"
+
+          SDKM=$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -1)
+          echo "sdkmanager: $SDKM"
+          [ -n "$SDKM" ] || { echo "::error::未找到 sdkmanager"; exit 1; }
+
+          yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+          "$SDKM" "platforms;android-34" "build-tools;34.0.0" 2>&1 | tail -5
+          echo "--- 已安装平台 ---"
+          ls "$SDK/platforms"
 
       # settings.gradle.kts 里为国内构建预置了阿里云镜像，Actions 跑在海外，
       # 这里换回 google() / gradlePluginPortal() / mavenCentral()
