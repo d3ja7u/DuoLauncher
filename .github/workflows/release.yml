@@ -149,4 +149,4 @@ jobs:
 
             详细操作说明见 [README](https://github.com/d3ja7u/DuoLauncher#readme)。
 
-            > 若手机上已装有本地构建的版本，而此包提示「签名不一致」，先卸载旧版本再安装即可。
+            > 此包与本地 `./gradlew assembleDebug` 同签名，手机上装有旧版时可直接覆盖安装。
