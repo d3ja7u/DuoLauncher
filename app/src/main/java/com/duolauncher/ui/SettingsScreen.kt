@@ -338,7 +338,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         when {
                             checking -> "正在检查 GitHub Releases…"
                             hasNew -> "发现新版本 v${DuoState.lastSeenVersion} · 点此查看"
-                            DuoState.lastSeenVersion.isNotBlank() -> "已是最新 v${DuoState.lastSeenVersion} · 点此重新检查"
+                            DuoState.lastSeenVersion.isNotBlank() -> "已是最新 v$ver · 点此重新检查"
                             else -> "当前 v$ver · 点此检查 GitHub Releases"
                         },
                         dark,
