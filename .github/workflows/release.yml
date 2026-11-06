@@ -1,0 +1,106 @@
+name: Release
+
+# 每次推送形如 v1.3.9 的 tag，就自动编译 APK 并发布 GitHub Release
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建 APK 并发布 Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 SDK 平台 34
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      # settings.gradle.kts 里为国内构建预置了阿里云镜像，Actions 跑在海外，
+      # 这里换回 google() / gradlePluginPortal() / mavenCentral()
+      - name: 依赖仓库换回官方源
+        run: |
+          sed -i 's#maven { url = uri("https://maven.aliyun.com/repository/google") }#google()#g' settings.gradle.kts
+          sed -i 's#maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }#gradlePluginPortal()#g' settings.gradle.kts
+          sed -i 's#maven { url = uri("https://maven.aliyun.com/repository/public") }#mavenCentral()#g' settings.gradle.kts
+          echo "--- 替换后的仓库配置 ---"
+          sed -n '1,40p' settings.gradle.kts
+
+      # 可选：在仓库 Secrets 里配置 DEBUG_KEYSTORE_B64（本机 ~/.android/debug.keystore 的
+      # base64），CI 产出的包就会与本地调试包同签名，可直接覆盖安装；未配置则用 CI 自带的调试签名
+      - name: 还原签名密钥（可选）
+        env:
+          KS_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ -n "$KS_B64" ]; then
+            printf '%s' "$KS_B64" | base64 -d > "$HOME/.android/debug.keystore"
+            echo "已使用仓库 Secrets 中的 debug.keystore"
+          else
+            echo "未配置 DEBUG_KEYSTORE_B64，使用 CI 自动生成的调试签名"
+          fi
+
+      # tag 与 app/build.gradle.kts 里的 versionName 必须一致，
+      # 否则打出来的包版本号和 Release 标题对不上，这里直接拦下来
+      - name: 校验版本号
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          FILE_VERSION=$(grep -oE 'versionName = "[^"]+"' app/build.gradle.kts | head -1 | grep -oE '[0-9][^"]*')
+          echo "tag: $TAG_VERSION / build.gradle.kts: $FILE_VERSION"
+          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error::tag v$TAG_VERSION 与 app/build.gradle.kts 的 versionName $FILE_VERSION 不一致"
+            exit 1
+          fi
+
+      - name: 编译
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: 整理产物
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk "out/DuoLauncher-${VERSION}.apk"
+          ls -lh out
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: DuoLauncher ${{ github.ref_name }}
+          files: out/*.apk
+          generate_release_notes: true
+          append_body: true
+          body: |
+
+            ## 安装
+
+            1. 下载下方 `DuoLauncher-*.apk`；
+            2. 允许「安装未知来源应用」后直接安装；
+            3. 首次使用建议在系统里把 DuoLauncher 设为默认桌面，否则按 Home 键会回到原桌面。
+
+            需要的额外授权（按需，不是必需）：
+
+            - 通知角标：设置 → 通知角标 → 授予「通知使用权」；
+            - 双击熄屏：设置 → 主屏幕与手势 → 按提示开启无障碍服务。
+
+            详细操作说明见 [README](https://github.com/d3ja7u/DuoLauncher#readme)。
+
+            > 若手机上已装有本地构建的版本，而此包提示「签名不一致」，先卸载旧版本再安装即可。
