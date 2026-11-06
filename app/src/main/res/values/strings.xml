@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="duo_lock_label">DuoLauncher 熄屏服务</string>
+    <string name="duo_lock_desc">仅用于「双击桌面熄屏」。此服务不读取屏幕内容、不监听输入，只调用系统的「锁定屏幕」全局操作。</string>
+</resources>

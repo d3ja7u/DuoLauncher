@@ -1,0 +1,639 @@
+package com.duolauncher.ui
+
+import android.content.Context
+import android.os.Build
+import android.view.WindowManager
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import android.graphics.drawable.Drawable
+import com.duolauncher.data.AppInfo
+import com.duolauncher.data.DuoAction
+import com.duolauncher.data.DuoState
+import com.duolauncher.data.FolderItem
+
+object ActionPalette {
+    private val colors = listOf(
+        listOf(Color(0xFF5AC8FA), Color(0xFF007AFF)),
+        listOf(Color(0xFF7BE0A1), Color(0xFF34C759)),
+        listOf(Color(0xFFFFB35C), Color(0xFFFF9500)),
+        listOf(Color(0xFFFF8FA3), Color(0xFFFF2D55)),
+        listOf(Color(0xFFB39CFF), Color(0xFF5856D6)),
+        listOf(Color(0xFF8FD0FF), Color(0xFF3D7BFF))
+    )
+    fun brush(id: String): Brush {
+        val i = (id.hashCode() and 0x7fffffff) % colors.size
+        return Brush.linearGradient(colors[i])
+    }
+}
+
+/**
+ * iOS 风格未读角标：实心圆 / 胶囊 + 白色粗体数字，压在图标右上角（略微溢出图标边界）。
+ * 高度跟着图标大小走，超过 99 显示「99+」。
+ */
+@Composable
+fun NotificationBadge(count: Int, iconSize: Dp, color: Color) {
+    val h = (iconSize.value * 0.40f).coerceIn(15f, 23f).dp
+    val fs = (h.value * 0.62f).sp
+    val text = if (count > 99) "99+" else count.toString()
+    Box(
+        Modifier
+            .shadow(2.dp, CircleShape)
+            .height(h)
+            .defaultMinSize(minWidth = h)
+            .clip(CircleShape)
+            .background(color)
+            .padding(horizontal = h * 0.30f),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = fs,
+            lineHeight = (fs.value * 0.98f).sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            textAlign = TextAlign.Center,
+            style = TextStyle(
+                shadow = Shadow(Color(0x33000000), androidx.compose.ui.geometry.Offset(0f, 0.5f), 1.5f)
+            )
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun AppIconCell(
+    app: AppInfo,
+    size: Dp,
+    dark: Boolean = false,
+    showLabel: Boolean = true,
+    onWallpaper: Boolean = false,
+    wobble: Boolean = false,
+    overrideIcon: Drawable? = null,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
+    val wobbleAnim by rememberInfiniteTransition(label = "wobble").animateFloat(
+        initialValue = -1.6f, targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing), RepeatMode.Reverse),
+        label = "wobbleAngle"
+    )
+    val wobbleAngle = if (wobble) wobbleAnim else 0f
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(size + 14.dp)
+            .graphicsLayer { rotationZ = wobbleAngle }
+            .combinedClickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    ) {
+        Box(Modifier.size(size)) {
+            Image(
+                painter = rememberDrawablePainter(overrideIcon ?: rememberAppIcon(app)),
+                contentDescription = app.label,
+                modifier = Modifier.fillMaxSize().clip(squircle(24))
+            )
+            val badge = DuoState.badgeOf(app.packageName)
+            if (badge > 0) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = size * 0.06f, y = -size * 0.04f)
+                ) {
+                    NotificationBadge(badge, size, Color(DuoState.badgeColor))
+                }
+            }
+        }
+        if (showLabel) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = app.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = (11 * (size.value / 54f)).coerceIn(9.5f, 13f).sp,
+                textAlign = TextAlign.Center,
+                color = when {
+                    onWallpaper -> Color.White
+                    else -> glassTextColor(dark)
+                },
+                style = TextStyle(
+                    shadow = if (onWallpaper) Shadow(Color(0x88000000), androidx.compose.ui.geometry.Offset(0f, 2f), 4f)
+                    else null
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun ActionIconCell(
+    action: DuoAction,
+    size: Dp,
+    dark: Boolean = false,
+    showLabel: Boolean = true,
+    onWallpaper: Boolean = false,
+    wobble: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
+    val wobbleAnim by rememberInfiniteTransition(label = "wobble2").animateFloat(
+        initialValue = -1.6f, targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing), RepeatMode.Reverse),
+        label = "wobbleAngle2"
+    )
+    val wobbleAngle = if (wobble) wobbleAnim else 0f
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(size + 14.dp)
+            .graphicsLayer { rotationZ = wobbleAngle }
+            .combinedClickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    ) {
+        Box(
+            Modifier
+                .size(size)
+                .clip(squircle(24))
+                .background(ActionPalette.brush(action.id)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(action.icon, null, tint = Color.White, modifier = Modifier.size(size * 0.52f))
+        }
+        if (showLabel) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                action.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = (11 * (size.value / 54f)).coerceIn(9.5f, 13f).sp,
+                textAlign = TextAlign.Center,
+                color = if (onWallpaper) Color.White else glassTextColor(dark),
+                style = TextStyle(
+                    shadow = if (onWallpaper) Shadow(Color(0x88000000), androidx.compose.ui.geometry.Offset(0f, 2f), 4f)
+                    else null
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+/** 主屏文件夹单元格：玻璃方块内叠加最多 4 个应用图标，下方显示文件夹名 */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FolderCell(
+    folder: FolderItem,
+    size: Dp,
+    dark: Boolean = false,
+    onWallpaper: Boolean = false,
+    wobble: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
+    val wobbleAnim by rememberInfiniteTransition(label = "wobbleF").animateFloat(
+        initialValue = -1.6f, targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing), RepeatMode.Reverse),
+        label = "wobbleAngleF"
+    )
+    val wobbleAngle = if (wobble) wobbleAnim else 0f
+    val apps = folder.apps.mapNotNull { DuoState.appOf(it) }.take(4)
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(size + 14.dp)
+            .graphicsLayer { rotationZ = wobbleAngle }
+            .combinedClickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    ) {
+        GlassCard(
+            modifier = Modifier.size(size),
+            radius = (size * 0.30f),
+            level = 0.5f,
+            dark = dark
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (apps.isEmpty()) {
+                    Icon(Icons.Filled.Folder, null, tint = glassTextColor(dark), modifier = Modifier.size(size * 0.42f))
+                } else {
+                    val mini = (size * 0.40f)
+                    val off = (size * 0.16f)
+                    for ((i, app) in apps.withIndex()) {
+                        val row = i / 2
+                        val col = i % 2
+                        Image(
+                            painter = rememberDrawablePainter(rememberAppIcon(app)),
+                            contentDescription = app.label,
+                            modifier = Modifier
+                                .size(mini)
+                                .clip(squircle(18))
+                                .align(Alignment.TopStart)
+                                .then(if (row == 0) Modifier.padding(top = off) else Modifier.padding(top = size * 0.52f))
+                                .then(if (col == 0) Modifier.padding(start = off) else Modifier.padding(start = size * 0.52f))
+                        )
+                    }
+                }
+            }
+        }
+        if (true) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = folder.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = (11 * (size.value / 54f)).coerceIn(9.5f, 13f).sp,
+                textAlign = TextAlign.Center,
+                color = if (onWallpaper) Color.White else glassTextColor(dark),
+                style = TextStyle(
+                    shadow = if (onWallpaper) Shadow(Color(0x88000000), androidx.compose.ui.geometry.Offset(0f, 2f), 4f)
+                    else null
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+/** 把应用放入已有文件夹或新建文件夹 */
+@Composable
+fun FolderPickerDialog(
+    app: AppInfo,
+    dark: Boolean,
+    onDismiss: () -> Unit,
+    onResult: (folderId: String?, newName: String?) -> Unit
+) {
+    var creating by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    DuoDialog(title = "放入文件夹", dark = dark, onDismiss = onDismiss) {
+        if (creating) {
+            BasicTextField(
+                name, { name = it }, singleLine = true,
+                textStyle = TextStyle(fontSize = 15.sp, color = glassTextColor(dark)),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(glassTextColor(dark).copy(alpha = 0.12f)).padding(10.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            GlassPrimaryButton("创建并加入", dark, { onResult(null, name.ifBlank { "文件夹" }) })
+        } else {
+            if (DuoState.folders.isEmpty())
+                Text("还没有文件夹，可在下方新建", fontSize = 12.sp, color = glassSubTextColor(dark))
+            DuoState.folders.toList().forEach { f ->
+                MenuRow(Icons.Filled.Folder, f.name, dark = dark) { onResult(f.id, null) }
+            }
+            MenuRow(Icons.Filled.CreateNewFolder, "新建文件夹", dark = dark) { creating = true }
+        }
+    }
+}
+
+@Composable
+fun MenuRow(icon: ImageVector, label: String, danger: Boolean = false, dark: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = if (danger) Color(0xFFFF3B30) else glassTextColor(dark), modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(
+            label,
+            fontSize = 15.sp,
+            color = if (danger) Color(0xFFFF3B30) else glassTextColor(dark)
+        )
+    }
+}
+
+/** 长按图标菜单 */
+@Composable
+fun AppContextMenu(
+    app: AppInfo,
+    dark: Boolean,
+    onDismiss: () -> Unit,
+    onUninstall: () -> Unit,
+    onRemoveHome: (() -> Unit)?,
+    onHide: () -> Unit,
+    onInfo: () -> Unit,
+    onCategory: () -> Unit,
+    onAddSidebar: () -> Unit,
+    onAddToFolder: (() -> Unit)? = null,
+    onAddHome: (() -> Unit)? = null,
+    onChangeIcon: (() -> Unit)? = null
+) {
+    DuoDialog(title = app.label, dark = dark, onDismiss = onDismiss) {
+        onAddHome?.let { MenuRow(Icons.Filled.AddToHomeScreen, "添加到主屏幕", dark = dark, onClick = { onDismiss(); it() }) }
+        onAddToFolder?.let { MenuRow(Icons.Filled.Folder, "放入文件夹", dark = dark, onClick = { onDismiss(); it() }) }
+        MenuRow(Icons.Filled.Apps, "添加到侧边栏", dark = dark, onClick = { onDismiss(); onAddSidebar() })
+        MenuRow(Icons.Filled.Category, "调整应用分类", dark = dark, onClick = { onDismiss(); onCategory() })
+        onChangeIcon?.let { MenuRow(Icons.Filled.Palette, "更换图标", dark = dark, onClick = { onDismiss(); it() }) }
+        onRemoveHome?.let { MenuRow(Icons.Filled.RemoveCircleOutline, "移除主屏幕", dark = dark, onClick = { onDismiss(); it() }) }
+        MenuRow(Icons.Filled.VisibilityOff, "隐藏应用", dark = dark, onClick = { onDismiss(); onHide() })
+        MenuRow(Icons.Filled.Info, "应用信息", dark = dark, onClick = { onDismiss(); onInfo() })
+        MenuRow(Icons.Filled.Delete, "卸载应用", danger = true, dark = dark, onClick = { onDismiss(); onUninstall() })
+    }
+}
+
+@Composable
+fun DuoDialog(
+    title: String,
+    dark: Boolean,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        GlassCard(modifier = Modifier.fillMaxWidth().wrapContentHeight(), radius = 28.dp, level = 0.8f, dark = dark) {
+            Column(Modifier.padding(20.dp)) {
+                Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark))
+                Spacer(Modifier.height(12.dp))
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+fun SectionTitle(text: String, dark: Boolean) {
+    Text(
+        text,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = glassSubTextColor(dark),
+        modifier = Modifier.padding(start = 6.dp, top = 18.dp, bottom = 8.dp)
+    )
+}
+
+@Composable
+fun SettingRow(
+    title: String,
+    subtitle: String? = null,
+    dark: Boolean,
+    trailing: @Composable (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, color = glassTextColor(dark))
+            if (subtitle != null) {
+                Text(subtitle, fontSize = 12.sp, color = glassSubTextColor(dark), modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+        trailing?.invoke()
+    }
+}
+
+@Composable
+fun SettingToggle(title: String, subtitle: String? = null, checked: Boolean, dark: Boolean, onChange: (Boolean) -> Unit) {
+    SettingRow(title, subtitle, dark, trailing = {
+        Switch(checked = checked, onCheckedChange = onChange)
+    }, onClick = { onChange(!checked) })
+}
+
+@Composable
+fun GlassTopBar(title: String, dark: Boolean, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.Filled.ArrowBack, "返回", tint = glassTextColor(dark))
+        }
+        Text(title, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark), modifier = Modifier.weight(1f).padding(start = 4.dp))
+        actions()
+    }
+}
+
+@Composable
+fun GlassPrimaryButton(text: String, dark: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (dark) Color(0xFF5B7CFF) else Color(0xFF3D6BFF),
+            contentColor = Color.White
+        )
+    ) { Text(text, fontSize = 14.sp) }
+}
+
+/**
+ * iOS 风格「窗口」：点资源库分类卡 / 主屏文件夹后展开的浮窗。
+ *
+ * 居中一块小尺寸玻璃卡（宽 ≈ 屏宽 84%，最宽 372dp；高度随行数，最多 4 行后内部滚动）：
+ * 标题 + 应用数 + 关闭按钮，下面是 4 列应用网格，底部可挂操作行。
+ *
+ * 玻璃效果：Android 12+ 走系统窗口级背景模糊（FLAG_BLUR_BEHIND + blurBehindRadius），
+ * 底板半透明让背后的桌面/资源库虚化成磨砂；不支持模糊的机器自动退回近乎不透明的底板，
+ * 避免背后的图标透上来叠成一片字。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FolderWindow(
+    title: String,
+    subtitle: String? = null,
+    apps: List<AppInfo>,
+    dark: Boolean,
+    onDismiss: () -> Unit,
+    onLaunch: (AppInfo) -> Unit,
+    onLongClick: (AppInfo) -> Unit = {},
+    footer: (@Composable ColumnScope.() -> Unit)? = null
+) {
+    val iconSize = 50.dp
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        val blurOn = rememberDialogBlurBehind(radiusDp = 30f, dim = 0.16f)
+        val shape = RoundedCornerShape(30.dp)
+        val base = if (dark) Color(0xFF141926) else Color(0xFFF5F7FC)
+        // 有窗口模糊时底板可以偏透（透出磨砂背景），没有模糊就必须近乎不透明
+        val baseAlpha = if (blurOn) 0.80f else 0.97f
+        val rows = ((apps.size + 3) / 4).coerceIn(1, 4)
+        val rowH = 72.dp
+        val vGap = 12.dp
+        val gridH = rowH * rows + vGap * (rows - 1)
+
+        // 点窗口外的空白处 = 返回（不再放 X 按钮）
+        BoxWithConstraints(
+            Modifier.fillMaxSize()
+                .background(if (blurOn) Color.Transparent else Color(0x44000000))
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+            contentAlignment = Alignment.Center
+        ) {
+            val winW = minOf(maxWidth * 0.84f, 372.dp)
+            Box(
+                Modifier.width(winW)
+                    .clip(shape)
+                    .background(base.copy(alpha = baseAlpha))
+                    .border(1.dp, Color.White.copy(alpha = if (dark) 0.18f else 0.80f), shape)
+                    // 吃掉窗口内部的点击，避免穿透到遮罩把窗口关掉
+                    .pointerInput(Unit) { detectTapGestures { } }
+            ) {
+                Box(
+                    Modifier.matchParentSize().background(
+                        Brush.verticalGradient(
+                            listOf(Color.White.copy(alpha = if (dark) 0.07f else 0.50f), Color.Transparent),
+                            endY = 160f
+                        )
+                    )
+                )
+                Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                title, fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                                color = glassTextColor(dark), maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (subtitle != null) {
+                                Text(
+                                    subtitle, fontSize = 11.sp,
+                                    color = glassSubTextColor(dark),
+                                    modifier = Modifier.padding(top = 1.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+
+                    if (apps.isEmpty()) {
+                        Box(
+                            Modifier.fillMaxWidth().height(rowH),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("这里还没有应用", fontSize = 13.sp, color = glassSubTextColor(dark))
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(4),
+                            modifier = Modifier.fillMaxWidth().height(gridH),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalArrangement = Arrangement.spacedBy(vGap)
+                        ) {
+                            items(apps, key = { it.packageName }) { app ->
+                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    AppIconCell(
+                                        app = app,
+                                        size = iconSize,
+                                        dark = dark,
+                                        showLabel = true,
+                                        onClick = { onLaunch(app) },
+                                        onLongClick = { onLongClick(app) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (footer != null) {
+                        Spacer(Modifier.height(6.dp))
+                        Column(Modifier.fillMaxWidth()) { footer() }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 给 Dialog 窗口挂上系统级背景模糊（玻璃磨砂）。
+ * 返回是否可用；不可用时调用方应把底板做成近乎不透明。
+ */
+@Composable
+private fun rememberDialogBlurBehind(radiusDp: Float, dim: Float): Boolean {
+    val ctx = LocalContext.current
+    val view = LocalView.current
+    val supported = remember(ctx) { crossWindowBlurEnabled(ctx) }
+    LaunchedEffect(supported) {
+        if (!supported) return@LaunchedEffect
+        val win = (view.parent as? DialogWindowProvider)?.window ?: return@LaunchedEffect
+        win.addFlags(
+            WindowManager.LayoutParams.FLAG_BLUR_BEHIND or
+                WindowManager.LayoutParams.FLAG_DIM_BEHIND
+        )
+        val density = view.resources.displayMetrics.density
+        win.attributes = win.attributes.apply {
+            setBlurBehindRadius((radiusDp * density).toInt())
+            dimAmount = dim
+        }
+    }
+    return supported
+}
+
+private fun crossWindowBlurEnabled(ctx: Context): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
+    val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
+    return runCatching { wm.isCrossWindowBlurEnabled }.getOrDefault(false)
+}
