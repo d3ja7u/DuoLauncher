@@ -212,16 +212,20 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 **不想自己编译**：直接到 [Releases](https://github.com/d3ja7u/DuoLauncher/releases) 下载最新一版的 `DuoLauncher-x.y.z.apk` 安装。
 
-发版流程：每完成一版，改 `versionName` / `versionCode` → `./gradlew assembleDebug` → 打 tag（如 `v1.3.9`）→ 在 Releases 里附带该 APK。
-
-仓库里也备好了一份 GitHub Actions 工作流（`.github/workflows/release.yml`）：推一个形如 `v1.3.9` 的 tag，CI 就会自动编译、生成变更说明并发布 Release。启用它需要把仓库的 Actions 打开（仓库 Settings → Actions → Allow all actions）；工作流文件本身需要带 `workflow` 权限的凭据才能推送。
+发版是全自动的，由 `.github/workflows/release.yml` 完成：改好版本号、打个 `v*` tag 推上去，Actions 就会编译 APK、生成变更说明并发布 Release。
 
 ```bash
+# 1. 先改 app/build.gradle.kts 里的 versionName / versionCode
+# 2. 提交后打 tag 并推送，一次做完
 git tag v1.3.9
-git push origin v1.3.9
+git push origin main --tags
 ```
 
-签名说明：发行包使用调试签名构建，与本地 `./gradlew assembleDebug` 产出的包签名不同，若手机上已有旧包会提示签名不一致，卸载后重装即可。想让它与本地包同签名，可在仓库 Secrets 里加一个 `DEBUG_KEYSTORE_B64`（本机 `~/.android/debug.keystore` 的 base64），工作流会自动使用。
+工作流第一步会校验 tag 与 `versionName` 是否一致，不一致直接失败——省得发出去的包版本号和 Release 标题对不上。
+
+只想确认编译能不能过、暂时不想发版时，到 Actions 页面选 `Release` → **Run workflow** 手动触发即可，产物会作为 artifact 保留 7 天，不会产生 Release。
+
+签名说明：CI 生成包使用仓库 Secrets 里的 `DEBUG_KEYSTORE_B64`（本机 `~/.android/debug.keystore` 的 base64），与本地 `./gradlew assembleDebug` 的产物签名一致，可以直接覆盖安装。若该 Secret 未配置，工作流会退回 CI 自动生成的调试签名，此时装新版要先卸载旧版。
 
 ---
 
