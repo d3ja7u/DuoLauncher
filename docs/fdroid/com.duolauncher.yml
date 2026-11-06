@@ -1,0 +1,47 @@
+# 提交到 F-Droid 主仓库的元数据模板
+
+# 用法：Fork https://gitlab.com/fdroid/fdroiddata ，把本文件复制到
+# metadata/com.duolauncher.yml ，从 master 建分支 com.duolauncher ，
+# 跑 fdroid lint / fdroid build 后在 GitLab 提 Merge Request。
+#
+# ⚠️ 提交前必须做两处替换：
+#   1. Builds[0].commit 改成 v1.5.1 tag 对应的完整 40 位 commit hash（不能用 tag 名）
+#   2. versionName / versionCode 与实际发版一致
+# 详细步骤见 ../DISTRIBUTION.md
+
+Categories:
+  - System
+License: MIT
+AuthorName: d3ja7u
+SourceCode: https://github.com/d3ja7u/DuoLauncher
+IssueTracker: https://github.com/d3ja7u/DuoLauncher/issues
+WebSite: https://github.com/d3ja7u/DuoLauncher
+Changelog: https://github.com/d3ja7u/DuoLauncher/releases
+Translation: https://github.com/d3ja7u/DuoLauncher/tree/main/app/src/main/res
+AutoName: DuoLauncher
+
+# 可选功能依赖专有网络服务，主动申报，避免审核时被追问
+AntiFeatures:
+  NonFreeNet:
+    en-US: The optional "Check for updates" feature queries the GitHub Releases API (or releases.atom). GitHub is a proprietary service. This feature is off by default, can be disabled in Settings, and is not required for the launcher to function. It never downloads or installs APKs.
+
+RepoType: git
+Repo: https://github.com/d3ja7u/DuoLauncher.git
+
+Builds:
+  - versionName: '1.5.1'
+    versionCode: 138
+    commit: 0000000000000000000000000000000000000000
+    subdir: app
+    gradle:
+      - yes
+    # gradle: yes -> assembleRelease（无 productFlavor）。
+    # 该构建是 release 类型：debuggable=false、已开启 R8 与资源缩减。
+    # signingConfig 指向 debug.keystore，fdroidserver 会用自己的密钥重新签名产物。
+    # 若构建机访问不了 settings.gradle.kts 里的阿里云镜像，
+    # 用 -Pduo.cnMirror 关闭镜像或按 DISTRIBUTION.md 中的 prebuild 说明处理。
+
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags
+CurrentVersion: '1.5.1'
+CurrentVersionCode: 138

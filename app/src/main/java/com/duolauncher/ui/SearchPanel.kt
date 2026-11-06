@@ -39,6 +39,8 @@ fun SearchPanel(
     nav: Nav,
     dark: Boolean,
     wallpaper: Bitmap?,
+    /** 滑入动画停稳后才申请焦点：否则右滑刚起手 IME 就弹出来了 */
+    focusEnabled: Boolean = true,
     onClose: () -> Unit
 ) {
     val ctx = LocalContext.current
@@ -60,11 +62,15 @@ fun SearchPanel(
      * 底部那条「输入状态 / 候选」快捷栏）有时会赖着不走，回到桌面还挂在下面。
      * 顺序：先 hide 软键盘 → 清焦点 → 再关闭面板。
      */
-    val close = {
+    fun hideKeyboard() {
         runCatching {
             val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             imm?.hideSoftInputFromWindow(view.windowToken, 0)
         }
+    }
+
+    val close = {
+        hideKeyboard()
         runCatching { focusManager.clearFocus(force = true) }
         onClose()
     }
@@ -80,7 +86,9 @@ fun SearchPanel(
     }
 
     BackHandler(onBack = { close() })
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    LaunchedEffect(focusEnabled) {
+        if (focusEnabled) runCatching { focus.requestFocus() }
+    }
 
     Box(
         Modifier
@@ -93,18 +101,36 @@ fun SearchPanel(
                     onDragCancel = { acc = 0f }
                 ) { change, dy -> if (dy < 0) { acc += dy; change.consume() } }
             }
-            // 左滑关闭：搜索页是「右滑进来」的，左滑出去正好对称。
+            // 左滑关闭：与「右滑进来」完全对称，拖动时逐帧跟手滑出，松手后弹性补齐 / 回弹。
             // 输入框/列表这类子节点会先消费拖动，这里的判定不会抢它们。
             .pointerInput(Unit) {
                 val trigger = 80.dp.toPx()
+                val startSlop = 12f
+                val fullPx = size.width * 0.5f
                 var dx = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { dx = 0f },
-                    onDragCancel = { dx = 0f },
-                    onDragEnd = { if (dx < -trigger) close() }
+                    onDragCancel = {
+                        dx = 0f
+                        nav.searchCloseDrag(1f)
+                        nav.searchCloseRelease(false)
+                    },
+                    onDragEnd = {
+                        val commit = dx <= -trigger
+                        if (commit) {
+                            // 关闭方向已确定，先收键盘，别让它挂在滑出动画上
+                            hideKeyboard()
+                            runCatching { focusManager.clearFocus(force = true) }
+                        }
+                        nav.searchCloseRelease(commit)
+                    }
                 ) { change, dragAmount ->
                     dx += dragAmount
-                    if (dx < -12f) change.consume()
+                    if (dx < -startSlop) {
+                        change.consume()
+                        // 剩余揭示进度：手指越往左，搜索页越往左退出
+                        nav.searchCloseDrag((1f - ((-dx) - startSlop) / fullPx).coerceIn(0f, 1f))
+                    }
                 }
             }
     ) {

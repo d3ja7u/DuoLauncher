@@ -16,8 +16,8 @@ android {
         applicationId = "com.duolauncher"
         minSdk = 28
         targetSdk = 34
-        versionCode = 137
-        versionName = "1.5.0"
+        versionCode = 138
+        versionName = "1.5.1"
     }
 
     signingConfigs {
@@ -37,7 +37,17 @@ android {
             if (ciKeystore != null) signingConfig = signingConfigs.getByName("ci")
         }
         release {
-            isMinifyEnabled = false
+            // 商店 / F-Droid 类仓库分发的必须是 release 构建：
+            //   1) debuggable=false（debug 包会被标 ApplicationDebuggable）
+            //   2) 开启 R8 与资源缩减，把体积从 52 MB 降到 30 MB 以下（IzzyOnDroid 硬上限）
+            //   3) 不打进仅 debug 变体才有的 compose-ui-tooling
+            // 签名仍沿用原来的 debug.keystore，保证老用户可以直接覆盖安装。
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig =
                 if (ciKeystore != null) signingConfigs.getByName("ci")
                 else signingConfigs.getByName("debug")
@@ -55,6 +65,13 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+
+    // 不往 APK 签名块里写 Google 公钥签名的 DEPENDENCY_INFO_BLOCK，
+    // F-Droid / IzzyOnDroid 的扫描器会把这个无法验证的 BLOB 标为问题。
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 }
 

@@ -1,0 +1,4 @@
+* Added English and Japanese UI; the interface now follows the device language by default and can be overridden in Settings
+* New update checker for GitHub Releases, with an editable update source and automatic fallback to releases.atom
+* Fixed the stale version shown when the app was already up to date
+* Added an English README

@@ -61,8 +61,8 @@ object DuoState {
     // ── GitHub Releases 更新检查 ──
     /** 更新源地址；可以改成自建镜像，空串会自动回落到默认地址 */
     var updateUrl by mutableStateOf(UpdateChecker.DEFAULT_URL)
-    /** 进入设置页时静默检查，12 小时内只查一次 */
-    var autoCheckUpdate by mutableStateOf(true)
+    /** 进入设置页时静默检查，12 小时内只查一次；默认关闭，避免未经操作的联网 */
+    var autoCheckUpdate by mutableStateOf(false)
     var lastUpdateCheck by mutableStateOf(0L)
     /** 上次查到的最新版本号，只用来在设置行上显示提示，不弹窗打扰 */
     var lastSeenVersion by mutableStateOf("")

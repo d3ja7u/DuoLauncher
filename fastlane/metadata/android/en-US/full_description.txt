@@ -1,0 +1,41 @@
+DuoLauncher is a complete home screen launcher (android.intent.category.HOME) written in Kotlin with Jetpack Compose. It was hand-tuned for the Unihertz Titan 2 Elite - a near-square 1080x1200 display with a physical keyboard - and runs on Android 9+ devices.
+
+This is not a theme or an icon pack: you can set it as your default home app.
+
+FEATURES
+
+* Glass-morphism UI with adjustable blur strength and light / dark appearance
+* iOS-style status bar: time, cellular arc and Wi-Fi dots, switchable sides, 12/24-hour clock
+* Side dock on the right or left, editable and reorderable, with its own icon size
+* App library: category cards OR a strict A-Z list with a wide, draggable alphabet index (the two views are mutually exclusive)
+* Instant app search; right-swipe on the leftmost home page opens it, left-swipe closes it
+* Notification badges in 8 colors (optional Notification Access)
+* Gestures: split-area down-swipe for notifications / quick settings, double-tap to sleep
+* Third-party icon packs, per-app icon overrides, hidden apps, manual categories
+* Home screen widgets
+* UI in Simplified Chinese, English and Japanese; follows the device language by default, with a manual override in Settings
+
+PERMISSIONS - WHAT EACH ONE IS FOR
+
+* QUERY_ALL_PACKAGES: the app library and search must enumerate every installed app. The list never leaves the device.
+* Notification Access: counts unread notifications for badges, processed entirely on device.
+* Accessibility Service: used only for double-tap to sleep. canRetrieveWindowContent is false, so it cannot read screen content or keystrokes. It never performs actions on its own.
+* EXPAND_STATUS_BAR: down-swipe gestures that open the notification shade or quick settings.
+* CAMERA / FLASHLIGHT: the optional flashlight toggle action (CameraManager.setTorchMode).
+* INTERNET: only the optional update checker described below.
+* ACCESS_WIFI_STATE / ACCESS_NETWORK_STATE: draws Wi-Fi and signal indicators in the custom status bar.
+* VIBRATE: haptic feedback. REQUEST_DELETE_PACKAGES: the uninstall shortcut in the icon menu.
+* BIND_APPWIDGET: home screen widgets.
+* Device Admin: optional fallback for screen-off on ROMs where the accessibility action is unavailable. It is never activated automatically and can be turned off in system settings.
+
+PRIVACY
+
+No ads, no analytics, no crash reporting, no tracking SDK, no Google Play Services and no Firebase. Layout, categories and settings are stored in one local JSON file. There is no account and no sign-in. Nothing is uploaded, and no installed-app list is transmitted. Full privacy policy: https://github.com/d3ja7u/DuoLauncher/blob/main/PRIVACY.md
+
+The optional update checker queries the GitHub Releases API (or releases.atom as fallback) for version information only. It never downloads, installs or executes APKs. When a new version exists, a dialog lets you choose to open the release page in a browser or copy the link - both require a deliberate tap. The check is on demand, at most once per interval when auto-check is enabled, and can be disabled in Settings; the update source is editable or can be pointed at any endpoint. GitHub is a proprietary service, which is why this app carries the NonFreeNet anti-feature.
+
+OPEN SOURCE
+
+MIT licensed. Source, issues and releases: https://github.com/d3ja7u/DuoLauncher
+Instructions (Chinese): https://github.com/d3ja7u/DuoLauncher/blob/main/README.md
+Instructions (English): https://github.com/d3ja7u/DuoLauncher/blob/main/README.en.md

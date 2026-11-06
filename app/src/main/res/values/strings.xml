@@ -161,7 +161,9 @@
     <string name="notif_access">通知使用权</string>
     <string name="notif_access_on">已授权 · 通知栏有未读时会显示数字</string>
     <string name="notif_access_off">未授权 · 点此前往系统设置开启</string>
-    <string name="badge_note">角标数字按通知条数统计；微信、QQ 这类会合并通知的应用，取通知里自带的消息条数</string>
+    <string name="badge_note">角标数字按通知条数统计；微信、QQ 这类会合并通知的应用，取通知里自带的消息条数。音乐播放、前台服务等常驻通知不计入角标，打开应用后已读状态会一直保留到新消息到来</string>
+    <string name="clear_all_badges">清除全部角标</string>
+    <string name="clear_all_badges_desc">把当前所有通知标记为已读</string>
     <string name="badge_color">角标颜色</string>
     <string name="color_custom">自定义</string>
     <string name="badge_red">红色</string>

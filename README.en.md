@@ -177,6 +177,10 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ./gradlew assembleDebug
 # Output: app/build/outputs/apk/debug/app-debug.apk
+
+# Distributable build (release variant: R8 + resource shrinking, ~2.1 MB, not debuggable)
+./gradlew assembleRelease
+# Output: app/build/outputs/apk/release/app-release.apk
 ```
 
 You can also open the project root in Android Studio (Koala or newer).
@@ -236,7 +240,7 @@ Releases are fully automated by `.github/workflows/release.yml`: bump the versio
 ```bash
 # 1. Bump versionName / versionCode in app/build.gradle.kts
 # 2. Commit, then tag and push in one go
-git tag v1.5.0
+git tag v1.5.1
 git push origin main --tags
 ```
 
@@ -244,7 +248,7 @@ The workflow's first step fails if the tag doesn't match `versionName`, so the A
 
 To verify a build without publishing, go to Actions → **Release** → **Run workflow**. The APK is kept as an artifact for 7 days and no Release is created.
 
-**Signing**: CI uses the `DEBUG_KEYSTORE_B64` repository Secret (base64 of your local `~/.android/debug.keystore`), so CI builds carry the same signature as `./gradlew assembleDebug` and can be installed over each other. If that Secret is missing, the workflow falls back to a generated CI debug key and you'll need to uninstall the old build first.
+**Signing**: CI builds the distributable APK with `assembleRelease` (R8 + resource shrinking, ~2.1 MB, not debuggable; the workflow also fails the build if it exceeds 30 MB). Signing uses the `DEBUG_KEYSTORE_B64` repository Secret (base64 of your local `~/.android/debug.keystore`), so CI output matches both local `./gradlew assembleDebug` and `assembleRelease` and can be installed over an older version. If that Secret is missing, the workflow falls back to a generated CI debug key and you'll need to uninstall the old build first.
 
 ### Checking for updates inside the launcher
 

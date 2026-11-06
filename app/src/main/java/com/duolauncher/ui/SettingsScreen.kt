@@ -343,6 +343,11 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { DuoNotificationListener.openSettings(ctx) }
                     )
+                    SettingRow(
+                        Lang.s(R.string.clear_all_badges),
+                        Lang.s(R.string.clear_all_badges_desc),
+                        dark
+                    ) { DuoNotificationListener.dismissAll() }
                 }
             }
             Text(

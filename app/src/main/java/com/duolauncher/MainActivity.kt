@@ -15,6 +15,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateTo
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +32,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -35,6 +41,8 @@ import androidx.lifecycle.lifecycleScope
 import com.duolauncher.data.*
 import com.duolauncher.ui.*
 import com.duolauncher.util.Lang
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -127,6 +135,26 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(if (Lang.consumeReopenSettings(ctx)) "settings" else null)
         }
         var settingsSub by remember { mutableStateOf<String?>(null) }
+
+        // 搜索页揭示进度：0 = 桌面，1 = 搜索页完全覆盖。
+        // 右滑手势逐帧直接写 reveal（跟手），松手 / 点击时由 spring 逐帧写回，
+        // 观感与 HorizontalPager 翻到资源库一致。
+        var reveal by remember { mutableFloatStateOf(0f) }
+        // 用固定时长的缓动曲线，不用 spring：spring 在这个位移量下 ~120ms 就收敛完，
+        // 非跟手的进入 / 关闭（点搜索键、上滑、返回键）会看起来像瞬移。
+        val revealSpec = remember {
+            tween<Float>(durationMillis = 280, easing = FastOutSlowInEasing)
+        }
+        var revealJob by remember { mutableStateOf<Job?>(null) }
+        var searchMounted by remember { mutableStateOf(false) }
+        var searchFocused by remember { mutableStateOf(false) }
+        var rootWidth by remember { mutableFloatStateOf(0f) }
+        // 只有搜索页真正停稳才申请输入焦点，否则手势刚起手 IME 就弹出来了
+        LaunchedEffect(Unit) {
+            snapshotFlow { reveal >= 0.98f }
+                .distinctUntilChanged()
+                .collect { searchFocused = it }
+        }
         var menuApp by remember { mutableStateOf<AppInfo?>(null) }
         var menuSource by remember { mutableStateOf("home") }
         var categoryTarget by remember { mutableStateOf<AppInfo?>(null) }
@@ -210,6 +238,32 @@ class MainActivity : ComponentActivity() {
         // Activity.lifecycleScope 的 CoroutineContext 里没有 MonotonicFrameClock，
         // 调 animateScrollToPage 会抛 IllegalStateException（点「添加应用到主屏幕」就崩）。
         val uiScope = rememberCoroutineScope()
+
+        /** 从当前进度弹性动画到目标值，逐帧写回 reveal；手势再次开始时取消上一段动画 */
+        fun animateReveal(target: Float, onEnd: () -> Unit = {}) {
+            revealJob?.cancel()
+            if (target > 0f) searchMounted = true
+            revealJob = uiScope.launch {
+                AnimationState(reveal).animateTo(target, revealSpec) { reveal = value }
+                onEnd()
+            }
+        }
+
+        fun dismissSearchInstant() {
+            revealJob?.cancel()
+            reveal = 0f
+            searchMounted = false
+            searchFocused = false
+        }
+
+        /** 关闭搜索：先滑出去，动画结束后再摘掉面板，避免「硬切」 */
+        fun dismissSearchAnimated() {
+            animateReveal(0f) {
+                searchMounted = false
+                searchFocused = false
+            }
+        }
+
         // 真实页序号 ↔ pager 下标（开启"倒序翻页"时两者相反）
         fun toPagerPage(actual: Int): Int {
             val a = actual.coerceIn(0, totalPages - 1)
@@ -218,11 +272,44 @@ class MainActivity : ComponentActivity() {
 
         val nav = remember(totalPages, libraryPage) {
             Nav(
-                openSearch = { overlay = "search" },
-                openSettings = { settingsSub = null; overlay = "settings" },
-                openSidebarEditor = { settingsSub = "sidebar"; overlay = "settings" },
-                openCategoryEditor = { settingsSub = "cats"; overlay = "settings" },
-                openHiddenEditor = { settingsSub = "hidden"; overlay = "settings" },
+                openSearch = {
+                    // 点右下角搜索键 / 动作触发：同样走滑入，不再硬切
+                    animateReveal(1f)
+                },
+                searchDrag = { p ->
+                    revealJob?.cancel()
+                    searchMounted = true
+                    reveal = p
+                },
+                searchRelease = { commit ->
+                    // 跟 pager 一样：过半就翻过去，否则弹回；快速短滑也算翻过去
+                    val finish = reveal >= 0.45f || (commit && reveal >= 0.12f)
+                    animateReveal(if (finish) 1f else 0f) {
+                        if (!finish) {
+                            searchMounted = false
+                            searchFocused = false
+                        }
+                    }
+                },
+                searchCloseDrag = { p ->
+                    // 左滑时搜索页跟着手指往左退，桌面同步回位
+                    revealJob?.cancel()
+                    reveal = p
+                },
+                searchCloseRelease = { commit ->
+                    // 过半或快速短滑 → 关回桌面；否则弹回搜索页，两边都走 spring
+                    val close = commit || reveal < 0.55f
+                    animateReveal(if (close) 0f else 1f) {
+                        if (close) {
+                            searchMounted = false
+                            searchFocused = false
+                        }
+                    }
+                },
+                openSettings = { dismissSearchInstant(); settingsSub = null; overlay = "settings" },
+                openSidebarEditor = { dismissSearchInstant(); settingsSub = "sidebar"; overlay = "settings" },
+                openCategoryEditor = { dismissSearchInstant(); settingsSub = "cats"; overlay = "settings" },
+                openHiddenEditor = { dismissSearchInstant(); settingsSub = "hidden"; overlay = "settings" },
                 openWidgetPicker = { startPickWidget() },
                 showAppMenu = { app, src -> menuApp = app; menuSource = src },
                 showCategoryPicker = { app -> categoryTarget = app },
@@ -251,6 +338,10 @@ class MainActivity : ComponentActivity() {
             if (homeSignal > 0) {
                 overlay = null
                 settingsSub = null
+                searchMounted = false
+                searchFocused = false
+                revealJob?.cancel()
+                reveal = 0f
                 runCatching { pagerState.animateScrollToPage(toPagerPage(0)) }
             }
             // 主屏页数变少（清空/删除应用）时，把越界的当前页拉回合法范围
@@ -261,8 +352,8 @@ class MainActivity : ComponentActivity() {
 
         // 搜索面板关掉后兜底收一次软键盘：只摘掉面板时，接实体键盘的 IME
         // 那条「输入状态」快捷栏偶尔会留在桌面底部
-        LaunchedEffect(overlay) {
-            if (overlay == null) {
+        LaunchedEffect(overlay, searchMounted) {
+            if (overlay == null && !searchMounted) {
                 runCatching {
                     val imm = getSystemService(Context.INPUT_METHOD_SERVICE)
                         as? android.view.inputmethod.InputMethodManager
@@ -275,12 +366,22 @@ class MainActivity : ComponentActivity() {
 
         MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
             CompositionLocalProvider(LocalWidgetBridge provides widgetBridge) {
-                Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .onSizeChanged { rootWidth = it.width.toFloat() }
+                ) {
                     HorizontalPager(
                         state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                        userScrollEnabled = overlay == null && !DuoState.dragging
-                    )                     { page ->
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                // 搜索页推进时桌面轻微右移 + 压暗，做出与翻页一致的层次
+                                translationX = rootWidth * 0.16f * reveal
+                                alpha = 1f - 0.10f * reveal
+                            },
+                        userScrollEnabled = overlay == null && !DuoState.dragging && !searchMounted
+                    ) { page ->
                         val actual = if (DuoState.reversePages) totalPages - 1 - page else page
                         when {
                             actual == totalPages - 1 -> LibraryPage(nav, dark, wallpaper)
@@ -297,8 +398,27 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // 搜索页：右滑时从左侧跟手滑入，方向与手指一致；
+                    // 位置完全由 reveal 驱动，松手后 spring 补齐，和 HorizontalPager 同一套观感。
+                    if (searchMounted) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    translationX = -rootWidth * (1f - reveal)
+                                }
+                        ) {
+                            SearchPanel(
+                                nav = nav,
+                                dark = dark,
+                                wallpaper = wallpaper,
+                                focusEnabled = searchFocused,
+                                onClose = { dismissSearchAnimated() }
+                            )
+                        }
+                    }
+
                     when (overlay) {
-                        "search" -> SearchPanel(nav, dark, wallpaper) { overlay = null }
                         "settings" -> SettingsScreen(nav, dark, wallpaper, initialSub = settingsSub) {
                             overlay = null; settingsSub = null
                         }

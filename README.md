@@ -177,6 +177,10 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ./gradlew assembleDebug
 # 产物：app/build/outputs/apk/debug/app-debug.apk
+
+# 正式发行包（release 变体：开启 R8 与资源缩减，约 2.1 MB、非 debuggable）
+./gradlew assembleRelease
+# 产物：app/build/outputs/apk/release/app-release.apk
 ```
 
 也可以直接用 Android Studio（Koala 及以上）打开根目录。
@@ -236,7 +240,7 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 ```bash
 # 1. 先改 app/build.gradle.kts 里的 versionName / versionCode
 # 2. 提交后打 tag 并推送，一次做完
-git tag v1.5.0
+git tag v1.5.1
 git push origin main --tags
 ```
 
@@ -244,7 +248,7 @@ git push origin main --tags
 
 只想确认编译能不能过、暂时不想发版时，到 Actions 页面选 `Release` → **Run workflow** 手动触发即可，产物会作为 artifact 保留 7 天，不会产生 Release。
 
-签名说明：CI 生成包使用仓库 Secrets 里的 `DEBUG_KEYSTORE_B64`（本机 `~/.android/debug.keystore` 的 base64），与本地 `./gradlew assembleDebug` 的产物签名一致，可以直接覆盖安装。若该 Secret 未配置，工作流会退回 CI 自动生成的调试签名，此时装新版要先卸载旧版。
+签名说明：CI 用 `assembleRelease` 产出正式包（已开启 R8 与资源缩减，约 2.1 MB、非 debuggable，工作流内还会校验体积不超过 30 MB）。签名使用仓库 Secrets 里的 `DEBUG_KEYSTORE_B64`（本机 `~/.android/debug.keystore` 的 base64），与本地 `./gradlew assembleDebug` / `assembleRelease` 同签名，手机上装有旧版时可直接覆盖安装。若该 Secret 未配置，工作流会退回 CI 自动生成的调试签名，此时装新版要先卸载旧版。
 
 ### 在启动器里检查更新
 

@@ -1,0 +1,4 @@
+· Search page now follows your finger in and out, with smooth transitions
+· Badge fix: ongoing / foreground-service notifications (e.g. music playback) no longer count as unread
+· Read state now persists after opening an app; added "Clear all badges"
+· Release builds use R8: 2.1 MB, not debuggable

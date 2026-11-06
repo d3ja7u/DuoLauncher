@@ -161,7 +161,9 @@
     <string name="notif_access">通知へのアクセス</string>
     <string name="notif_access_on">許可済み · 未読通知があれば数字を表示</string>
     <string name="notif_access_off">未許可 · タップして設定で有効化</string>
-    <string name="badge_note">バッジは通知の件数を集計します。WeChat や QQ のようにまとめるアプリは通知内の件数を使用します</string>
+    <string name="badge_note">バッジは通知の件数を集計します。WeChat や QQ のようにまとめるアプリは通知内の件数を使用します。音楽再生やフォアグラウンドサービスなどの常駐通知は対象外で、アプリを開いた後は新しい通知が来るまで既読状態を保持します</string>
+    <string name="clear_all_badges">すべてのバッジを消去</string>
+    <string name="clear_all_badges_desc">現在の通知をすべて既読にする</string>
     <string name="badge_color">バッジの色</string>
     <string name="color_custom">カスタム</string>
     <string name="badge_red">赤</string>

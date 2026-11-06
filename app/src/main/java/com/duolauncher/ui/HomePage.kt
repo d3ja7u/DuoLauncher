@@ -188,11 +188,14 @@ fun HomePage(
                     }
                 }
             }
-            // 右滑打开搜索：只在这一排的最左页生效（再往右本来也翻不动页，不会抢翻页手势）。
-            // 在 Initial pass 上先判定并消费掉，pager 的横向拖动看到「已被消费」就会自己取消。
+            // 右滑打开搜索：跟手揭示搜索页（和横向翻到资源库一样有位移反馈），
+            // 松手后再弹性补齐 / 回弹。只在这一排的最左页生效（再往右本来也翻不动页）。
+            // 在 Initial pass 上判定并消费掉，pager 的横向拖动看到「已被消费」就会自己取消。
             .pointerInput(DuoState.gestureSearch, allowSwipeRight) {
                 if (!DuoState.gestureSearch || !allowSwipeRight) return@pointerInput
-                val trigger = 76.dp.toPx()
+                val startSlop = 14.dp.toPx()
+                val commitPx = 76.dp.toPx()
+                val fullPx = size.width * 0.5f
                 awaitEachGesture {
                     val down = awaitFirstDown(
                         requireUnconsumed = false,
@@ -200,21 +203,20 @@ fun HomePage(
                     )
                     var dx = 0f
                     var dy = 0f
-                    var fired = false
+                    var engaged = false
                     while (true) {
                         val ev = awaitPointerEvent(PointerEventPass.Initial)
                         val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                         dx += ch.position.x - ch.previousPosition.x
                         dy += ch.position.y - ch.previousPosition.y
-                        if (!fired && dx > trigger && dx > kotlin.math.abs(dy) * 1.15f) {
-                            fired = true
+                        if (!engaged && dx > startSlop && dx > kotlin.math.abs(dy) * 1.15f) engaged = true
+                        if (engaged) {
                             ch.consume()
-                            nav.openSearch()
-                        } else if (fired) {
-                            ch.consume()
+                            nav.searchDrag(((dx - startSlop) / fullPx).coerceIn(0f, 1f))
                         }
                         if (!ch.pressed) break
                     }
+                    if (engaged) nav.searchRelease(dx >= commitPx)
                 }
             }
     ) {

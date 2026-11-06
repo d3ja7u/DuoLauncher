@@ -161,7 +161,9 @@
     <string name="notif_access">Notification access</string>
     <string name="notif_access_on">Granted · counts appear for unread notifications</string>
     <string name="notif_access_off">Not granted · tap to open system settings</string>
-    <string name="badge_note">Badges count notifications; apps that bundle notifications (WeChat, QQ) use the count embedded in the notification</string>
+    <string name="badge_note">Badges count notifications; apps that bundle notifications (WeChat, QQ) use the count embedded in the notification. Ongoing notifications such as music playback and foreground services are ignored, and a badge stays cleared after opening the app until a new message arrives</string>
+    <string name="clear_all_badges">Clear all badges</string>
+    <string name="clear_all_badges_desc">Mark all current notifications as read</string>
     <string name="badge_color">Badge color</string>
     <string name="color_custom">Custom</string>
     <string name="badge_red">Red</string>
