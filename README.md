@@ -23,7 +23,7 @@
   <img src="screenshots/08-home-menu.png" width="23%">
 </p>
 
-> 截图均为 Unihertz Titan 2 Elite 实机运行截图（v1.3.8）。
+> 截图均为 Unihertz Titan 2 Elite 实机运行截图（v1.3.8），展示的是中文界面；界面语言会跟随设备，也可在「设置 → 系统 → 语言」里手动切换。
 
 ---
 

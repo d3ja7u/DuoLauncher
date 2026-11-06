@@ -23,7 +23,7 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
   <img src="screenshots/08-home-menu.png" width="23%">
 </p>
 
-> All screenshots were taken on a Unihertz Titan 2 Elite (v1.3.8).
+> All screenshots were taken on a Unihertz Titan 2 Elite (v1.3.8) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
 
 ---
 
