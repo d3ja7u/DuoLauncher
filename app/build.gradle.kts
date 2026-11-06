@@ -3,6 +3,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// CI 上由工作流把仓库 Secrets 里的 keystore 还原到某个路径，再用 DUO_KEYSTORE 指向它；
+// 这样 CI 打出的包与本地 ./gradlew assembleDebug 的包同签名，可以直接覆盖安装。
+// 本地构建时这个环境变量为空，签名行为与原来完全一致。
+val ciKeystore: File? = System.getenv("DUO_KEYSTORE")?.let { File(it) }?.takeIf { it.exists() }
+
 android {
     namespace = "com.duolauncher"
     compileSdk = 34
@@ -15,11 +20,27 @@ android {
         versionName = "1.3.8"
     }
 
+    signingConfigs {
+        if (ciKeystore != null) {
+            create("ci") {
+                storeFile = ciKeystore
+                storePassword = System.getenv("DUO_KEYSTORE_PASS") ?: "android"
+                keyAlias = System.getenv("DUO_KEY_ALIAS") ?: "androiddebugkey"
+                keyPassword = System.getenv("DUO_KEY_PASS") ?: "android"
+            }
+        }
+    }
+
     buildTypes {
-        debug { isMinifyEnabled = false }
+        debug {
+            isMinifyEnabled = false
+            if (ciKeystore != null) signingConfig = signingConfigs.getByName("ci")
+        }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (ciKeystore != null) signingConfigs.getByName("ci")
+                else signingConfigs.getByName("debug")
         }
     }
 
