@@ -46,6 +46,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.data.AppInfo
 import com.duolauncher.data.AppRepository
 import com.duolauncher.data.CATEGORY_LIST
@@ -138,7 +140,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                                 )
                                 Spacer(Modifier.width(7.dp))
                                 Text(
-                                    "App 资源库", fontSize = 15.sp,
+                                    Lang.s(R.string.app_library), fontSize = 15.sp,
                                     fontWeight = FontWeight.SemiBold, color = textColor
                                 )
                             }
@@ -157,7 +159,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                         if (query.isNotEmpty()) {
                             Box(Modifier.fillMaxSize().padding(end = 14.dp), contentAlignment = Alignment.CenterEnd) {
                                 Icon(
-                                    Icons.Filled.Close, "清空", tint = subColor,
+                                    Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
                                     modifier = Modifier.size(17.dp).clickable { query = "" }
                                 )
                             }
@@ -170,7 +172,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                     IconButton(onClick = { listMode = !listMode }, modifier = Modifier.fillMaxSize()) {
                         Icon(
                             if (listMode) Icons.Filled.GridView else Icons.Filled.ViewList,
-                            if (listMode) "切换文件夹视图" else "切换列表视图",
+                            if (listMode) Lang.s(R.string.switch_folder_view) else Lang.s(R.string.switch_list_view),
                             tint = textColor,
                             modifier = Modifier.size(19.dp)
                         )
@@ -180,7 +182,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                 GlassCard(modifier = Modifier.size(46.dp), radius = 23.dp, level = 0.9f, dark = dark) {
                     IconButton(onClick = nav.openCategoryEditor, modifier = Modifier.fillMaxSize()) {
                         Icon(
-                            Icons.Filled.Tune, "分类管理", tint = textColor,
+                            Icons.Filled.Tune, Lang.s(R.string.manage_categories), tint = textColor,
                             modifier = Modifier.size(19.dp)
                         )
                     }
@@ -200,13 +202,13 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                         .padding(horizontal = 16.dp)
                 ) {
                     Text(
-                        "搜索结果 · ${result.size}", fontSize = 12.sp, color = subColor,
+                        Lang.s(R.string.search_results, result.size), fontSize = 12.sp, color = subColor,
                         modifier = Modifier.padding(start = 6.dp, bottom = 10.dp)
                     )
                     AppGrid(result, nav, dark)
                     if (result.isEmpty()) {
                         Text(
-                            "没有找到匹配的应用", fontSize = 14.sp, color = subColor,
+                            Lang.s(R.string.no_match_apps), fontSize = 14.sp, color = subColor,
                             modifier = Modifier.padding(top = 30.dp, start = 6.dp)
                         )
                     }
@@ -255,7 +257,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                                 row.forEach { (cat, list) ->
                                     CategoryTile(
                                         modifier = Modifier.weight(1f),
-                                        title = if (cat == "all") "全部应用" else categoryName(cat),
+                                        title = if (cat == "all") Lang.s(R.string.all_apps) else categoryName(cat),
                                         list = list,
                                         dark = dark,
                                         onLaunch = { app -> AppRepository.launch(ctx, app.packageName) },
@@ -314,8 +316,8 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
     // ── 分类「窗口」：点卡片展开 ──
     openCat?.let { (cat, list) ->
         FolderWindow(
-            title = if (cat == "all") "全部应用" else categoryName(cat),
-            subtitle = "${list.size} 个应用",
+            title = if (cat == "all") Lang.s(R.string.all_apps) else categoryName(cat),
+            subtitle = Lang.s(R.string.app_count, list.size),
             apps = list,
             dark = dark,
             onDismiss = { openCat = null },

@@ -1,6 +1,8 @@
 package com.duolauncher.data
 
 import android.graphics.drawable.Drawable
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 
 /** 一个已安装、可启动的应用 */
 data class AppInfo(
@@ -49,7 +51,7 @@ data class FolderItem(
             val o = org.json.JSONObject(s)
             FolderItem(
                 id = o.optString("id", "f${System.currentTimeMillis()}"),
-                name = o.optString("name", "文件夹"),
+                name = o.optString("name", Lang.s(R.string.folder)),
                 apps = o.optJSONArray("apps")?.let { a ->
                     (0 until a.length()).mapNotNull { a.optString(it, null) }
                 } ?: emptyList()
@@ -58,21 +60,22 @@ data class FolderItem(
     }
 }
 
-/** 分类表：id -> 中文名 */
-val CATEGORY_LIST: List<Pair<String, String>> = listOf(
-    "social" to "社交",
-    "communication" to "通讯",
-    "media" to "影音娱乐",
-    "game" to "游戏",
-    "photo" to "摄影美化",
-    "work" to "办公学习",
-    "life" to "生活出行",
-    "tools" to "实用工具",
-    "system" to "系统与其他"
+/** 分类表：id -> 名称字符串资源（存 id，切换语言后立即生效） */
+val CATEGORY_LIST: List<Pair<String, Int>> = listOf(
+    "social" to R.string.cat_social,
+    "communication" to R.string.cat_communication,
+    "media" to R.string.cat_media,
+    "game" to R.string.cat_game,
+    "photo" to R.string.cat_photo,
+    "work" to R.string.cat_work,
+    "life" to R.string.cat_life,
+    "tools" to R.string.cat_tools,
+    "system" to R.string.cat_system
 )
 
-fun categoryName(id: String): String =
-    CATEGORY_LIST.firstOrNull { it.first == id }?.second ?: "系统与其他"
+fun categoryName(id: String): String = Lang.s(
+    CATEGORY_LIST.firstOrNull { it.first == id }?.second ?: R.string.cat_system
+)
 
 /** 智能分类：系统 category + 名称/包名关键词启发式 */
 fun guessCategory(label: String, packageName: String, systemCategory: Int): String {

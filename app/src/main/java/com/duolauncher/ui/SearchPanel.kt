@@ -29,6 +29,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.data.AppRepository
 import com.duolauncher.data.DuoState
 
@@ -115,7 +117,7 @@ fun SearchPanel(
         ) {
             Spacer(Modifier.height((DuoState.cutoutPadding.coerceAtLeast(56) + 12).dp))
             // 标题不再配右上角的关闭按钮：左滑、上滑、返回键都能退出，视觉上干净些
-            Text("搜索", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = textColor)
+            Text(Lang.s(R.string.search), fontSize = 26.sp, fontWeight = FontWeight.Bold, color = textColor)
             Spacer(Modifier.height(14.dp))
 
             GlassCard(
@@ -128,7 +130,7 @@ fun SearchPanel(
                     Icon(Icons.Filled.Search, null, tint = subColor, modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text("搜索", fontSize = 14.sp, color = subColor)
+                        if (query.isEmpty()) Text(Lang.s(R.string.search), fontSize = 14.sp, color = subColor)
                         BasicTextField(
                             value = query,
                             onValueChange = { query = it },
@@ -139,7 +141,7 @@ fun SearchPanel(
                         )
                     }
                     if (query.isNotEmpty()) {
-                        Icon(Icons.Filled.Close, "清空", tint = subColor,
+                        Icon(Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
                             modifier = Modifier.size(18.dp).clickable { query = "" })
                     }
                 }
@@ -147,7 +149,7 @@ fun SearchPanel(
             Spacer(Modifier.height(18.dp))
 
             if (query.isBlank()) {
-                Text("最近常用", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = subColor,
+                Text(Lang.s(R.string.widget_recents), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = subColor,
                     modifier = Modifier.padding(start = 4.dp, bottom = 14.dp))
                 // 2 排 × 5 个
                 recents.chunked(5).forEach { row ->
@@ -167,7 +169,7 @@ fun SearchPanel(
                     Spacer(Modifier.height(14.dp))
                 }
             } else {
-                Text("搜索结果 · ${results.size}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                Text(Lang.s(R.string.search_results, results.size), fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                     color = subColor, modifier = Modifier.padding(start = 4.dp, bottom = 10.dp))
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -191,7 +193,7 @@ fun SearchPanel(
                     }
                 }
                 if (results.isEmpty()) {
-                    Text("没有找到匹配的应用", fontSize = 14.sp, color = subColor,
+                    Text(Lang.s(R.string.no_match_apps), fontSize = 14.sp, color = subColor,
                         modifier = Modifier.padding(start = 4.dp, top = 20.dp))
                 }
             }

@@ -33,6 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.data.AppRepository
 import com.duolauncher.data.DuoActions
 import com.duolauncher.data.DuoState
@@ -43,16 +45,17 @@ import java.util.Calendar
 import java.util.Locale
 
 val BUILTIN_WIDGETS = listOf(
-    "clock" to "时钟与日期",
-    "battery" to "电池",
-    "calendar" to "日历",
-    "recents" to "最近常用",
-    "quick" to "快捷操作",
-    "note" to "便签",
-    "storage" to "存储空间"
+    "clock" to R.string.widget_clock,
+    "battery" to R.string.widget_battery,
+    "calendar" to R.string.widget_calendar,
+    "recents" to R.string.widget_recents,
+    "quick" to R.string.widget_quick,
+    "note" to R.string.widget_note,
+    "storage" to R.string.widget_storage
 )
 
-fun builtinWidgetName(type: String) = BUILTIN_WIDGETS.firstOrNull { it.first == type }?.second ?: type
+fun builtinWidgetName(type: String) =
+    BUILTIN_WIDGETS.firstOrNull { it.first == type }?.second?.let { Lang.s(it) } ?: type
 
 @Composable
 fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge? = null) {
@@ -71,11 +74,11 @@ fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge?
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("今天", fontSize = 27.sp, fontWeight = FontWeight.Bold, color = textColor)
+                Text(Lang.s(R.string.today), fontSize = 27.sp, fontWeight = FontWeight.Bold, color = textColor)
                 Spacer(Modifier.weight(1f))
                 GlassCard(modifier = Modifier.size(36.dp), radius = 18.dp, level = 0.8f, dark = dark) {
                     androidx.compose.material3.IconButton(onClick = { showAdd = true }, modifier = Modifier.fillMaxSize()) {
-                        Icon(Icons.Filled.Add, "添加小组件", tint = textColor, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Filled.Add, Lang.s(R.string.add_widget), tint = textColor, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -99,9 +102,9 @@ fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge?
                                 modifier = Modifier.size(36.dp)
                             )
                             Spacer(Modifier.height(12.dp))
-                            Text("负一屏是空的", fontSize = 14.sp, color = subColor)
+                            Text(Lang.s(R.string.today_empty), fontSize = 14.sp, color = subColor)
                             Spacer(Modifier.height(4.dp))
-                            Text("点右上角 + 或下面的卡片添加小组件", fontSize = 12.sp,
+                            Text(Lang.s(R.string.today_empty_hint), fontSize = 12.sp,
                                 color = subColor.copy(alpha = 0.65f))
                         }
                     }
@@ -131,7 +134,7 @@ fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge?
                         ) {
                             Icon(Icons.Filled.Add, null, tint = subColor, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("添加小组件", color = subColor, fontSize = 14.sp)
+                            Text(Lang.s(R.string.add_widget), color = subColor, fontSize = 14.sp)
                         }
                     }
                 }
@@ -140,13 +143,13 @@ fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge?
     }
 
     if (showAdd) {
-        DuoDialog(title = "添加小组件", dark = dark, onDismiss = { showAdd = false }) {
-            BUILTIN_WIDGETS.forEach { (type, name) ->
-                MenuRow(Icons.Filled.Dashboard, name, dark = dark) {
+        DuoDialog(title = Lang.s(R.string.add_widget), dark = dark, onDismiss = { showAdd = false }) {
+            BUILTIN_WIDGETS.forEach { (type, nameRes) ->
+                MenuRow(Icons.Filled.Dashboard, Lang.s(nameRes), dark = dark) {
                     DuoState.widgets.add(WidgetItem(type)); DuoState.save(); showAdd = false
                 }
             }
-            MenuRow(Icons.Filled.Widgets, "系统小组件…", dark = dark) {
+            MenuRow(Icons.Filled.Widgets, Lang.s(R.string.system_widget), dark = dark) {
                 showAdd = false; nav.openWidgetPicker()
             }
         }
@@ -154,8 +157,8 @@ fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge?
 
     editing?.let { index ->
         val item = widgets.getOrNull(index)
-        DuoDialog(title = item?.let { builtinWidgetName(it.type) } ?: "小组件", dark = dark, onDismiss = { editing = null }) {
-            MenuRow(Icons.Filled.ArrowUpward, "上移", dark = dark) {
+        DuoDialog(title = item?.let { builtinWidgetName(it.type) } ?: Lang.s(R.string.widget_generic), dark = dark, onDismiss = { editing = null }) {
+            MenuRow(Icons.Filled.ArrowUpward, Lang.s(R.string.move_up), dark = dark) {
                 if (index > 0) {
                     val l = DuoState.widgets.toMutableList()
                     java.util.Collections.swap(l, index, index - 1)
@@ -163,7 +166,7 @@ fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge?
                 }
                 editing = null
             }
-            MenuRow(Icons.Filled.ArrowDownward, "下移", dark = dark) {
+            MenuRow(Icons.Filled.ArrowDownward, Lang.s(R.string.move_down), dark = dark) {
                 if (index < DuoState.widgets.size - 1) {
                     val l = DuoState.widgets.toMutableList()
                     java.util.Collections.swap(l, index, index + 1)
@@ -171,7 +174,7 @@ fun TodayPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, bridge: WidgetBridge?
                 }
                 editing = null
             }
-            MenuRow(Icons.Filled.Delete, "移除", danger = true, dark = dark) {
+            MenuRow(Icons.Filled.Delete, Lang.s(R.string.remove), danger = true, dark = dark) {
                 if (item?.type == "system") {
                     runCatching {
                         bridge?.host?.deleteAppWidgetId(item.extra.toIntOrNull() ?: -1)
@@ -226,7 +229,7 @@ private fun WidgetContainer(item: WidgetItem, dark: Boolean, onLongClick: () -> 
                     dark,
                     Modifier.fillMaxWidth().height(120.dp)
                 )
-                else -> Text("未知小组件", color = glassTextColor(dark))
+                else -> Text(Lang.s(R.string.unknown_widget), color = glassTextColor(dark))
             }
         }
     }
@@ -243,10 +246,10 @@ private fun ClockWidget(dark: Boolean) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(20_000L) } }
     val cal = Calendar.getInstance().apply { timeInMillis = now }
-    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(cal.time)
-    val date = SimpleDateFormat("M月d日  EEEE", Locale.CHINA).format(cal.time)
+    val time = SimpleDateFormat("HH:mm", Lang.locale()).format(cal.time)
+    val date = SimpleDateFormat(Lang.datePattern(), Lang.locale()).format(cal.time)
     Column(Modifier.fillMaxWidth()) {
-        WidgetTitle("时钟", dark)
+        WidgetTitle(Lang.s(R.string.clock_title), dark)
         Text(time, fontSize = 46.sp, fontWeight = FontWeight.Light, color = glassTextColor(dark), lineHeight = 50.sp)
         Text(date, fontSize = 14.sp, color = glassSubTextColor(dark))
     }
@@ -269,13 +272,13 @@ private fun BatteryWidget(dark: Boolean) {
         }
     }
     Column(Modifier.fillMaxWidth()) {
-        WidgetTitle("电池", dark)
+        WidgetTitle(Lang.s(R.string.widget_battery), dark)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.BatteryFull, null, tint = if (charging) Color(0xFF34C759) else glassBlue, modifier = Modifier.size(30.dp))
             Spacer(Modifier.width(12.dp))
             Text("$pct%", fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark))
             Spacer(Modifier.weight(1f))
-            Text(if (charging) "充电中" else "未充电", fontSize = 13.sp, color = glassSubTextColor(dark))
+            Text(if (charging) Lang.s(R.string.charging) else Lang.s(R.string.not_charging), fontSize = 13.sp, color = glassSubTextColor(dark))
         }
         Spacer(Modifier.height(8.dp))
         LinearProgressIndicator(
@@ -297,11 +300,14 @@ private fun CalendarWidget(dark: Boolean) {
         .get(Calendar.DAY_OF_WEEK) // 1=周日
     val days = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }
         .getActualMaximum(Calendar.DAY_OF_MONTH)
-    val titles = listOf("日", "一", "二", "三", "四", "五", "六")
+    val titles = listOf(
+        R.string.week_sun, R.string.week_mon, R.string.week_tue,
+        R.string.week_wed, R.string.week_thu, R.string.week_fri, R.string.week_sat
+    )
     Column(Modifier.fillMaxWidth()) {
-        WidgetTitle("$year 年 ${month + 1} 月", dark)
+        WidgetTitle(Lang.s(R.string.calendar_month, year, month + 1), dark)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            titles.forEach { Text(it, fontSize = 11.sp, color = glassSubTextColor(dark), modifier = Modifier.width(28.dp), textAlign = TextAlign.Center) }
+            titles.forEach { Text(Lang.s(it), fontSize = 11.sp, color = glassSubTextColor(dark), modifier = Modifier.width(28.dp), textAlign = TextAlign.Center) }
         }
         Spacer(Modifier.height(6.dp))
         val cells = (0 until first - 1).map { 0 } + (1..days).toList()
@@ -329,7 +335,7 @@ private fun RecentsWidget(dark: Boolean, nav: Nav) {
     val ctx = LocalContext.current
     val apps = DuoState.recentApps(4)
     Column(Modifier.fillMaxWidth()) {
-        WidgetTitle("最近常用", dark)
+        WidgetTitle(Lang.s(R.string.widget_recents), dark)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             apps.forEach { app ->
                 AppIconCell(app, 44.dp, dark = dark, showLabel = true,
@@ -340,13 +346,26 @@ private fun RecentsWidget(dark: Boolean, nav: Nav) {
     }
 }
 
+/** 快捷操作小圆图标下的短标签，长名直接换成对应语言里的短说法 */
+private fun quickActionLabel(id: String): String = Lang.s(
+    when (id) {
+        "flashlight" -> R.string.quick_flashlight
+        "wifi" -> R.string.quick_wifi
+        "bluetooth" -> R.string.quick_bluetooth
+        "silent" -> R.string.quick_silent
+        "search" -> R.string.quick_search
+        "settings" -> R.string.quick_settings
+        else -> R.string.action_unknown
+    }
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QuickWidget(dark: Boolean, nav: Nav) {
     val ctx = LocalContext.current
     val actions = listOf("flashlight", "wifi", "bluetooth", "silent", "search", "settings")
     Column(Modifier.fillMaxWidth()) {
-        WidgetTitle("快捷操作", dark)
+        WidgetTitle(Lang.s(R.string.widget_quick), dark)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             actions.forEach { id ->
                 val a = DuoActions.of(id)
@@ -372,7 +391,7 @@ private fun QuickWidget(dark: Boolean, nav: Nav) {
                         contentAlignment = Alignment.Center
                     ) { Icon(a.icon, null, tint = Color.White, modifier = Modifier.size(19.dp)) }
                     Spacer(Modifier.height(4.dp))
-                    Text(a.label.replace("设置", ""), fontSize = 9.sp, maxLines = 1, color = glassSubTextColor(dark))
+                    Text(quickActionLabel(id), fontSize = 9.sp, maxLines = 1, color = glassSubTextColor(dark))
                 }
             }
         }
@@ -382,7 +401,7 @@ private fun QuickWidget(dark: Boolean, nav: Nav) {
 @Composable
 private fun NoteWidget(dark: Boolean) {
     Column(Modifier.fillMaxWidth()) {
-        WidgetTitle("便签", dark)
+        WidgetTitle(Lang.s(R.string.widget_note), dark)
         BasicTextField(
             value = DuoState.notes,
             onValueChange = { DuoState.notes = it; DuoState.save() },
@@ -390,7 +409,7 @@ private fun NoteWidget(dark: Boolean) {
             cursorBrush = SolidColor(glassBlue),
             modifier = Modifier.fillMaxWidth().height(84.dp)
         )
-        if (DuoState.notes.isEmpty()) Text("点这里记点什么…", fontSize = 13.sp, color = glassSubTextColor(dark))
+        if (DuoState.notes.isEmpty()) Text(Lang.s(R.string.note_placeholder), fontSize = 13.sp, color = glassSubTextColor(dark))
     }
 }
 
@@ -406,7 +425,7 @@ private fun StorageWidget(dark: Boolean) {
     }
     val used = if (stat.first > 0f) stat.second / stat.first else 0f
     Column(Modifier.fillMaxWidth()) {
-        WidgetTitle("存储空间", dark)
+        WidgetTitle(Lang.s(R.string.widget_storage), dark)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("${"%.1f".format(stat.second)} GB / ${"%.1f".format(stat.first)} GB",
                 fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark))

@@ -1,5 +1,8 @@
 package com.duolauncher.ui
 
+import com.duolauncher.R
+import com.duolauncher.util.Lang
+
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetManager
@@ -23,13 +26,13 @@ val LocalWidgetBridge = staticCompositionLocalOf<WidgetBridge?> { null }
 fun SystemWidgetCard(appWidgetId: Int, dark: Boolean, modifier: Modifier = Modifier) {
     val bridge = LocalWidgetBridge.current
     if (bridge == null) {
-        Box(modifier, contentAlignment = Alignment.Center) { Text("小组件服务未就绪", color = glassTextColor(dark)) }
+        Box(modifier, contentAlignment = Alignment.Center) { Text(Lang.s(R.string.widget_service_not_ready), color = glassTextColor(dark)) }
         return
     }
     val info: AppWidgetProviderInfo? = runCatching { bridge.manager.getAppWidgetInfo(appWidgetId) }.getOrNull()
     if (info == null) {
         Box(modifier, contentAlignment = Alignment.Center) {
-            Text("小组件已失效（ID $appWidgetId）", color = glassTextColor(dark))
+            Text(Lang.s(R.string.widget_invalid, appWidgetId), color = glassTextColor(dark))
         }
         return
     }
@@ -41,7 +44,7 @@ fun SystemWidgetCard(appWidgetId: Int, dark: Boolean, modifier: Modifier = Modif
                 v.setAppWidget(appWidgetId, info)
                 v
             }.getOrElse {
-                android.widget.TextView(ctx).apply { text = "无法显示该小组件" }
+                android.widget.TextView(ctx).apply { text = Lang.s(R.string.widget_cannot_show) }
             }
         },
         update = { }

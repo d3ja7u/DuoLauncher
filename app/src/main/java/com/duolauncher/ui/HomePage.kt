@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.withTimeoutOrNull
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.util.SystemPanel
 import kotlin.math.roundToInt
 import com.duolauncher.data.AppInfo
@@ -144,10 +146,10 @@ fun HomePage(
                     if (ScreenOff.lock()) {
                         // 已熄屏
                     } else if (ScreenOff.isEnabled(ctx)) {
-                        nav.toast("熄屏服务正在启动，请稍后再试")
+                        nav.toast(Lang.s(R.string.toast_sleep_starting))
                     } else {
                         ScreenOff.requestPermission(ctx)
-                        nav.toast("请在「无障碍 → 已下载的服务」中开启 DuoLauncher 熄屏服务")
+                        nav.toast(Lang.s(R.string.toast_enable_accessibility))
                     }
                 })
             }
@@ -170,7 +172,7 @@ fun HomePage(
                                 if (leftHalf) SystemPanel.openNotifications(ctx)
                                 else SystemPanel.openQuickSettings(ctx)
                             if (!ok) {
-                                nav.toast("请在「无障碍」中开启 DuoLauncher 服务后重试")
+                                nav.toast(Lang.s(R.string.toast_enable_service))
                                 ScreenOff.requestPermission(ctx)
                             }
                         }
@@ -517,7 +519,7 @@ fun HomePage(
                 ) {
                     Icon(
                         if (editMode) Icons.Filled.Check else Icons.Filled.MoreHoriz,
-                        "主屏菜单", tint = glassTextColor(dark), modifier = Modifier.size(18.dp)
+                        Lang.s(R.string.home_menu), tint = glassTextColor(dark), modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -547,7 +549,7 @@ fun HomePage(
                     ) { nav.openSearch() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Search, "搜索", tint = glassTextColor(dark), modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Search, Lang.s(R.string.search), tint = glassTextColor(dark), modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -569,20 +571,20 @@ fun HomePage(
     // 侧边栏条目菜单
     sidebarMenu?.let { item ->
         DuoDialog(
-            title = if (item.type == "app") DuoState.appOf(item.value)?.label ?: "应用" else DuoActions.of(item.value).label,
+            title = if (item.type == "app") DuoState.appOf(item.value)?.label ?: Lang.s(R.string.app) else DuoActions.of(item.value).label,
             dark = dark,
             onDismiss = { sidebarMenu = null }
         ) {
-            MenuRow(Icons.Filled.Edit, "编辑侧边栏", dark = dark) {
+            MenuRow(Icons.Filled.Edit, Lang.s(R.string.edit_sidebar), dark = dark) {
                 sidebarMenu = null; nav.openSidebarEditor()
             }
-            MenuRow(Icons.Filled.RemoveCircleOutline, "从侧边栏移除", dark = dark) {
+            MenuRow(Icons.Filled.RemoveCircleOutline, Lang.s(R.string.remove_from_sidebar), dark = dark) {
                 DuoState.setSidebar(DuoState.sidebar.filterNot { it.key == item.key })
                 sidebarMenu = null
             }
             if (item.type == "app") {
                 DuoState.appOf(item.value)?.let {
-                    MenuRow(Icons.Filled.Info, "应用信息", dark = dark) {
+                    MenuRow(Icons.Filled.Info, Lang.s(R.string.app_info), dark = dark) {
                         AppRepository.appDetails(ctx, it.packageName); sidebarMenu = null
                     }
                 }
@@ -592,18 +594,18 @@ fun HomePage(
 
     // 主屏左下角菜单
     if (showHomeMenu) {
-        DuoDialog(title = "主屏幕", dark = dark, onDismiss = { showHomeMenu = false }) {
+        DuoDialog(title = Lang.s(R.string.home_screen), dark = dark, onDismiss = { showHomeMenu = false }) {
             MenuRow(
                 if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
-                if (editMode) "完成编辑" else "编辑主屏幕", dark = dark
+                if (editMode) Lang.s(R.string.done_edit) else Lang.s(R.string.edit_home), dark = dark
             ) { editMode = !editMode; showHomeMenu = false }
-            MenuRow(Icons.Filled.AddToHomeScreen, "添加应用到主屏幕", dark = dark) {
+            MenuRow(Icons.Filled.AddToHomeScreen, Lang.s(R.string.add_app_to_home), dark = dark) {
                 showHomeMenu = false; nav.goLibrary()
             }
-            MenuRow(Icons.Filled.Tune, "启动器设置", dark = dark) {
+            MenuRow(Icons.Filled.Tune, Lang.s(R.string.launcher_settings), dark = dark) {
                 showHomeMenu = false; nav.openSettings()
             }
-            MenuRow(Icons.Filled.Wallpaper, "更换壁纸", dark = dark) {
+            MenuRow(Icons.Filled.Wallpaper, Lang.s(R.string.change_wallpaper), dark = dark) {
                 AppRepository.wallpaper(ctx); showHomeMenu = false
             }
         }
@@ -632,7 +634,7 @@ private fun FolderOpenDialog(
     val apps = folder.apps.mapNotNull { DuoState.appOf(it) }
     FolderWindow(
         title = folder.name,
-        subtitle = "${apps.size} 个应用 · 长按图标可移出",
+        subtitle = Lang.s(R.string.folder_apps_count, apps.size),
         apps = apps,
         dark = dark,
         onDismiss = onDismiss,
@@ -648,12 +650,12 @@ private fun FolderOpenDialog(
                 )
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GlassPrimaryButton("保存名称", dark, { onRename(name); editingName = false })
-                    GlassPrimaryButton("取消", dark, { name = folder.name; editingName = false })
+                    GlassPrimaryButton(Lang.s(R.string.save_name), dark, { onRename(name); editingName = false })
+                    GlassPrimaryButton(Lang.s(R.string.cancel), dark, { name = folder.name; editingName = false })
                 }
             } else {
-                MenuRow(Icons.Filled.Edit, "重命名文件夹", dark = dark) { editingName = true }
-                MenuRow(Icons.Filled.Delete, "解散文件夹", danger = true, dark = dark) { onDelete() }
+                MenuRow(Icons.Filled.Edit, Lang.s(R.string.rename_folder), dark = dark) { editingName = true }
+                MenuRow(Icons.Filled.Delete, Lang.s(R.string.disband_folder), danger = true, dark = dark) { onDelete() }
             }
         }
     )

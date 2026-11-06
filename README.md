@@ -1,5 +1,7 @@
 # DuoLauncher
 
+**简体中文** | [English](README.en.md)
+
 一个用 Kotlin + Jetpack Compose 写的 Android 桌面启动器，iOS 玻璃拟态风格，为 **Unihertz Titan 2 Elite**（1080×1200 近方形屏、左上挖孔、实体键盘）手工适配。
 
 不是主题包，也不是图标包——它就是一个完整的 Launcher（`android.intent.category.HOME`），可以直接设为默认桌面。
@@ -37,6 +39,7 @@
 | 手势 | 下滑分段呼出通知栏 / 控制中心、右滑呼出搜索、双击熄屏 |
 | 图标包 | 支持 Smartisan 等第三方图标包，单个应用也能手动挑图标 |
 | 分类管理 | 按应用类型自动归类，也可逐个应用手动指定分类，支持隐藏应用 |
+| 多语言界面 | 简体中文 / English / 日本語，默认跟随设备语言，设置里可手动指定 |
 
 ---
 
@@ -124,9 +127,21 @@
 | 外观 | 玻璃模糊强度、深色玻璃 |
 | 图标包 | 当前图标包（自动扫描设备上已安装的图标包） |
 | 通知角标 | 显示未读角标、角标颜色、通知使用权 |
-| 系统 | 设为默认桌面、更换壁纸、DuoLauncher 应用信息、关于 |
+| 更新 | 检查更新、自动检查更新、更新源、打开项目主页 |
+| 系统 | 语言、设为默认桌面、更换壁纸、DuoLauncher 应用信息、关于 |
 
 入口：桌面左下角 `···` → 启动器设置。
+
+### 多语言
+
+内置**简体中文 / English / 日本語**三套界面文案。
+
+- 默认**跟随设备语言**：系统语言（含 Android 13+ 的「按应用设定语言」）为英文或日文时自动切换，其它语言回退中文。
+- 手动指定：设置 → 系统 → **语言** → 跟随系统 / 简体中文 / English / 日本語。选择后立即生效，且切换完仍停留在设置页，方便对照。
+- 选择保存在本机，重启后依然有效；手动选择优先于系统语言，选「跟随系统」即交还给系统。
+- 应用分类名、快捷动作名、日期与星期都会跟随语言；你自己起的文件夹名、便签等内容不会被翻译。
+
+译文在 `app/src/main/res/values/`、`values-en/`、`values-ja/`；`util/Lang.kt` 负责语言切换，并提供 `Lang.s()` 供非 Composable 代码取文案。
 
 ---
 
@@ -195,6 +210,7 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 | 版本 | 变更 |
 |---|---|
+| 1.5.0 | 多语言界面：简体中文 / English / 日本語，默认跟随设备语言，设置里可手动指定；新增英文版 README |
 | 1.4.1 | 更新源编辑弹窗改为实底、长地址折行显示；保存时自动去掉空白字符 |
 | 1.4.0 | 设置新增「更新」分组：可配置 GitHub Releases 更新源、手动/自动检查更新、失败自动回退官方订阅源 |
 | 1.3.9 | 发版自动化：打 tag 即由 Actions 编译并发布 Release，CI 包与本机同签名可覆盖安装 |
@@ -220,7 +236,7 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 ```bash
 # 1. 先改 app/build.gradle.kts 里的 versionName / versionCode
 # 2. 提交后打 tag 并推送，一次做完
-git tag v1.3.9
+git tag v1.5.0
 git push origin main --tags
 ```
 

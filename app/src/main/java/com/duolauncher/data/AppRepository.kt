@@ -17,6 +17,8 @@ import android.provider.Settings
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.DuoDeviceAdmin
 import com.duolauncher.service.DuoNotificationListener
 import kotlinx.coroutines.Dispatchers
@@ -98,31 +100,34 @@ object AppRepository {
 
 data class DuoAction(
     val id: String,
-    val label: String,
+    /** 存资源 id 而不是文案，切换语言后无需重建列表 */
+    @androidx.annotation.StringRes val labelRes: Int,
     val icon: ImageVector
-)
+) {
+    val label: String get() = Lang.s(labelRes)
+}
 
 object DuoActions {
     val ALL: List<DuoAction> = listOf(
-        DuoAction("search", "搜索", Icons.Filled.Search),
-        DuoAction("library", "应用资源库", Icons.Filled.GridView),
+        DuoAction("search", R.string.search, Icons.Filled.Search),
+        DuoAction("library", R.string.action_library, Icons.Filled.GridView),
         // 负一屏已下线，这个动作改成「回主屏第一页」（id 保持 today 以兼容旧配置）
-        DuoAction("today", "主屏首页", Icons.Filled.Home),
-        DuoAction("settings", "启动器设置", Icons.Filled.Settings),
-        DuoAction("flashlight", "手电筒", Icons.Filled.FlashlightOn),
-        DuoAction("wifi", "Wi-Fi 设置", Icons.Filled.Wifi),
-        DuoAction("bluetooth", "蓝牙设置", Icons.Filled.Bluetooth),
-        DuoAction("data", "移动网络", Icons.Filled.SignalCellularAlt),
-        DuoAction("camera", "拍照", Icons.Filled.PhotoCamera),
-        DuoAction("dial", "拨号", Icons.Filled.Call),
-        DuoAction("silent", "静音切换", Icons.Filled.VolumeOff),
-        DuoAction("lock", "锁屏", Icons.Filled.Lock),
-        DuoAction("wallpaper", "更换壁纸", Icons.Filled.Wallpaper),
-        DuoAction("recents", "最近常用", Icons.Filled.History)
+        DuoAction("today", R.string.action_today, Icons.Filled.Home),
+        DuoAction("settings", R.string.launcher_settings, Icons.Filled.Settings),
+        DuoAction("flashlight", R.string.action_flashlight, Icons.Filled.FlashlightOn),
+        DuoAction("wifi", R.string.action_wifi, Icons.Filled.Wifi),
+        DuoAction("bluetooth", R.string.action_bluetooth, Icons.Filled.Bluetooth),
+        DuoAction("data", R.string.action_data, Icons.Filled.SignalCellularAlt),
+        DuoAction("camera", R.string.action_camera, Icons.Filled.PhotoCamera),
+        DuoAction("dial", R.string.action_dial, Icons.Filled.Call),
+        DuoAction("silent", R.string.action_silent, Icons.Filled.VolumeOff),
+        DuoAction("lock", R.string.action_lock, Icons.Filled.Lock),
+        DuoAction("wallpaper", R.string.change_wallpaper, Icons.Filled.Wallpaper),
+        DuoAction("recents", R.string.widget_recents, Icons.Filled.History)
     )
 
     fun of(id: String): DuoAction = ALL.firstOrNull { it.id == id }
-        ?: DuoAction(id, "未知操作", Icons.Filled.Circle)
+        ?: DuoAction(id, R.string.action_unknown, Icons.Filled.Circle)
 
     /** navigate: search / library / today / settings / recents */
     fun perform(context: Context, id: String, navigate: (String) -> Unit) {
@@ -174,7 +179,7 @@ object DuoActions {
                 context.startActivity(
                     Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
                         .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin)
-                        .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "允许 DuoLauncher 使用侧边栏一键锁屏")
+                        .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, Lang.s(R.string.admin_explain))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 )
             }

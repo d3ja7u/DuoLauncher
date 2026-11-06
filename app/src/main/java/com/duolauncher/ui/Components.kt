@@ -55,6 +55,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import android.graphics.drawable.Drawable
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.data.AppInfo
 import com.duolauncher.data.DuoAction
 import com.duolauncher.data.DuoState
@@ -330,7 +332,7 @@ fun FolderPickerDialog(
 ) {
     var creating by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
-    DuoDialog(title = "放入文件夹", dark = dark, onDismiss = onDismiss) {
+    DuoDialog(title = Lang.s(R.string.add_to_folder), dark = dark, onDismiss = onDismiss) {
         if (creating) {
             BasicTextField(
                 name, { name = it }, singleLine = true,
@@ -339,14 +341,14 @@ fun FolderPickerDialog(
                     .background(glassTextColor(dark).copy(alpha = 0.12f)).padding(10.dp)
             )
             Spacer(Modifier.height(10.dp))
-            GlassPrimaryButton("创建并加入", dark, { onResult(null, name.ifBlank { "文件夹" }) })
+            GlassPrimaryButton(Lang.s(R.string.create_and_add), dark, { onResult(null, name.ifBlank { Lang.s(R.string.folder) }) })
         } else {
             if (DuoState.folders.isEmpty())
-                Text("还没有文件夹，可在下方新建", fontSize = 12.sp, color = glassSubTextColor(dark))
+                Text(Lang.s(R.string.no_folder_yet), fontSize = 12.sp, color = glassSubTextColor(dark))
             DuoState.folders.toList().forEach { f ->
                 MenuRow(Icons.Filled.Folder, f.name, dark = dark) { onResult(f.id, null) }
             }
-            MenuRow(Icons.Filled.CreateNewFolder, "新建文件夹", dark = dark) { creating = true }
+            MenuRow(Icons.Filled.CreateNewFolder, Lang.s(R.string.new_folder), dark = dark) { creating = true }
         }
     }
 }
@@ -388,15 +390,15 @@ fun AppContextMenu(
     onChangeIcon: (() -> Unit)? = null
 ) {
     DuoDialog(title = app.label, dark = dark, onDismiss = onDismiss) {
-        onAddHome?.let { MenuRow(Icons.Filled.AddToHomeScreen, "添加到主屏幕", dark = dark, onClick = { onDismiss(); it() }) }
-        onAddToFolder?.let { MenuRow(Icons.Filled.Folder, "放入文件夹", dark = dark, onClick = { onDismiss(); it() }) }
-        MenuRow(Icons.Filled.Apps, "添加到侧边栏", dark = dark, onClick = { onDismiss(); onAddSidebar() })
-        MenuRow(Icons.Filled.Category, "调整应用分类", dark = dark, onClick = { onDismiss(); onCategory() })
-        onChangeIcon?.let { MenuRow(Icons.Filled.Palette, "更换图标", dark = dark, onClick = { onDismiss(); it() }) }
-        onRemoveHome?.let { MenuRow(Icons.Filled.RemoveCircleOutline, "移除主屏幕", dark = dark, onClick = { onDismiss(); it() }) }
-        MenuRow(Icons.Filled.VisibilityOff, "隐藏应用", dark = dark, onClick = { onDismiss(); onHide() })
-        MenuRow(Icons.Filled.Info, "应用信息", dark = dark, onClick = { onDismiss(); onInfo() })
-        MenuRow(Icons.Filled.Delete, "卸载应用", danger = true, dark = dark, onClick = { onDismiss(); onUninstall() })
+        onAddHome?.let { MenuRow(Icons.Filled.AddToHomeScreen, Lang.s(R.string.add_to_home), dark = dark, onClick = { onDismiss(); it() }) }
+        onAddToFolder?.let { MenuRow(Icons.Filled.Folder, Lang.s(R.string.add_to_folder), dark = dark, onClick = { onDismiss(); it() }) }
+        MenuRow(Icons.Filled.Apps, Lang.s(R.string.add_to_sidebar), dark = dark, onClick = { onDismiss(); onAddSidebar() })
+        MenuRow(Icons.Filled.Category, Lang.s(R.string.edit_app_category), dark = dark, onClick = { onDismiss(); onCategory() })
+        onChangeIcon?.let { MenuRow(Icons.Filled.Palette, Lang.s(R.string.change_icon), dark = dark, onClick = { onDismiss(); it() }) }
+        onRemoveHome?.let { MenuRow(Icons.Filled.RemoveCircleOutline, Lang.s(R.string.remove_from_home), dark = dark, onClick = { onDismiss(); it() }) }
+        MenuRow(Icons.Filled.VisibilityOff, Lang.s(R.string.hide_app), dark = dark, onClick = { onDismiss(); onHide() })
+        MenuRow(Icons.Filled.Info, Lang.s(R.string.app_info), dark = dark, onClick = { onDismiss(); onInfo() })
+        MenuRow(Icons.Filled.Delete, Lang.s(R.string.uninstall), danger = true, dark = dark, onClick = { onDismiss(); onUninstall() })
     }
 }
 
@@ -477,7 +479,7 @@ fun GlassTopBar(title: String, dark: Boolean, onBack: () -> Unit, actions: @Comp
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.Filled.ArrowBack, "返回", tint = glassTextColor(dark))
+            Icon(Icons.Filled.ArrowBack, Lang.s(R.string.back), tint = glassTextColor(dark))
         }
         Text(title, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark), modifier = Modifier.weight(1f).padding(start = 4.dp))
         actions()
@@ -582,7 +584,7 @@ fun FolderWindow(
                             Modifier.fillMaxWidth().height(rowH),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("这里还没有应用", fontSize = 13.sp, color = glassSubTextColor(dark))
+                            Text(Lang.s(R.string.no_apps_here), fontSize = 13.sp, color = glassSubTextColor(dark))
                         }
                     } else {
                         LazyVerticalGrid(

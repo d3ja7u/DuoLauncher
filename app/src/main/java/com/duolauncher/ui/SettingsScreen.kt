@@ -1,5 +1,8 @@
 package com.duolauncher.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -30,6 +33,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.data.*
 import com.duolauncher.data.IconPacks
 import com.duolauncher.service.DuoNotificationListener
@@ -60,6 +65,24 @@ fun SettingsScreen(
     }
 }
 
+/** 语言选项对应的显示名资源 */
+private fun languageLabelRes(tag: String): Int = when (tag) {
+    Lang.ZH -> R.string.language_zh
+    Lang.EN -> R.string.language_en
+    Lang.JA -> R.string.language_ja
+    else -> R.string.language_system
+}
+
+/** LocalContext 可能包了几层 ContextWrapper，逐层找到 Activity 才能 recreate() */
+private fun Context.asActivity(): Activity? {
+    var c: Context? = this
+    while (c is ContextWrapper) {
+        if (c is Activity) return c
+        c = c.baseContext
+    }
+    return null
+}
+
 @Composable
 private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (String) -> Unit) {
     val ctx = LocalContext.current
@@ -68,6 +91,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
 
     var pickIconPack by remember { mutableStateOf(false) }
     var editUpdateUrl by remember { mutableStateOf(false) }
+    var showLangPicker by remember { mutableStateOf(false) }
+    var langChoice by remember { mutableStateOf(Lang.get(ctx)) }
     var urlDraft by remember(DuoState.updateUrl) { mutableStateOf(DuoState.updateUrl) }
     var checking by remember { mutableStateOf(false) }
     var showUpdateResult by remember { mutableStateOf(false) }
@@ -93,7 +118,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             }.onFailure { e ->
                 if (!silent) {
                     updateInfo = null
-                    updateError = e.message ?: "检查失败"
+                    updateError = e.message ?: Lang.s(R.string.update_check_failed)
                     showUpdateResult = true
                 }
             }
@@ -131,16 +156,16 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     ) {
         item {
             Spacer(Modifier.height((DuoState.cutoutPadding.coerceAtLeast(56)).dp))
-            GlassTopBar("DuoLauncher 设置", dark, onClose)
+            GlassTopBar(Lang.s(R.string.settings_title), dark, onClose)
         }
         item {
-            SectionTitle("侧边栏", dark)
+            SectionTitle(Lang.s(R.string.sec_sidebar), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingRow("显示位置", if (DuoState.sidebarLeft) "左侧（自动避开摄像头挖孔）" else "右侧", dark,
+                    SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.sidebarLeft) Lang.s(R.string.sidebar_pos_left_long) else Lang.s(R.string.sidebar_pos_right), dark,
                         trailing = {
                             Row {
-                                listOf(false to "右", true to "左").forEach { (v, label) ->
+                                listOf(false to Lang.s(R.string.right_short), true to Lang.s(R.string.left_short)).forEach { (v, label) ->
                                     val on = DuoState.sidebarLeft == v
                                     Text(
                                         label,
@@ -156,28 +181,28 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                                 }
                             }
                         })
-                    SettingRow("编辑侧边栏", "添加常用应用或操作按键，调整顺序", dark,
+                    SettingRow(Lang.s(R.string.edit_sidebar), Lang.s(R.string.sidebar_edit_desc), dark,
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { open("sidebar") })
-                    SettingSliderRow("挖孔避让高度", "${DuoState.cutoutPadding} dp", DuoState.cutoutPadding.toFloat(),
+                    SettingSliderRow(Lang.s(R.string.cutout_padding), "${DuoState.cutoutPadding} dp", DuoState.cutoutPadding.toFloat(),
                         40f..180f, dark) { DuoState.cutoutPadding = it.toInt(); DuoState.save() }
-                    SettingSliderRow("主屏图标大小", "${"%.1f".format(DuoState.iconScale)}×", DuoState.iconScale,
+                    SettingSliderRow(Lang.s(R.string.home_icon_size), "${"%.1f".format(DuoState.iconScale)}×", DuoState.iconScale,
                         0.7f..1.4f, dark) { DuoState.iconScale = it; DuoState.save() }
-                    SettingSliderRow("侧栏图标大小", "${"%.1f".format(DuoState.sidebarIconScale)}×", DuoState.sidebarIconScale,
+                    SettingSliderRow(Lang.s(R.string.sidebar_icon_size), "${"%.1f".format(DuoState.sidebarIconScale)}×", DuoState.sidebarIconScale,
                         0.6f..1.1f, dark) { DuoState.sidebarIconScale = it; DuoState.save() }
                 }
             }
         }
         item {
-            SectionTitle("iOS 风格状态栏", dark)
+            SectionTitle(Lang.s(R.string.sec_status_bar), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle("显示时间与弧形信号", "09:41 + 圆弧 WiFi / 信号点，替代安卓原生状态栏",
+                    SettingToggle(Lang.s(R.string.status_time_signal), Lang.s(R.string.status_time_signal_desc),
                         DuoState.showDuoStatus, dark) { DuoState.showDuoStatus = it; DuoState.save() }
-                    SettingRow("显示位置", if (DuoState.statusRight) "右上（避开左上挖孔）" else "左上（侧栏同侧时自动下移避让）", dark,
+                    SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.statusRight) Lang.s(R.string.status_pos_right) else Lang.s(R.string.status_pos_left), dark,
                         trailing = {
                             Row {
-                                listOf(true to "右", false to "左").forEach { (v, label) ->
+                                listOf(true to Lang.s(R.string.right_short), false to Lang.s(R.string.left_short)).forEach { (v, label) ->
                                     val on = DuoState.statusRight == v
                                     Text(
                                         label,
@@ -193,95 +218,95 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                                 }
                             }
                         })
-                    SettingToggle("24 小时制", "关闭后按 12 小时制显示", DuoState.status24h, dark) {
+                    SettingToggle(Lang.s(R.string.status_24h), Lang.s(R.string.status_24h_desc), DuoState.status24h, dark) {
                         DuoState.status24h = it; DuoState.save()
                     }
-                    SettingToggle("信号点跟随真实强度", "关闭时 4 点常亮，与概念图一致",
+                    SettingToggle(Lang.s(R.string.status_real_signal), Lang.s(R.string.status_real_signal_desc),
                         DuoState.statusRealSignal, dark) { DuoState.statusRealSignal = it; DuoState.save() }
-                    SettingSliderRow("距顶部高度", "${DuoState.statusTop} dp", DuoState.statusTop.toFloat(),
+                    SettingSliderRow(Lang.s(R.string.status_top_padding), "${DuoState.statusTop} dp", DuoState.statusTop.toFloat(),
                         8f..140f, dark) { DuoState.statusTop = it.toInt(); DuoState.save() }
-                    SettingSliderRow("状态栏大小", "${"%.1f".format(DuoState.statusScale)}×", DuoState.statusScale,
+                    SettingSliderRow(Lang.s(R.string.status_scale), "${"%.1f".format(DuoState.statusScale)}×", DuoState.statusScale,
                         0.7f..1.6f, dark) { DuoState.statusScale = it; DuoState.save() }
                     val st = rememberDuoStatus(DuoState.status24h).value
                     SettingRow(
-                        "实时状态",
+                        Lang.s(R.string.live_status),
                         "${st.time} · " + when {
-                            st.wifi -> "Wi-Fi（信号 ${st.level}/4）"
-                            st.cellular -> "移动网络（${st.level}/4）"
-                            else -> "无网络"
-                        } + " · 电量 ${st.battery}%${if (st.charging) " 充电中" else ""}",
+                            st.wifi -> Lang.s(R.string.status_wifi, st.level)
+                            st.cellular -> Lang.s(R.string.status_cellular, st.level)
+                            else -> Lang.s(R.string.status_no_network)
+                        } + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
                         dark
                     )
                 }
             }
         }
         item {
-            SectionTitle("主屏幕与手势", dark)
+            SectionTitle(Lang.s(R.string.sec_home_gesture), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle("显示安卓原生状态栏", "默认关闭；开启会与自定义状态栏叠加",
+                    SettingToggle(Lang.s(R.string.show_sys_status), Lang.s(R.string.show_sys_status_desc),
                         !DuoState.hideStatusBar, dark) {
-                        DuoState.hideStatusBar = !it; DuoState.save(); nav.toast("重启启动器后完全生效")
+                        DuoState.hideStatusBar = !it; DuoState.save(); nav.toast(Lang.s(R.string.toast_restart_launcher))
                     }
-                    SettingToggle("显示页面指示点", null, DuoState.showPageDots, dark) { DuoState.showPageDots = it; DuoState.save() }
-                    SettingToggle("反转左右滑页方向", "开启后资源库出现在左边",
+                    SettingToggle(Lang.s(R.string.show_page_dots), null, DuoState.showPageDots, dark) { DuoState.showPageDots = it; DuoState.save() }
+                    SettingToggle(Lang.s(R.string.reverse_pages), Lang.s(R.string.reverse_pages_desc),
                         DuoState.reversePages, dark) { DuoState.reversePages = it; DuoState.save() }
                     SettingToggle(
-                        "双击桌面熄屏",
-                        if (accReady) "已开启无障碍熄屏服务"
-                        else "首次使用需在「无障碍」中开启 DuoLauncher 熄屏服务（仅锁屏）",
+                        Lang.s(R.string.double_tap_lock),
+                        if (accReady) Lang.s(R.string.double_tap_lock_on)
+                        else Lang.s(R.string.double_tap_lock_off),
                         DuoState.doubleTapSleep, dark
                     ) { on ->
                         DuoState.doubleTapSleep = on; DuoState.save()
                         if (on && !accReady) ScreenOff.requestPermission(ctx)
                     }
                     SettingToggle(
-                        "下滑打开通知栏 / 控制中心",
-                        "左半屏下滑出通知栏，右半屏下滑出控制中心；与左右翻页互不影响",
+                        Lang.s(R.string.swipe_down_panels),
+                        Lang.s(R.string.swipe_down_panels_desc),
                         DuoState.gesturePanels, dark
                     ) { on -> DuoState.gesturePanels = on; DuoState.save() }
                     SettingToggle(
-                        "右滑打开搜索",
-                        "第一页桌面右滑呼出搜索；其它页右滑仍是翻回上一页",
+                        Lang.s(R.string.swipe_right_search),
+                        Lang.s(R.string.swipe_right_search_desc),
                         DuoState.gestureSearch, dark
                     ) { on -> DuoState.gestureSearch = on; DuoState.save() }
                 }
             }
         }
         item {
-            SectionTitle("App 资源库", dark)
+            SectionTitle(Lang.s(R.string.app_library), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle("智能分类", "按应用类型自动归类；关闭后统一放入全部应用",
+                    SettingToggle(Lang.s(R.string.smart_category_switch), Lang.s(R.string.smart_category_desc),
                         DuoState.smartCategory, dark) { DuoState.smartCategory = it; DuoState.save() }
-                    SettingRow("调整应用分类", "手动为每个应用指定分类", dark,
+                    SettingRow(Lang.s(R.string.edit_app_category), Lang.s(R.string.edit_category_desc), dark,
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { open("cats") })
-                    SettingRow("隐藏应用", "管理已隐藏的应用（${DuoState.hidden.size}）", dark,
+                    SettingRow(Lang.s(R.string.hide_app), Lang.s(R.string.hidden_manage, DuoState.hidden.size), dark,
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { open("hidden") })
                 }
             }
         }
         item {
-            SectionTitle("外观", dark)
+            SectionTitle(Lang.s(R.string.sec_appearance), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingSliderRow("玻璃模糊强度", "${(DuoState.glassLevel * 100).toInt()}%",
+                    SettingSliderRow(Lang.s(R.string.glass_blur), "${(DuoState.glassLevel * 100).toInt()}%",
                         DuoState.glassLevel, 0f..1f, dark) { DuoState.glassLevel = it; DuoState.save() }
-                    SettingToggle("深色玻璃", "深色壁纸上更清晰", DuoState.darkGlass, dark) {
+                    SettingToggle(Lang.s(R.string.dark_glass), Lang.s(R.string.dark_glass_desc), DuoState.darkGlass, dark) {
                         DuoState.darkGlass = it; DuoState.save()
                     }
                 }
             }
         }
         item {
-            SectionTitle("图标包", dark)
+            SectionTitle(Lang.s(R.string.sec_icon_pack), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
                     SettingRow(
-                        "当前图标包",
-                        if (DuoState.iconPack.isBlank()) "系统默认" else packs.firstOrNull { it.pkg == DuoState.iconPack }?.label ?: DuoState.iconPack,
+                        Lang.s(R.string.current_icon_pack),
+                        if (DuoState.iconPack.isBlank()) Lang.s(R.string.system_default) else packs.firstOrNull { it.pkg == DuoState.iconPack }?.label ?: DuoState.iconPack,
                         dark,
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { pickIconPack = true }
@@ -289,20 +314,20 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                 }
             }
             Text(
-                "图标包没匹配上的应用，长按桌面图标 → 更换图标，可从包里手动挑一个",
+                Lang.s(R.string.icon_pack_hint),
                 fontSize = 11.sp,
                 color = glassSubTextColor(dark),
                 modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
             )
         }
         item {
-            SectionTitle("通知角标", dark)
+            SectionTitle(Lang.s(R.string.sec_badges), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
                     SettingToggle(
-                        "显示未读角标",
-                        if (badgeAccess) "图标右上角显示未读数字，打开应用后自动清除"
-                        else "需先授予「通知使用权」，否则角标不会出现",
+                        Lang.s(R.string.show_badge),
+                        if (badgeAccess) Lang.s(R.string.show_badge_on)
+                        else Lang.s(R.string.show_badge_off),
                         DuoState.showBadges, dark
                     ) { on ->
                         DuoState.showBadges = on; DuoState.save()
@@ -312,8 +337,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         DuoState.badgeColor = argb; DuoState.save()
                     }
                     SettingRow(
-                        "通知使用权",
-                        if (badgeAccess) "已授权 · 通知栏有未读时会显示数字" else "未授权 · 点此前往系统设置开启",
+                        Lang.s(R.string.notif_access),
+                        if (badgeAccess) Lang.s(R.string.notif_access_on) else Lang.s(R.string.notif_access_off),
                         dark,
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { DuoNotificationListener.openSettings(ctx) }
@@ -321,25 +346,25 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                 }
             }
             Text(
-                "角标数字按通知条数统计；微信、QQ 这类会合并通知的应用，取通知里自带的消息条数",
+                Lang.s(R.string.badge_note),
                 fontSize = 11.sp,
                 color = glassSubTextColor(dark),
                 modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
             )
         }
         item {
-            SectionTitle("更新", dark)
+            SectionTitle(Lang.s(R.string.sec_update), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
                     val hasNew = DuoState.lastSeenVersion.isNotBlank() &&
                             UpdateChecker.isNewer(DuoState.lastSeenVersion, ver)
                     SettingRow(
-                        "检查更新",
+                        Lang.s(R.string.check_update),
                         when {
-                            checking -> "正在检查 GitHub Releases…"
-                            hasNew -> "发现新版本 v${DuoState.lastSeenVersion} · 点此查看"
-                            DuoState.lastSeenVersion.isNotBlank() -> "已是最新 v$ver · 点此重新检查"
-                            else -> "当前 v$ver · 点此检查 GitHub Releases"
+                            checking -> Lang.s(R.string.checking_update)
+                            hasNew -> Lang.s(R.string.update_new_found, DuoState.lastSeenVersion)
+                            DuoState.lastSeenVersion.isNotBlank() -> Lang.s(R.string.update_latest, ver)
+                            else -> Lang.s(R.string.update_current, ver)
                         },
                         dark,
                         trailing = {
@@ -357,39 +382,85 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         onClick = { doCheck(silent = false) }
                     )
                     SettingToggle(
-                        "自动检查更新", "打开设置时若距上次超过 12 小时，静默查一次",
+                        Lang.s(R.string.auto_check_update), Lang.s(R.string.auto_check_desc),
                         DuoState.autoCheckUpdate, dark
                     ) { on -> DuoState.autoCheckUpdate = on; DuoState.save() }
                     val shownUrl = if (DuoState.updateUrl.length > 48)
                         DuoState.updateUrl.take(48) + "…" else DuoState.updateUrl
-                    SettingRow("更新源", shownUrl, dark,
+                    SettingRow(Lang.s(R.string.update_source), shownUrl, dark,
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { urlDraft = DuoState.updateUrl; editUpdateUrl = true })
-                    SettingRow("打开项目主页", "github.com/d3ja7u/DuoLauncher", dark,
+                    SettingRow(Lang.s(R.string.open_project), "github.com/d3ja7u/DuoLauncher", dark,
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { UpdateChecker.openInBrowser(ctx, "https://github.com/d3ja7u/DuoLauncher") })
                 }
             }
             Text(
-                "检查走 GitHub 公开接口，无需登录；更新源可改成自建镜像地址。",
+                Lang.s(R.string.update_note),
                 fontSize = 11.sp,
                 color = glassSubTextColor(dark),
                 modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
             )
         }
         item {
-            SectionTitle("系统", dark)
+            SectionTitle(Lang.s(R.string.sec_system), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingRow("设为默认桌面", "在系统设置中选择 DuoLauncher", dark) {
+                    SettingRow(
+                        Lang.s(R.string.language),
+                        Lang.s(languageLabelRes(langChoice)),
+                        dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                        onClick = { showLangPicker = true }
+                    )
+                    SettingRow(Lang.s(R.string.set_default_launcher), Lang.s(R.string.set_default_desc), dark) {
                         AppRepository.setDefaultLauncher(ctx)
                     }
-                    SettingRow("更换壁纸", dark = dark) { AppRepository.wallpaper(ctx) }
-                    SettingRow("DuoLauncher 应用信息", dark = dark) {
+                    SettingRow(Lang.s(R.string.change_wallpaper), dark = dark) { AppRepository.wallpaper(ctx) }
+                    SettingRow(Lang.s(R.string.app_info_self), dark = dark) {
                         AppRepository.appDetails(ctx, ctx.packageName)
                     }
                     // 版本号直接从包信息读，避免每次发版忘了改这里的硬编码
-                    SettingRow("关于", "DuoLauncher $ver · 为 Titan 2 Elite 打造", dark = dark)
+                    SettingRow(Lang.s(R.string.about), Lang.s(R.string.about_subtitle, ver), dark = dark)
+                }
+            }
+            Text(
+                Lang.s(R.string.language_desc),
+                fontSize = 11.sp,
+                color = glassSubTextColor(dark),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+            )
+        }
+    }
+
+    if (showLangPicker) {
+        DuoDialog(Lang.s(R.string.language), dark, opaque = true, onDismiss = { showLangPicker = false }) {
+            Lang.CHOICES.forEach { tag ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            val act = ctx.asActivity()
+                            if (act != null) {
+                                Lang.markReopenSettings(ctx)
+                                Lang.set(ctx, tag)
+                                langChoice = tag
+                                showLangPicker = false
+                                act.recreate()
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        Lang.s(languageLabelRes(tag)),
+                        fontSize = 15.sp,
+                        color = glassTextColor(dark),
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (tag == langChoice) {
+                        Icon(Icons.Filled.Check, null, tint = glassBlue, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
         }
@@ -399,7 +470,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         Dialog(onDismissRequest = { pickIconPack = false }) {
             GlassCard(Modifier.fillMaxWidth().heightIn(max = 540.dp), radius = 26.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(18.dp)) {
-                    Text("选择图标包", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark))
+                    Text(Lang.s(R.string.choose_icon_pack), fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark))
                     Spacer(Modifier.height(12.dp))
                     Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                         Row(
@@ -411,11 +482,11 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         ) {
                             Icon(Icons.Filled.Android, null, tint = glassTextColor(dark), modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(12.dp))
-                            Text("系统默认", fontSize = 15.sp, color = glassTextColor(dark))
+                            Text(Lang.s(R.string.system_default), fontSize = 15.sp, color = glassTextColor(dark))
                         }
                         Spacer(Modifier.height(6.dp))
                         if (packs.isEmpty()) {
-                            Text("未检测到已安装的图标包", fontSize = 13.sp, color = glassSubTextColor(dark),
+                            Text(Lang.s(R.string.no_icon_pack_installed), fontSize = 13.sp, color = glassSubTextColor(dark),
                                 modifier = Modifier.padding(8.dp))
                         }
                         packs.forEach { p ->
@@ -444,9 +515,9 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     }
 
     if (editUpdateUrl) {
-        DuoDialog("更新源地址", dark, opaque = true, onDismiss = { editUpdateUrl = false }) {
+        DuoDialog(Lang.s(R.string.update_source_title), dark, opaque = true, onDismiss = { editUpdateUrl = false }) {
             Text(
-                "可填 GitHub 仓库主页、Releases 网页地址或 api.github.com 接口地址；网页地址会自动转成接口地址，也支持自建镜像的 JSON 地址。",
+                Lang.s(R.string.update_source_hint),
                 fontSize = 12.sp, color = glassSubTextColor(dark)
             )
             Spacer(Modifier.height(10.dp))
@@ -464,21 +535,21 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             Spacer(Modifier.height(14.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { urlDraft = UpdateChecker.DEFAULT_URL }) {
-                    Text("恢复默认", fontSize = 13.sp, color = glassSubTextColor(dark))
+                    Text(Lang.s(R.string.restore_default), fontSize = 13.sp, color = glassSubTextColor(dark))
                 }
                 Spacer(Modifier.weight(1f))
-                GlassPrimaryButton("保存", dark, onClick = {
+                GlassPrimaryButton(Lang.s(R.string.save), dark, onClick = {
                     // 多行输入框里可能混进换行/空格，存盘前一并去掉
                     val t = urlDraft.replace(Regex("\\s+"), "")
                     if (t.isBlank()) {
-                        nav.toast("地址不能为空")
+                        nav.toast(Lang.s(R.string.toast_url_empty))
                     } else {
                         DuoState.updateUrl = t
                         DuoState.lastUpdateCheck = 0L
                         DuoState.lastSeenVersion = ""
                         DuoState.save()
                         editUpdateUrl = false
-                        nav.toast("已保存，点「检查更新」立即验证")
+                        nav.toast(Lang.s(R.string.toast_url_saved))
                     }
                 })
             }
@@ -532,9 +603,9 @@ private fun UpdateResultDialog(
     val hasNew = info != null && UpdateChecker.isNewer(info.version, localVersion)
     DuoDialog(
         title = when {
-            error != null -> "检查失败"
-            hasNew -> "发现新版本 v${info?.version}"
-            else -> "已是最新版本"
+            error != null -> Lang.s(R.string.update_check_failed)
+            hasNew -> Lang.s(R.string.update_new_version, info?.version ?: "")
+            else -> Lang.s(R.string.update_up_to_date)
         },
         dark = dark,
         level = 0.95f,
@@ -544,22 +615,22 @@ private fun UpdateResultDialog(
         if (error != null) {
             Text(error, fontSize = 13.sp, color = glassTextColor(dark))
             Spacer(Modifier.height(6.dp))
-            Text("请确认网络可用、更新源地址正确后重试。", fontSize = 12.sp, color = glassSubTextColor(dark))
+            Text(Lang.s(R.string.update_error_hint), fontSize = 12.sp, color = glassSubTextColor(dark))
             Spacer(Modifier.height(14.dp))
             Row {
                 Spacer(Modifier.weight(1f))
-                GlassPrimaryButton("重试", dark, onRetry)
+                GlassPrimaryButton(Lang.s(R.string.retry), dark, onRetry)
             }
         } else if (info != null) {
             val rel = info
-            Text("当前 v$localVersion  →  最新 v${rel.version}", fontSize = 13.sp, color = glassTextColor(dark))
+            Text(Lang.s(R.string.update_versions, localVersion, rel.version), fontSize = 13.sp, color = glassTextColor(dark))
             if (rel.publishedAt.isNotBlank()) {
-                Text("发布于 ${rel.publishedAt}", fontSize = 11.sp, color = glassSubTextColor(dark))
+                Text(Lang.s(R.string.update_published, rel.publishedAt), fontSize = 11.sp, color = glassSubTextColor(dark))
             }
             if (rel.apkName.isNotBlank()) {
                 Text(
-                    "安装包：${rel.apkName}" +
-                            if (rel.sizeText.isNotBlank()) "（${rel.sizeText}）" else "",
+                    Lang.s(R.string.update_apk, rel.apkName) +
+                            if (rel.sizeText.isNotBlank()) Lang.s(R.string.update_apk_size, rel.sizeText) else "",
                     fontSize = 11.sp, color = glassSubTextColor(dark)
                 )
             }
@@ -576,15 +647,15 @@ private fun UpdateResultDialog(
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (rel.apkUrl.isNotBlank()) {
-                    TextButton(onClick = { UpdateChecker.copy(ctx, "APK 链接", rel.apkUrl) }) {
-                        Text("复制链接", fontSize = 12.sp, color = glassSubTextColor(dark))
+                    TextButton(onClick = { UpdateChecker.copy(ctx, Lang.s(R.string.clip_apk_link), rel.apkUrl) }) {
+                        Text(Lang.s(R.string.copy_link), fontSize = 12.sp, color = glassSubTextColor(dark))
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                GlassPrimaryButton("打开下载页", dark, onClick = {
+                GlassPrimaryButton(Lang.s(R.string.open_download_page), dark, onClick = {
                     val target = rel.pageUrl.ifBlank { rel.apkUrl }
                     if (!UpdateChecker.openInBrowser(ctx, target)) {
-                        UpdateChecker.copy(ctx, "下载页地址", target)
+                        UpdateChecker.copy(ctx, Lang.s(R.string.clip_page_link), target)
                     }
                     onDismiss()
                 })
@@ -639,11 +710,11 @@ private fun SidebarEditorScreen(dark: Boolean, onBack: () -> Unit) {
     val items = DuoState.sidebar.toList()
     val darkFlag = dark
 
-    SubPageFrame("编辑侧边栏", dark, onBack) {
+    SubPageFrame(Lang.s(R.string.edit_sidebar), dark, onBack) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            GlassPrimaryButton("添加应用", dark, { pickApp = true }, Modifier.weight(1f))
+            GlassPrimaryButton(Lang.s(R.string.add_app), dark, { pickApp = true }, Modifier.weight(1f))
             Spacer(Modifier.width(10.dp))
-            GlassPrimaryButton("添加操作", dark, { pickAction = true }, Modifier.weight(1f))
+            GlassPrimaryButton(Lang.s(R.string.add_action), dark, { pickAction = true }, Modifier.weight(1f))
         }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
@@ -664,16 +735,16 @@ private fun SidebarEditorScreen(dark: Boolean, onBack: () -> Unit) {
                                 val l = DuoState.sidebar.toMutableList()
                                 java.util.Collections.swap(l, index, index - 1); DuoState.setSidebar(l)
                             }
-                        }) { Icon(Icons.Filled.ArrowUpward, "上移", tint = glassSubTextColor(darkFlag), modifier = Modifier.size(18.dp)) }
+                        }) { Icon(Icons.Filled.ArrowUpward, Lang.s(R.string.move_up), tint = glassSubTextColor(darkFlag), modifier = Modifier.size(18.dp)) }
                         IconButton(onClick = {
                             if (index < DuoState.sidebar.size - 1) {
                                 val l = DuoState.sidebar.toMutableList()
                                 java.util.Collections.swap(l, index, index + 1); DuoState.setSidebar(l)
                             }
-                        }) { Icon(Icons.Filled.ArrowDownward, "下移", tint = glassSubTextColor(darkFlag), modifier = Modifier.size(18.dp)) }
+                        }) { Icon(Icons.Filled.ArrowDownward, Lang.s(R.string.move_down), tint = glassSubTextColor(darkFlag), modifier = Modifier.size(18.dp)) }
                         IconButton(onClick = {
                             DuoState.setSidebar(DuoState.sidebar.filterNot { it.key == item.key })
-                        }) { Icon(Icons.Filled.Delete, "移除", tint = Color(0xFFFF3B30), modifier = Modifier.size(18.dp)) }
+                        }) { Icon(Icons.Filled.Delete, Lang.s(R.string.remove), tint = Color(0xFFFF3B30), modifier = Modifier.size(18.dp)) }
                     }
                 }
             }
@@ -682,7 +753,7 @@ private fun SidebarEditorScreen(dark: Boolean, onBack: () -> Unit) {
 
     if (pickApp) {
         AppPickerDialog(
-            title = "添加应用到侧边栏", dark = dark, query = query, onQuery = { query = it },
+            title = Lang.s(R.string.add_app_to_sidebar), dark = dark, query = query, onQuery = { query = it },
             onDismiss = { pickApp = false; query = "" },
             onPick = { pkg ->
                 DuoState.sidebar.add(SidebarItem("app", pkg)); DuoState.save(); pickApp = false; query = ""
@@ -690,7 +761,7 @@ private fun SidebarEditorScreen(dark: Boolean, onBack: () -> Unit) {
         )
     }
     if (pickAction) {
-        DuoDialog("添加操作按键", dark, onDismiss = { pickAction = false }) {
+        DuoDialog(Lang.s(R.string.add_action_button), dark, onDismiss = { pickAction = false }) {
             DuoActions.ALL.forEach { a ->
                 MenuRow(a.icon, a.label, dark = dark) {
                     DuoState.sidebar.add(SidebarItem("action", a.id)); DuoState.save(); pickAction = false
@@ -719,7 +790,7 @@ private fun AppPickerDialog(
                 Spacer(Modifier.height(12.dp))
                 GlassCard(Modifier.fillMaxWidth().height(40.dp), radius = 12.dp, level = 0.8f, dark = dark) {
                     Box(Modifier.fillMaxSize().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text("搜索应用", fontSize = 13.sp, color = glassSubTextColor(dark))
+                        if (query.isEmpty()) Text(Lang.s(R.string.search_apps), fontSize = 13.sp, color = glassSubTextColor(dark))
                         BasicTextField(
                             query, onQuery, singleLine = true,
                             textStyle = TextStyle(fontSize = 13.sp, color = glassTextColor(dark)),
@@ -762,10 +833,10 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
     val apps = DuoState.apps.filter { it.packageName != DuoState.selfPackage }
         .filter { query.isBlank() || it.label.contains(query, true) || it.packageName.contains(query, true) }
 
-    SubPageFrame("调整应用分类", dark, onBack) {
+    SubPageFrame(Lang.s(R.string.edit_app_category), dark, onBack) {
         GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(42.dp), radius = 14.dp, level = 0.85f, dark = dark) {
             Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
-                if (query.isEmpty()) Text("搜索应用", fontSize = 13.sp, color = glassSubTextColor(dark))
+                if (query.isEmpty()) Text(Lang.s(R.string.search_apps), fontSize = 13.sp, color = glassSubTextColor(dark))
                 BasicTextField(
                     query, { query = it }, singleLine = true,
                     textStyle = TextStyle(fontSize = 14.sp, color = glassTextColor(dark)),
@@ -783,8 +854,8 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
                         Column(Modifier.weight(1f)) {
                             Text(app.label, fontSize = 14.sp, color = glassTextColor(dark), maxLines = 1)
                             Text(
-                                if (DuoState.categoryOverride.containsKey(app.packageName)) "手动指定"
-                                else if (DuoState.smartCategory) "智能分类" else "未分类",
+                                if (DuoState.categoryOverride.containsKey(app.packageName)) Lang.s(R.string.manual_category)
+                                else if (DuoState.smartCategory) Lang.s(R.string.smart_category_switch) else Lang.s(R.string.uncategorized),
                                 fontSize = 10.sp, color = glassSubTextColor(dark)
                             )
                         }
@@ -799,12 +870,12 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
     }
 
     editing?.let { app ->
-        DuoDialog("${app.label} 的分类", dark, onDismiss = { editing = null }) {
-            MenuRow(Icons.Filled.AutoAwesome, "跟随智能分类", dark = dark) {
+        DuoDialog(Lang.s(R.string.cat_of_app, app.label), dark, onDismiss = { editing = null }) {
+            MenuRow(Icons.Filled.AutoAwesome, Lang.s(R.string.follow_smart_category), dark = dark) {
                 DuoState.setCategory(app.packageName, null); editing = null
             }
-            CATEGORY_LIST.forEach { (id, name) ->
-                MenuRow(Icons.Filled.Category, name, dark = dark) {
+            CATEGORY_LIST.forEach { (id, nameRes) ->
+                MenuRow(Icons.Filled.Category, Lang.s(nameRes), dark = dark) {
                     DuoState.setCategory(app.packageName, id); editing = null
                 }
             }
@@ -817,12 +888,12 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
 private fun HiddenEditorScreen(dark: Boolean, onBack: () -> Unit) {
     var pickApp by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    SubPageFrame("隐藏应用", dark, onBack) {
-        GlassPrimaryButton("选择一个应用隐藏", dark, { pickApp = true },
+    SubPageFrame(Lang.s(R.string.hide_app), dark, onBack) {
+        GlassPrimaryButton(Lang.s(R.string.hide_one_app), dark, { pickApp = true },
             Modifier.fillMaxWidth().padding(horizontal = 16.dp))
         Spacer(Modifier.height(12.dp))
         if (DuoState.hidden.isEmpty()) {
-            Text("当前没有隐藏的应用", fontSize = 13.sp, color = glassSubTextColor(dark),
+            Text(Lang.s(R.string.no_hidden_apps), fontSize = 13.sp, color = glassSubTextColor(dark),
                 modifier = Modifier.padding(horizontal = 20.dp))
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp),
@@ -834,7 +905,7 @@ private fun HiddenEditorScreen(dark: Boolean, onBack: () -> Unit) {
                         if (app != null) Image(rememberDrawablePainter(rememberAppIcon(app)), null, Modifier.size(32.dp).clip(squircle(24)))
                         Spacer(Modifier.width(12.dp))
                         Text(app?.label ?: pkg, fontSize = 14.sp, color = glassTextColor(dark), modifier = Modifier.weight(1f))
-                        Text("取消隐藏", fontSize = 12.sp, color = glassBlue,
+                        Text(Lang.s(R.string.unhide), fontSize = 12.sp, color = glassBlue,
                             modifier = Modifier.clickable { DuoState.unhideApp(pkg) })
                     }
                 }
@@ -842,7 +913,7 @@ private fun HiddenEditorScreen(dark: Boolean, onBack: () -> Unit) {
         }
     }
     if (pickApp) {
-        AppPickerDialog("隐藏应用", dark, query, { query = it }, { pickApp = false; query = "" }) { pkg ->
+        AppPickerDialog(Lang.s(R.string.hide_app), dark, query, { query = it }, { pickApp = false; query = "" }) { pkg ->
             DuoState.hideApp(pkg); pickApp = false; query = ""
         }
     }
@@ -850,14 +921,14 @@ private fun HiddenEditorScreen(dark: Boolean, onBack: () -> Unit) {
 
 /** 角标可选颜色：iOS 系统色为主，够用且互不撞色 */
 private val BADGE_COLORS = listOf(
-    "红色" to DuoState.IOS_RED,
-    "粉色" to 0xFFFF2D55.toInt(),
-    "橙色" to 0xFFFF9500.toInt(),
-    "绿色" to 0xFF34C759.toInt(),
-    "蓝色" to 0xFF007AFF.toInt(),
-    "紫色" to 0xFFAF52DE.toInt(),
-    "石墨" to 0xFF48484A.toInt(),
-    "黑色" to 0xFF1C1C1E.toInt()
+    R.string.badge_red to DuoState.IOS_RED,
+    R.string.badge_pink to 0xFFFF2D55.toInt(),
+    R.string.badge_orange to 0xFFFF9500.toInt(),
+    R.string.badge_green to 0xFF34C759.toInt(),
+    R.string.badge_blue to 0xFF007AFF.toInt(),
+    R.string.badge_purple to 0xFFAF52DE.toInt(),
+    R.string.badge_graphite to 0xFF48484A.toInt(),
+    R.string.badge_black to 0xFF1C1C1E.toInt()
 )
 
 /** 角标颜色选择：一排圆形色块，选中的显示白勾 */
@@ -865,15 +936,16 @@ private val BADGE_COLORS = listOf(
 private fun BadgeColorRow(dark: Boolean, current: Int, onPick: (Int) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("角标颜色", fontSize = 15.sp, color = glassTextColor(dark), modifier = Modifier.weight(1f))
+            Text(Lang.s(R.string.badge_color), fontSize = 15.sp, color = glassTextColor(dark), modifier = Modifier.weight(1f))
             Text(
-                BADGE_COLORS.firstOrNull { it.second == current }?.first ?: "自定义",
+                BADGE_COLORS.firstOrNull { it.second == current }?.first?.let { Lang.s(it) }
+                    ?: Lang.s(R.string.color_custom),
                 fontSize = 12.sp, color = glassSubTextColor(dark)
             )
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            BADGE_COLORS.forEach { (name, argb) ->
+            BADGE_COLORS.forEach { (nameRes, argb) ->
                 val on = argb == current
                 Box(
                     Modifier
@@ -888,7 +960,7 @@ private fun BadgeColorRow(dark: Boolean, current: Int, onPick: (Int) -> Unit) {
                         .clickable { onPick(argb) },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (on) Icon(Icons.Filled.Check, name, tint = Color.White, modifier = Modifier.size(15.dp))
+                    if (on) Icon(Icons.Filled.Check, Lang.s(nameRes), tint = Color.White, modifier = Modifier.size(15.dp))
                 }
             }
         }

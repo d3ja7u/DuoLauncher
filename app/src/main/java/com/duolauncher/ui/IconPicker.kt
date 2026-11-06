@@ -51,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.data.AppInfo
 import com.duolauncher.data.DuoState
 import com.duolauncher.data.IconPacks
@@ -138,14 +140,14 @@ fun IconPickerDialog(
                 Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 14.dp)) {
                     // ── 标题 ──
                     Text(
-                        "更换图标",
+                        Lang.s(R.string.change_icon),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = glassTextColor(dark)
                     )
                     Text(
-                        if (pack.isBlank()) "未选择图标包，请先到设置 → 图标包里选择一个"
-                        else "${app.label} · 来自「$packLabel」",
+                        if (pack.isBlank()) Lang.s(R.string.no_icon_pack_selected)
+                        else Lang.s(R.string.icon_from_pack, app.label, packLabel),
                         fontSize = 11.5.sp,
                         color = glassSubTextColor(dark),
                         maxLines = 1,
@@ -156,7 +158,7 @@ fun IconPickerDialog(
                     if (pack.isBlank()) {
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             Text(
-                                "还没有选择图标包",
+                                Lang.s(R.string.no_pack_chosen),
                                 fontSize = 13.sp,
                                 color = glassSubTextColor(dark)
                             )
@@ -181,7 +183,7 @@ fun IconPickerDialog(
                         Box(Modifier.weight(1f)) {
                             if (query.isEmpty()) {
                                 Text(
-                                    "搜索图标资源名…",
+                                    Lang.s(R.string.icon_search_hint),
                                     fontSize = 13.sp, color = glassSubTextColor(dark)
                                 )
                             }
@@ -205,12 +207,12 @@ fun IconPickerDialog(
                     Spacer(Modifier.height(6.dp))
                     if (loading) {
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            Text("正在读取图标包…", fontSize = 13.sp, color = glassSubTextColor(dark))
+                            Text(Lang.s(R.string.reading_icon_pack), fontSize = 13.sp, color = glassSubTextColor(dark))
                         }
                     } else if (shown.isEmpty()) {
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             Text(
-                                if (all.isEmpty()) "这个图标包里没有找到可用图标" else "没有匹配的图标",
+                                if (all.isEmpty()) Lang.s(R.string.no_icons_in_pack) else Lang.s(R.string.no_matching_icons),
                                 fontSize = 13.sp, color = glassSubTextColor(dark)
                             )
                         }
@@ -316,7 +318,7 @@ private fun BottomBar(dark: Boolean, onReset: (() -> Unit)?, onCancel: () -> Uni
                     .padding(vertical = 11.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("恢复自动图标", fontSize = 13.sp, color = glassTextColor(dark))
+                Text(Lang.s(R.string.restore_auto_icon), fontSize = 13.sp, color = glassTextColor(dark))
             }
         }
         Box(
@@ -328,7 +330,7 @@ private fun BottomBar(dark: Boolean, onReset: (() -> Unit)?, onCancel: () -> Uni
                 .padding(vertical = 11.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text("关闭", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Medium)
+            Text(Lang.s(R.string.close), fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Medium)
         }
     }
 }

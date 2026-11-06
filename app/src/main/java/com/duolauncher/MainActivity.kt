@@ -34,6 +34,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.duolauncher.data.*
 import com.duolauncher.ui.*
+import com.duolauncher.util.Lang
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -41,6 +42,14 @@ class MainActivity : ComponentActivity() {
     /** Home 键回到主屏的信号 */
     private var homeSignal by mutableStateOf(0)
     private var packageReceiver: BroadcastReceiver? = null
+
+    /** 手动指定的语言在 attachBaseContext 阶段就要生效，否则首帧仍是旧语言 */
+    override fun attachBaseContext(newBase: Context) {
+        val wrapped = Lang.wrap(newBase)
+        // 用 Activity 的配置刷新文案 Context，兼容系统设置里的「按应用设定语言」
+        Lang.init(wrapped)
+        super.attachBaseContext(wrapped)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,7 +123,9 @@ class MainActivity : ComponentActivity() {
         val libraryPage = homePageCount
         val pagerState = rememberPagerState(initialPage = 0) { totalPages }
 
-        var overlay by remember { mutableStateOf<String?>(null) }
+        var overlay by remember {
+            mutableStateOf(if (Lang.consumeReopenSettings(ctx)) "settings" else null)
+        }
         var settingsSub by remember { mutableStateOf<String?>(null) }
         var menuApp by remember { mutableStateOf<AppInfo?>(null) }
         var menuSource by remember { mutableStateOf("home") }
@@ -142,8 +153,8 @@ class MainActivity : ComponentActivity() {
             if (info != null) {
                 DuoState.widgets.add(WidgetItem("system", id.toString()))
                 DuoState.save()
-                toast("已添加系统小组件")
-            } else toast("小组件绑定失败，请在系统设置中授权")
+                toast(Lang.s(R.string.toast_widget_added))
+            } else toast(Lang.s(R.string.toast_widget_bind_fail))
         }
 
         val configLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -172,7 +183,7 @@ class MainActivity : ComponentActivity() {
             pendingWidgetId = id
             val info = runCatching { widgetManager.getAppWidgetInfo(id) }.getOrNull()
             if (info == null) {
-                toast("未选择小组件")
+                toast(Lang.s(R.string.toast_widget_none))
             } else if (info.configure != null) {
                 runCatching {
                     configLauncher.launch(
@@ -192,7 +203,7 @@ class MainActivity : ComponentActivity() {
                     Intent(AppWidgetManager.ACTION_APPWIDGET_PICK)
                         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                 )
-            }.onFailure { toast("无法打开系统小组件列表") }
+            }.onFailure { toast(Lang.s(R.string.toast_widget_picker_fail)) }
         }
 
         // 注意：必须用 Compose 的 rememberCoroutineScope。
@@ -320,12 +331,12 @@ class MainActivity : ComponentActivity() {
                     }
 
                     categoryTarget?.let { app ->
-                        DuoDialog("${app.label} 的分类", dark, onDismiss = { categoryTarget = null }) {
-                            MenuRow(Icons.Filled.AutoAwesome, "跟随智能分类", dark = dark) {
+                        DuoDialog(Lang.s(R.string.cat_of_app, app.label), dark, onDismiss = { categoryTarget = null }) {
+                            MenuRow(Icons.Filled.AutoAwesome, Lang.s(R.string.follow_smart_category), dark = dark) {
                                 DuoState.setCategory(app.packageName, null); categoryTarget = null
                             }
-                            CATEGORY_LIST.forEach { (id, name) ->
-                                MenuRow(Icons.Filled.Category, name, dark = dark) {
+                            CATEGORY_LIST.forEach { (id, nameRes) ->
+                                MenuRow(Icons.Filled.Category, Lang.s(nameRes), dark = dark) {
                                     DuoState.setCategory(app.packageName, id); categoryTarget = null
                                 }
                             }
@@ -335,7 +346,7 @@ class MainActivity : ComponentActivity() {
                     folderTarget?.let { app ->
                         FolderPickerDialog(app, dark, onDismiss = { folderTarget = null }) { folderId, newName ->
                             if (folderId != null) DuoState.addAppToFolder(folderId, app.packageName)
-                            else DuoState.createFolder(newName ?: "文件夹", listOf(app.packageName))
+                            else DuoState.createFolder(newName ?: Lang.s(R.string.folder), listOf(app.packageName))
                             folderTarget = null
                         }
                     }

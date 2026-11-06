@@ -1,5 +1,8 @@
 package com.duolauncher.util
 
+import com.duolauncher.R
+import com.duolauncher.util.Lang
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -88,7 +91,7 @@ object UpdateChecker {
         val target = normalize(url)
         if (!target.startsWith("http://") && !target.startsWith("https://")) {
             return@withContext Result.failure(
-                IllegalArgumentException("更新源地址需要以 http:// 或 https:// 开头")
+                IllegalArgumentException(Lang.s(R.string.err_url_scheme))
             )
         }
 
@@ -125,9 +128,9 @@ object UpdateChecker {
                 val left = conn.getHeaderField("X-RateLimit-Remaining")
                 error(
                     when (code) {
-                        403, 429 -> "GitHub API 触发访问限制（HTTP $code，剩余配额 ${left ?: "?"}）"
-                        404 -> "找不到 Release，请检查更新源地址"
-                        else -> "服务器返回 HTTP $code"
+                        403, 429 -> Lang.s(R.string.err_rate_limit, code, left ?: "?")
+                        404 -> Lang.s(R.string.err_release_not_found)
+                        else -> Lang.s(R.string.err_http, code)
                     }
                 )
             }
@@ -149,7 +152,7 @@ object UpdateChecker {
             t.startsWith("<") -> parseAtom(t)
             t.startsWith("[") -> {
                 val arr = JSONArray(t)
-                if (arr.length() == 0) error("该仓库还没有发布过 Release")
+                if (arr.length() == 0) error(Lang.s(R.string.err_no_release))
                 parseJson(arr.getJSONObject(0))
             }
             else -> parseJson(JSONObject(t))
@@ -159,7 +162,7 @@ object UpdateChecker {
     /** 单个 Release 对象（/latest），或自建镜像里同结构的 JSON */
     private fun parseJson(o: JSONObject): ReleaseInfo {
         val tag = o.optString("tag_name", "")
-        if (tag.isBlank()) error("返回内容不是 Release 信息（缺少 tag_name）")
+        if (tag.isBlank()) error(Lang.s(R.string.err_bad_json))
 
         var apkUrl = ""
         var apkName = ""
@@ -193,12 +196,12 @@ object UpdateChecker {
     /** GitHub releases.atom：无配额限制，但没有 assets 信息，下载统一走 Release 页面 */
     private fun parseAtom(body: String): ReleaseInfo {
         val entry = Regex("""<entry>([\s\S]*?)</entry>""").find(body)?.groupValues?.get(1)
-            ?: error("该仓库还没有发布过 Release")
+            ?: error(Lang.s(R.string.err_no_release))
         val pageUrl = Regex("""<link[^>]*href=["']([^"']+)["']""")
             .find(entry)?.groupValues?.get(1) ?: ""
         val tag = Regex("""/releases/tag/([^/?#"']+)""").find(pageUrl)?.groupValues?.get(1)
             ?: Regex("""<title>([^<]+)</title>""").find(entry)?.groupValues?.get(1)?.trim()
-            ?: error("订阅源里找不到版本标签")
+            ?: error(Lang.s(R.string.err_no_tag))
         val version = tag.removePrefix("v").removePrefix("V")
         val updated = Regex("""<updated>([^<]+)</updated>""")
             .find(entry)?.groupValues?.get(1)?.take(10) ?: ""
@@ -233,6 +236,6 @@ object UpdateChecker {
     fun copy(ctx: Context, label: String, text: String) {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText(label, text))
-        Toast.makeText(ctx, "已复制$label", Toast.LENGTH_SHORT).show()
+        Toast.makeText(ctx, Lang.s(R.string.copied_toast, label), Toast.LENGTH_SHORT).show()
     }
 }

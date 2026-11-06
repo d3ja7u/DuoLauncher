@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.duolauncher.R
+import com.duolauncher.util.Lang
 import com.duolauncher.util.UpdateChecker
 import org.json.JSONArray
 import org.json.JSONObject
@@ -441,7 +443,7 @@ object DuoState {
         // 文件夹尽量落在"被收进去的第一个应用"原来的位置，而不是永远排到最后
         val before = homeTokens().toMutableList()
         val at = before.indexOfFirst { t -> pkgs.any { t == "app:$it" } }
-        folders.add(FolderItem(id, name.ifBlank { "文件夹" }, pkgs.distinct()))
+        folders.add(FolderItem(id, name.ifBlank { Lang.s(R.string.folder) }, pkgs.distinct()))
         pkgs.forEach { homeApps.remove(it) }
         if (at >= 0) {
             before[at] = "folder:$id"
@@ -454,7 +456,7 @@ object DuoState {
     fun renameFolder(id: String, name: String) {
         val f = folderOf(id) ?: return
         val idx = folders.indexOf(f)
-        folders[idx] = f.copy(name = name.ifBlank { "文件夹" })
+        folders[idx] = f.copy(name = name.ifBlank { Lang.s(R.string.folder) })
         save()
     }
 

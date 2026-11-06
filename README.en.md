@@ -1,0 +1,275 @@
+# DuoLauncher
+
+[简体中文](README.md) | **English**
+
+An Android home screen launcher written in Kotlin + Jetpack Compose, with an iOS-inspired glass aesthetic, hand-tuned for the **Unihertz Titan 2 Elite** (near-square 1080×1200 display, top-left punch-hole camera, physical keyboard).
+
+This is not a theme or an icon pack — it is a complete launcher (`android.intent.category.HOME`) and can be set as your default home app.
+
+[![Release](https://img.shields.io/github/v/release/d3ja7u/DuoLauncher?label=release)](https://github.com/d3ja7u/DuoLauncher/releases)
+[![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
+
+<p align="center">
+  <img src="screenshots/01-home.png" width="23%">
+  <img src="screenshots/02-library-categories.png" width="23%">
+  <img src="screenshots/03-library-list.png" width="23%">
+  <img src="screenshots/04-search.png" width="23%">
+</p>
+
+<p align="center">
+  <img src="screenshots/06-settings-gestures.png" width="23%">
+  <img src="screenshots/07-settings-badges.png" width="23%">
+  <img src="screenshots/05-settings-sidebar.png" width="23%">
+  <img src="screenshots/08-home-menu.png" width="23%">
+</p>
+
+> All screenshots were taken on a Unihertz Titan 2 Elite (v1.3.8).
+
+---
+
+## 1. Features
+
+| Feature | Details |
+|---|---|
+| Glassmorphism | Live-blurred glass for the sidebar, search pill and settings cards; adjustable blur intensity and light/dark glass |
+| iOS-style status bar | Time + arc signal + Wi-Fi dots replaces the Android status bar; switchable side, 12/24-hour clock |
+| Sidebar dock | A vertical column of favorite apps on the right (or left); fully editable, reorderable, with its own icon scale |
+| App Library | Category cards plus an iOS-style A–Z list; the right-hand index bar supports tap and drag |
+| Notification badges | Unread counts on icons, Apple-style outlined bubbles, 8 colors |
+| Gestures | Split swipe-down for notifications / quick settings, swipe right for search, double-tap to sleep |
+| Icon packs | Third-party packs (e.g. Smartisan) with per-app manual icon override |
+| Category management | Automatic grouping by app type, manual per-app override, hide apps |
+| **Multilingual UI** | Simplified Chinese, English and Japanese; follows the device language automatically, with a manual override in Settings |
+
+---
+
+## 2. Usage
+
+### 2.1 Home screen
+
+- **Open an app**: tap its icon.
+- **Change page**: swipe left or right. By default, swiping right goes back one page; swiping right on the leftmost page opens Search (see Gestures).
+- **Move / reorder icons**: long-press and drag; the grid makes room automatically.
+- **Edit Home Screen**: tap `···` in the bottom-left → **Edit Home Screen**. Icons start jiggling; long-press one for its menu (change icon / app info / uninstall). Tap the menu item again to exit.
+- **Home menu** (bottom-left `···`): Edit Home Screen / Add App to Home / Launcher Settings / Change Wallpaper.
+
+### 2.2 Sidebar
+
+A vertical strip of frequently used apps on the right edge. Tap to launch. Spacing tightens automatically as you add icons, so the search button in the bottom-right stays clear.
+
+- Position: Settings → Sidebar → Position (Right / Left).
+- Contents: Settings → Sidebar → Edit Sidebar — add apps or action buttons, drag to reorder.
+- Size: Settings → Sidebar → Sidebar icon size (separate from home icon size).
+- Long-press a sidebar icon: Edit Sidebar / Remove from Sidebar / App Info.
+
+### 2.3 App Library
+
+Swipe left from the home screen (or right, if **Reverse swipe direction** is enabled). Two **mutually exclusive** views:
+
+| View | Content | How to switch |
+|---|---|---|
+| Category cards | 3-column glass cards, each holding apps of one category | Tap the list icon in the top-right, or pull down at the top of the page |
+| A–Z list | Full-screen iOS-style grouped list | Tap the grid icon, or pull down at the top of the page |
+
+- In card view, tapping empty space in a card (or its 4th folder slot) opens all apps in that category.
+- The A–Z index bar on the right supports **tap and vertical drag**; a large letter bubble appears on hit. It only exists in list view and fades in after the content has scrolled.
+- Pull-to-switch only fires when the list is **already at the top**, so scrolling back up from the middle won't trigger it by accident.
+- Chinese app names are grouped by **pinyin initial** (爱酱 → A, 哔哩哔哩 → B). Numbers and symbols go to `#`, always last.
+
+### 2.4 Search
+
+Open it by **swiping right on the home screen**, tapping the magnifier in the bottom-right, or swiping right on the leftmost page.
+
+- Filters app names and package names as you type.
+- With an empty query it shows two rows of **Recent** apps.
+- To close: **swipe left**, **swipe up**, or press **Back**. The IME is explicitly hidden on close, so no keyboard toolbar is left behind on the home screen.
+
+### 2.5 Gestures
+
+| Gesture | Action | Notes |
+|---|---|---|
+| Swipe left / right | Change page | App Library sits at the far right (or far left) |
+| **Swipe right (leftmost page)** | Open Search | On other pages it still goes back one page |
+| **Swipe down · left half** | Notifications | Fires after ≥ 96dp of accumulated travel |
+| **Swipe down · right half** | Quick Settings | The half where the gesture starts decides which panel opens |
+| **Double-tap empty area** | Sleep | Requires the accessibility service |
+| Long-press empty area | Home menu | |
+
+> The swipe-down handler only claims vertical drags. It does not interfere with page swipes or icon long-press drags, and short swipes are ignored.
+
+### 2.6 Notification badges
+
+1. Settings → Notification Badges → grant **Notification access** (`NotificationListenerService`).
+2. Enable **Show unread badges** and pick a color (red / pink / orange / green / blue / purple / graphite / black).
+3. A number appears on the icon and clears when you open the app.
+
+Counting: most apps count notifications; apps that bundle them (WeChat, QQ) use the notification's own `android.number` value.
+
+### 2.7 App context menu (long-press)
+
+In edit mode or in the App Library, long-press an icon to:
+
+- Add to Home Screen (most useful when the home screen is empty)
+- Change Icon (pick manually from the active icon pack)
+- App Info (system app details page)
+- Uninstall
+
+---
+
+## 3. Settings
+
+| Section | Items |
+|---|---|
+| Sidebar | Position, Edit Sidebar, Cutout top padding, Home icon size, Sidebar icon size |
+| iOS-style Status Bar | Show time and arc signal, Position, 24-hour clock, Signal dots follow real strength, Top offset, Status bar size |
+| Home Screen & Gestures | Show Android status bar, Show page indicators, Reverse swipe direction, Double-tap to sleep, Swipe down for notifications / quick settings, Swipe right to search |
+| App Library | Smart categories, Edit App Category, Hide App |
+| Appearance | Glass blur intensity, Dark glass |
+| Icon Pack | Current icon pack (auto-detects installed packs) |
+| Notification Badges | Show unread badges, Badge color, Notification access |
+| Updates | Check for updates, Auto-check for updates, Update source, Open project page |
+| System | **Language**, Set as default launcher, Change Wallpaper, DuoLauncher app info, About |
+
+Open it from the home screen: bottom-left `···` → Launcher Settings.
+
+### 3.1 Language
+
+DuoLauncher ships with **Simplified Chinese**, **English** and **Japanese**.
+
+- By default it **follows the device language** — including per-app language set in Android 13+ system settings. Other device locales fall back to Chinese.
+- To override: Settings → System → **Language** → choose Follow system / 简体中文 / English / 日本語. The change applies immediately and Settings stays open so you can see the result.
+- The choice is persisted locally and survives restarts. A manual choice always takes priority over the device language; pick **Follow system** to give control back to the system.
+- App labels, category names, dates and weekday names follow the active language. User data you created (folder names, notes) is never translated.
+
+Translations live in `app/src/main/res/values/`, `values-en/` and `values-ja/`. `util/Lang.kt` handles locale switching and exposes `Lang.s()` for string lookups outside composables.
+
+---
+
+## 4. Permissions & privacy
+
+| Permission / service | Purpose | Required? |
+|---|---|---|
+| Notification access | Read unread counts for badges | Only for badges |
+| Accessibility (DuoLauncher Sleep Service) | Double-tap to sleep; fallback path for opening system panels | Only for double-tap sleep |
+| `EXPAND_STATUS_BAR` | Expand notifications / quick settings | Normal permission, granted at install |
+| `QUERY_ALL_PACKAGES` | List and launch installed apps | Required |
+| `REQUEST_DELETE_PACKAGES` | Uninstall apps | Optional |
+| `BIND_APPWIDGET` | Host home screen widgets | Optional |
+
+The app **uploads nothing** and has no backend. Layouts and preferences are stored locally in `SharedPreferences`. The update checker only calls the public GitHub Releases API (or the configured mirror) and stores no token.
+
+---
+
+## 5. Building
+
+Requirements:
+
+- JDK 17
+- Android SDK Platform 34 (`compileSdk = 34`)
+- Gradle 8.9 (provided by the wrapper)
+
+```bash
+git clone https://github.com/d3ja7u/DuoLauncher.git
+cd DuoLauncher
+
+# Point to your local Android SDK (this file is not committed)
+echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
+
+./gradlew assembleDebug
+# Output: app/build/outputs/apk/debug/app-debug.apk
+```
+
+You can also open the project root in Android Studio (Koala or newer).
+
+**Dependency mirrors**: `settings.gradle.kts` includes Aliyun mirrors for faster builds in mainland China. If you build outside China, remove the `maven { url = uri("https://maven.aliyun.com/...") }` lines and keep `google()` / `mavenCentral()`.
+
+Version matrix:
+
+| Component | Version |
+|---|---|
+| AGP | 8.5.2 |
+| Kotlin | 1.9.24 |
+| Compose BOM | 2024.06.00 |
+| Gradle | 8.9 |
+| compileSdk / targetSdk | 34 |
+| minSdk | 28 (Android 9) |
+
+---
+
+## 6. Known limitations
+
+- **Tuned for a square screen**: spacing, status bar position and cutout padding assume 1080×1200 / density 331. It runs on ordinary 20:9 phones, but glass card padding and grid density will need tweaking in `DuoState`.
+- **Pinyin grouping** uses `Transliterator("Han-Latin")`; polyphonic characters follow ICU's default reading, so a few names may land in the wrong group.
+- **Quick Settings expands in one step**: from Android 16, `expandSettingsPanel()` opens the full tile panel with no intermediate "peek" state. Use the left half of the screen for notifications.
+- **Widget host**: `AppWidgetHost` is implemented, but the add-widget entry point lives on the currently disabled Today page.
+- Signal strength buckets come from `TelephonyManager` / `WifiManager`; some ROMs report full strength at all times.
+
+---
+
+## 7. Changelog
+
+| Version | Changes |
+|---|---|
+| 1.5.0 | Multilingual UI: Chinese / English / Japanese, follows the device language, manual override in Settings; this English README |
+| 1.4.1 | Solid background for the update-source dialog, long URLs wrap, whitespace stripped on save |
+| 1.4.0 | New Updates section: configurable GitHub Releases source, manual / silent auto check, fallback to the official Atom feed |
+| 1.3.9 | Automated releases: pushing a tag builds and publishes the APK via GitHub Actions; CI builds share the local debug signature |
+| 1.3.8 | "About" version is read from package info |
+| 1.3.7 | Search placeholder simplified |
+| 1.3.6 | Removed the search close button; swipe left / up / Back still close |
+| 1.3.5 | Swipe-left to close search, removed the footer hint |
+| 1.3.4 | Swipe right on the home screen opens search (leftmost page only) |
+| 1.3.3 | Split swipe-down: left half for notifications, right half for quick settings |
+| 1.3.2 | Removed swipe-down search; fixed the IME toolbar lingering after closing search |
+| 1.3.1 | App Library split into two exclusive views (cards / A–Z), wider index bar, fixed letter ordering |
+| 1.3.0 | iOS-style A–Z list and index bar in the App Library |
+| 1.2.x | Glass refinements, notification badges, status bar position, Today page retired |
+
+---
+
+## 8. Downloads and releases
+
+**Don't want to build it?** Grab `DuoLauncher-x.y.z.apk` from [Releases](https://github.com/d3ja7u/DuoLauncher/releases).
+
+Releases are fully automated by `.github/workflows/release.yml`: bump the version, push a `v*` tag, and Actions compiles the APK, generates release notes and publishes the Release.
+
+```bash
+# 1. Bump versionName / versionCode in app/build.gradle.kts
+# 2. Commit, then tag and push in one go
+git tag v1.5.0
+git push origin main --tags
+```
+
+The workflow's first step fails if the tag doesn't match `versionName`, so the APK version and the Release title can't drift apart.
+
+To verify a build without publishing, go to Actions → **Release** → **Run workflow**. The APK is kept as an artifact for 7 days and no Release is created.
+
+**Signing**: CI uses the `DEBUG_KEYSTORE_B64` repository Secret (base64 of your local `~/.android/debug.keystore`), so CI builds carry the same signature as `./gradlew assembleDebug` and can be installed over each other. If that Secret is missing, the workflow falls back to a generated CI debug key and you'll need to uninstall the old build first.
+
+### Checking for updates inside the launcher
+
+Home screen → bottom-left `···` → **Launcher Settings** → the **Updates** section near the bottom:
+
+| Item | Details |
+|---|---|
+| Check for updates | Queries the update source immediately; shows current vs latest version, publish date and release notes, with buttons to open the download page or copy the APK link |
+| Auto-check for updates | Silently checks when Settings opens, throttled to once per 12 hours; no dialog, just a "new version available" hint on the settings row |
+| Update source | Editable; defaults to `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest` |
+
+Accepted sources: a GitHub repo URL or `/releases` page (converted to the API automatically), an `api.github.com` Releases endpoint (single object or array), or a self-hosted mirror returning the same JSON (`tag_name` / `name` / `body` / `html_url` / `published_at` / `assets`).
+
+The anonymous GitHub API allows only 60 requests per IP per hour — easy to exhaust on a shared campus or carrier NAT. On 403/429 the launcher falls back to the official `releases.atom` feed (no quota, but no APK size or direct link). Only if both fail does it ask you to check the connection or the URL. Only `INTERNET` is required; no login, no token stored on the device.
+
+Versions are compared segment by segment, so `1.3.10` is correctly newer than `1.3.9`.
+
+---
+
+## 9. License
+
+[MIT](LICENSE) © 2026 d3ja7u
+
+---
+
+## 10. Notes
+
+A personal project that grew out of my own daily use. The code favors "easy to change" over broad device support or unit tests. Issues and ideas are welcome.
