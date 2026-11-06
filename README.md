@@ -4,6 +4,9 @@
 
 不是主题包，也不是图标包——它就是一个完整的 Launcher（`android.intent.category.HOME`），可以直接设为默认桌面。
 
+[![Release](https://img.shields.io/github/v/release/d3ja7u/DuoLauncher?label=release)](https://github.com/d3ja7u/DuoLauncher/releases)
+[![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
+
 <p align="center">
   <img src="screenshots/01-home.png" width="23%">
   <img src="screenshots/02-library-categories.png" width="23%">
@@ -205,6 +208,27 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ---
 
-## 八、说明
+## 八、下载与发行版
+
+**不想自己编译**：直接到 [Releases](https://github.com/d3ja7u/DuoLauncher/releases) 下载最新一版的 `DuoLauncher-x.y.z.apk` 安装。
+
+发行版是自动发布的：仓库里配置了 GitHub Actions（`.github/workflows/release.yml`），**只要推一个形如 `v1.3.9` 的 tag，就会自动编译 APK、生成变更说明并发布 Release**。
+
+```bash
+git tag v1.3.9
+git push origin v1.3.9
+```
+
+签名说明：CI 使用调试签名构建，与本地 `./gradlew assembleDebug` 产出的包签名不同，若手机上已有旧包会提示签名不一致，卸载后重装即可。想让它与本地包同签名，可在仓库 Secrets 里加一个 `DEBUG_KEYSTORE_B64`（本机 `~/.android/debug.keystore` 的 base64），workflow 会自动使用。
+
+---
+
+## 九、许可
+
+[MIT](LICENSE) © 2026 d3ja7u
+
+---
+
+## 十、说明
 
 个人自用项目，按自己的使用习惯长出来的，代码结构以「能改得动」为先，没有做多机型适配与单元测试。欢迎提 Issue 交流思路。
