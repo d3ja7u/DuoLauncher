@@ -195,6 +195,7 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 | 版本 | 变更 |
 |---|---|
+| 1.4.0 | 设置新增「更新」分组：可配置 GitHub Releases 更新源、手动/自动检查更新、失败自动回退官方订阅源 |
 | 1.3.9 | 发版自动化：打 tag 即由 Actions 编译并发布 Release，CI 包与本机同签名可覆盖安装 |
 | 1.3.8 | 设置「关于」的版本号改为从包信息动态读取 |
 | 1.3.7 | 搜索框占位文字精简为「搜索」 |
@@ -227,6 +228,22 @@ git push origin main --tags
 只想确认编译能不能过、暂时不想发版时，到 Actions 页面选 `Release` → **Run workflow** 手动触发即可，产物会作为 artifact 保留 7 天，不会产生 Release。
 
 签名说明：CI 生成包使用仓库 Secrets 里的 `DEBUG_KEYSTORE_B64`（本机 `~/.android/debug.keystore` 的 base64），与本地 `./gradlew assembleDebug` 的产物签名一致，可以直接覆盖安装。若该 Secret 未配置，工作流会退回 CI 自动生成的调试签名，此时装新版要先卸载旧版。
+
+### 在启动器里检查更新
+
+主屏幕左下角 `···` → **启动器设置** → 靠下的「更新」分组：
+
+| 项目 | 说明 |
+|---|---|
+| 检查更新 | 立即请求更新源，弹窗显示当前/最新版本号、发布日期、安装说明；可打开下载页或复制 APK 链接 |
+| 自动检查更新 | 打开设置页时静默检查，距上次超过 12 小时才真正发请求，不弹窗打扰，只在设置行上提示「发现新版本」 |
+| 更新源 | 可编辑，默认 `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest` |
+
+更新源支持三种地址：GitHub 网页地址（仓库主页或 `/releases`，自动转换成接口地址）、`api.github.com` 的 Release 接口（单个对象或列表均可）、以及自建镜像里同结构的 JSON（`tag_name` / `name` / `body` / `html_url` / `published_at` / `assets`）。
+
+GitHub 匿名 API 每个 IP 每小时只有 60 次，校园网 / 运营商共享出口容易撞到 403。这时会自动回退到官方 `releases.atom` 订阅源（无配额限制，只是少了 APK 大小与直链）；两个源都失败才提示检查网络或更换更新源。检查只需 `INTERNET` 权限，不用登录，客户端不保存任何 token。
+
+版本号按数字段比较，`1.3.10` 会正确识别为比 `1.3.9` 新。
 
 ---
 

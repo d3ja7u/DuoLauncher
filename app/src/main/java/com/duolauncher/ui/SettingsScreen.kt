@@ -34,6 +34,8 @@ import com.duolauncher.data.*
 import com.duolauncher.data.IconPacks
 import com.duolauncher.service.DuoNotificationListener
 import com.duolauncher.util.ScreenOff
+import com.duolauncher.util.UpdateChecker
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -61,7 +63,51 @@ fun SettingsScreen(
 @Composable
 private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (String) -> Unit) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val ver = remember { UpdateChecker.currentVersion(ctx) }
+
     var pickIconPack by remember { mutableStateOf(false) }
+    var editUpdateUrl by remember { mutableStateOf(false) }
+    var urlDraft by remember(DuoState.updateUrl) { mutableStateOf(DuoState.updateUrl) }
+    var checking by remember { mutableStateOf(false) }
+    var showUpdateResult by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
+    var updateError by remember { mutableStateOf<String?>(null) }
+
+    /** silent=true 只更新设置行上的提示，不弹窗打扰 */
+    fun doCheck(silent: Boolean) {
+        if (checking) return
+        checking = true
+        scope.launch {
+            val r = UpdateChecker.fetch(DuoState.updateUrl, ver)
+            checking = false
+            r.onSuccess { info ->
+                DuoState.lastSeenVersion = info.version
+                DuoState.lastUpdateCheck = System.currentTimeMillis()
+                DuoState.save()
+                if (!silent) {
+                    updateInfo = info
+                    updateError = null
+                    showUpdateResult = true
+                }
+            }.onFailure { e ->
+                if (!silent) {
+                    updateInfo = null
+                    updateError = e.message ?: "检查失败"
+                    showUpdateResult = true
+                }
+            }
+        }
+    }
+
+    // 进设置页时静默检查一次，12 小时节流，不弹窗
+    LaunchedEffect(Unit) {
+        if (DuoState.autoCheckUpdate &&
+            System.currentTimeMillis() - DuoState.lastUpdateCheck > UpdateChecker.CHECK_INTERVAL
+        ) {
+            doCheck(silent = true)
+        }
+    }
     // 无障碍服务状态：从系统设置页返回时刷新（否则开关文案一直停在“未开启”）
     var accReady by remember { mutableStateOf(ScreenOff.isEnabled(ctx)) }
     // 通知使用权状态，同样需要在从系统页返回时刷新
@@ -282,6 +328,56 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             )
         }
         item {
+            SectionTitle("更新", dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    val hasNew = DuoState.lastSeenVersion.isNotBlank() &&
+                            UpdateChecker.isNewer(DuoState.lastSeenVersion, ver)
+                    SettingRow(
+                        "检查更新",
+                        when {
+                            checking -> "正在检查 GitHub Releases…"
+                            hasNew -> "发现新版本 v${DuoState.lastSeenVersion} · 点此查看"
+                            DuoState.lastSeenVersion.isNotBlank() -> "已是最新 v${DuoState.lastSeenVersion} · 点此重新检查"
+                            else -> "当前 v$ver · 点此检查 GitHub Releases"
+                        },
+                        dark,
+                        trailing = {
+                            if (checking) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    if (hasNew) Icons.Filled.NewReleases else Icons.Filled.Refresh,
+                                    null,
+                                    tint = if (hasNew) glassBlue else glassSubTextColor(dark),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        },
+                        onClick = { doCheck(silent = false) }
+                    )
+                    SettingToggle(
+                        "自动检查更新", "打开设置时若距上次超过 12 小时，静默查一次",
+                        DuoState.autoCheckUpdate, dark
+                    ) { on -> DuoState.autoCheckUpdate = on; DuoState.save() }
+                    val shownUrl = if (DuoState.updateUrl.length > 48)
+                        DuoState.updateUrl.take(48) + "…" else DuoState.updateUrl
+                    SettingRow("更新源", shownUrl, dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                        onClick = { urlDraft = DuoState.updateUrl; editUpdateUrl = true })
+                    SettingRow("打开项目主页", "github.com/d3ja7u/DuoLauncher", dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                        onClick = { UpdateChecker.openInBrowser(ctx, "https://github.com/d3ja7u/DuoLauncher") })
+                }
+            }
+            Text(
+                "检查走 GitHub 公开接口，无需登录；更新源可改成自建镜像地址。",
+                fontSize = 11.sp,
+                color = glassSubTextColor(dark),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+            )
+        }
+        item {
             SectionTitle("系统", dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
@@ -293,11 +389,6 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         AppRepository.appDetails(ctx, ctx.packageName)
                     }
                     // 版本号直接从包信息读，避免每次发版忘了改这里的硬编码
-                    val ver = remember {
-                        runCatching {
-                            ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName
-                        }.getOrNull() ?: ""
-                    }
                     SettingRow("关于", "DuoLauncher $ver · 为 Titan 2 Elite 打造", dark = dark)
                 }
             }
@@ -352,6 +443,153 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         }
     }
 
+    if (editUpdateUrl) {
+        DuoDialog("更新源地址", dark, onDismiss = { editUpdateUrl = false }) {
+            Text(
+                "可填 GitHub 仓库主页、Releases 网页地址或 api.github.com 接口地址；网页地址会自动转成接口地址，也支持自建镜像的 JSON 地址。",
+                fontSize = 12.sp, color = glassSubTextColor(dark)
+            )
+            Spacer(Modifier.height(10.dp))
+            GlassCard(Modifier.fillMaxWidth().heightIn(min = 60.dp), radius = 12.dp, level = 0.8f, dark = dark) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    if (urlDraft.isEmpty()) Text("https://…", fontSize = 12.sp, color = glassSubTextColor(dark))
+                    BasicTextField(
+                        urlDraft, { urlDraft = it }, singleLine = true,
+                        textStyle = TextStyle(fontSize = 12.sp, color = glassTextColor(dark)),
+                        cursorBrush = SolidColor(glassBlue),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { urlDraft = UpdateChecker.DEFAULT_URL }) {
+                    Text("恢复默认", fontSize = 13.sp, color = glassSubTextColor(dark))
+                }
+                Spacer(Modifier.weight(1f))
+                GlassPrimaryButton("保存", dark, onClick = {
+                    val t = urlDraft.trim()
+                    if (t.isBlank()) {
+                        nav.toast("地址不能为空")
+                    } else {
+                        DuoState.updateUrl = t
+                        DuoState.lastUpdateCheck = 0L
+                        DuoState.lastSeenVersion = ""
+                        DuoState.save()
+                        editUpdateUrl = false
+                        nav.toast("已保存，点「检查更新」立即验证")
+                    }
+                })
+            }
+        }
+    }
+
+    if (showUpdateResult) {
+        UpdateResultDialog(
+            dark = dark,
+            localVersion = ver,
+            info = updateInfo,
+            error = updateError,
+            onDismiss = { showUpdateResult = false },
+            onRetry = { showUpdateResult = false; doCheck(silent = false) }
+        )
+    }
+
+}
+
+/** 把 Release 说明里的 markdown 标记去掉，只留能读的正文 */
+private fun cleanReleaseNotes(src: String): String = src
+    .lineSequence()
+    .map { it.trim() }
+    .filter {
+        it.isNotBlank() && it != "---" && !it.startsWith(">") &&
+                !it.startsWith("**Full Changelog")
+    }
+    .map { line ->
+        line.removePrefix("## ").removePrefix("# ")
+            .replace(Regex("^[-*]\\s+"), "· ")
+            .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1")
+            .replace(Regex("`([^`]*)`"), "$1")
+            .replace(Regex("""\[([^\]]+)\]\([^)]+\)"""), "$1")
+    }
+    .take(16)
+    .joinToString("\n")
+    .replace(Regex("\n{3,}"), "\n\n")
+    .take(700)
+
+/** 检查结果弹窗：新版本 / 已是最新 / 检查失败三种形态 */
+@Composable
+private fun UpdateResultDialog(
+    dark: Boolean,
+    localVersion: String,
+    info: UpdateChecker.ReleaseInfo?,
+    error: String?,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val ctx = LocalContext.current
+    val hasNew = info != null && UpdateChecker.isNewer(info.version, localVersion)
+    DuoDialog(
+        title = when {
+            error != null -> "检查失败"
+            hasNew -> "发现新版本 v${info?.version}"
+            else -> "已是最新版本"
+        },
+        dark = dark,
+        level = 0.95f,
+        opaque = true,
+        onDismiss = onDismiss
+    ) {
+        if (error != null) {
+            Text(error, fontSize = 13.sp, color = glassTextColor(dark))
+            Spacer(Modifier.height(6.dp))
+            Text("请确认网络可用、更新源地址正确后重试。", fontSize = 12.sp, color = glassSubTextColor(dark))
+            Spacer(Modifier.height(14.dp))
+            Row {
+                Spacer(Modifier.weight(1f))
+                GlassPrimaryButton("重试", dark, onRetry)
+            }
+        } else if (info != null) {
+            val rel = info
+            Text("当前 v$localVersion  →  最新 v${rel.version}", fontSize = 13.sp, color = glassTextColor(dark))
+            if (rel.publishedAt.isNotBlank()) {
+                Text("发布于 ${rel.publishedAt}", fontSize = 11.sp, color = glassSubTextColor(dark))
+            }
+            if (rel.apkName.isNotBlank()) {
+                Text(
+                    "安装包：${rel.apkName}" +
+                            if (rel.sizeText.isNotBlank()) "（${rel.sizeText}）" else "",
+                    fontSize = 11.sp, color = glassSubTextColor(dark)
+                )
+            }
+            val notes = remember(rel.notes) { cleanReleaseNotes(rel.notes) }
+            if (notes.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(notes, fontSize = 12.sp, lineHeight = 17.sp, color = glassTextColor(dark))
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (rel.apkUrl.isNotBlank()) {
+                    TextButton(onClick = { UpdateChecker.copy(ctx, "APK 链接", rel.apkUrl) }) {
+                        Text("复制链接", fontSize = 12.sp, color = glassSubTextColor(dark))
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                GlassPrimaryButton("打开下载页", dark, onClick = {
+                    val target = rel.pageUrl.ifBlank { rel.apkUrl }
+                    if (!UpdateChecker.openInBrowser(ctx, target)) {
+                        UpdateChecker.copy(ctx, "下载页地址", target)
+                    }
+                    onDismiss()
+                })
+            }
+        }
+    }
 }
 
 @Composable

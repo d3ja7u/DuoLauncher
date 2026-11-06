@@ -405,10 +405,19 @@ fun DuoDialog(
     title: String,
     dark: Boolean,
     onDismiss: () -> Unit,
+    level: Float = 0.8f,
+    opaque: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        GlassCard(modifier = Modifier.fillMaxWidth().wrapContentHeight(), radius = 28.dp, level = 0.8f, dark = dark) {
+        // 长文本弹窗（如更新说明）需要更实的底板，否则背后的设置项文字会透上来干扰阅读。
+        // 默认关闭，其它弹窗保持原来的通透玻璃效果。
+        val shape = RoundedCornerShape(28.dp)
+        val cardModifier = Modifier.fillMaxWidth().wrapContentHeight().let {
+            if (opaque) it.background(if (dark) Color(0xEE1B2030) else Color(0xF5FFFFFF), shape)
+            else it
+        }
+        GlassCard(modifier = cardModifier, radius = 28.dp, level = level, dark = dark) {
             Column(Modifier.padding(20.dp)) {
                 Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark))
                 Spacer(Modifier.height(12.dp))

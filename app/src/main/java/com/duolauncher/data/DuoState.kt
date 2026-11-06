@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.duolauncher.util.UpdateChecker
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -54,6 +55,15 @@ object DuoState {
 
     var showBadges by mutableStateOf(true)          // 图标右上角显示未读数字
     var badgeColor by mutableStateOf(IOS_RED)       // 角标底色（ARGB）
+
+    // ── GitHub Releases 更新检查 ──
+    /** 更新源地址；可以改成自建镜像，空串会自动回落到默认地址 */
+    var updateUrl by mutableStateOf(UpdateChecker.DEFAULT_URL)
+    /** 进入设置页时静默检查，12 小时内只查一次 */
+    var autoCheckUpdate by mutableStateOf(true)
+    var lastUpdateCheck by mutableStateOf(0L)
+    /** 上次查到的最新版本号，只用来在设置行上显示提示，不弹窗打扰 */
+    var lastSeenVersion by mutableStateOf("")
 
     var smartCategory by mutableStateOf(true)
     var sidebarLeft by mutableStateOf(false)
@@ -166,6 +176,11 @@ object DuoState {
             statusScale = o.optDouble("statusScale", 1.0).toFloat()
             showBadges = o.optBoolean("badgeOn", true)
             badgeColor = o.optInt("badgeColor", IOS_RED)
+            updateUrl = o.optString("updUrl", UpdateChecker.DEFAULT_URL)
+                .ifBlank { UpdateChecker.DEFAULT_URL }
+            autoCheckUpdate = o.optBoolean("updAuto", true)
+            lastUpdateCheck = o.optLong("updAt", 0L)
+            lastSeenVersion = o.optString("updVer", "")
         }
     }
 
@@ -214,6 +229,10 @@ object DuoState {
             o.put("statusScale", statusScale.toDouble())
             o.put("badgeOn", showBadges)
             o.put("badgeColor", badgeColor)
+            o.put("updUrl", updateUrl)
+            o.put("updAuto", autoCheckUpdate)
+            o.put("updAt", lastUpdateCheck)
+            o.put("updVer", lastSeenVersion)
             sp.edit().putString("state", o.toString()).apply()
         }
     }
