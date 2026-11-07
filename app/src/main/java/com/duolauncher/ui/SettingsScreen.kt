@@ -4,7 +4,10 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,7 +41,9 @@ import com.duolauncher.util.Lang
 import com.duolauncher.data.*
 import com.duolauncher.data.IconPacks
 import com.duolauncher.service.DuoNotificationListener
+import com.duolauncher.util.BackupManager
 import com.duolauncher.util.ScreenOff
+import com.duolauncher.util.SearchEngines
 import com.duolauncher.util.UpdateChecker
 import kotlinx.coroutines.launch
 
@@ -98,6 +103,25 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     var showUpdateResult by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
     var updateError by remember { mutableStateOf<String?>(null) }
+    /** 待确认的备份：先弹摘要让用户核对，避免误选文件直接覆盖当前配置 */
+    var pendingImport by remember { mutableStateOf<BackupManager.Info?>(null) }
+
+    // 备份走系统文件选择器（SAF），不需要任何存储权限，文件由用户自己决定放哪
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(BackupManager.MIME)
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val ok = BackupManager.writeTo(ctx, uri, BackupManager.buildJson(ctx, ver))
+        nav.toast(if (ok) Lang.s(R.string.backup_export_ok) else Lang.s(R.string.backup_export_fail))
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val info = BackupManager.readFrom(ctx, uri)?.let { BackupManager.inspect(it) }
+        if (info == null) nav.toast(Lang.s(R.string.backup_invalid))
+        else pendingImport = info
+    }
 
     /** silent=true 只更新设置行上的提示，不弹窗打扰 */
     fun doCheck(silent: Boolean) {
@@ -162,6 +186,11 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             SectionTitle(Lang.s(R.string.sec_sidebar), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
+                    SettingToggle(
+                        Lang.s(R.string.show_sidebar),
+                        Lang.s(R.string.show_sidebar_desc),
+                        DuoState.showSidebar, dark
+                    ) { DuoState.showSidebar = it; DuoState.save() }
                     SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.sidebarLeft) Lang.s(R.string.sidebar_pos_left_long) else Lang.s(R.string.sidebar_pos_right), dark,
                         trailing = {
                             Row {
@@ -190,6 +219,40 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         0.7f..1.4f, dark) { DuoState.iconScale = it; DuoState.save() }
                     SettingSliderRow(Lang.s(R.string.sidebar_icon_size), "${"%.1f".format(DuoState.sidebarIconScale)}×", DuoState.sidebarIconScale,
                         0.6f..1.1f, dark) { DuoState.sidebarIconScale = it; DuoState.save() }
+                }
+            }
+        }
+        item {
+            SectionTitle(Lang.s(R.string.sec_search), dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    SettingRow(
+                        Lang.s(R.string.recent_count),
+                        Lang.s(R.string.recent_count_value, DuoState.recentCount), dark
+                    )
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        SegmentedChips(
+                            options = SearchEngines.RECENT_COUNTS.map { it.toString() to it.toString() },
+                            selected = DuoState.recentCount.toString(),
+                            dark = dark
+                        ) { DuoState.recentCount = it.toInt(); DuoState.save() }
+                    }
+                    SettingRow(
+                        Lang.s(R.string.search_engine),
+                        SearchEngines.label(DuoState.searchEngine), dark
+                    )
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        SegmentedChips(
+                            options = SearchEngines.ALL.map { it.id to Lang.s(it.labelRes) },
+                            selected = DuoState.searchEngine,
+                            dark = dark
+                        ) { DuoState.searchEngine = it; DuoState.save() }
+                    }
+                    SettingToggle(
+                        Lang.s(R.string.search_contacts),
+                        Lang.s(R.string.search_contacts_desc),
+                        DuoState.searchContacts, dark
+                    ) { DuoState.searchContacts = it; DuoState.save() }
                 }
             }
         }
@@ -408,6 +471,36 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             )
         }
         item {
+            SectionTitle(Lang.s(R.string.sec_backup), dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    SettingRow(
+                        Lang.s(R.string.backup_export), Lang.s(R.string.backup_export_desc), dark,
+                        trailing = { Icon(Icons.Filled.ArrowUpward, null, tint = glassSubTextColor(dark)) },
+                        onClick = {
+                            runCatching { exportLauncher.launch(BackupManager.fileName()) }
+                                .onFailure { nav.toast(Lang.s(R.string.backup_export_fail)) }
+                        }
+                    )
+                    SettingRow(
+                        Lang.s(R.string.backup_import), Lang.s(R.string.backup_import_desc), dark,
+                        trailing = { Icon(Icons.Filled.ArrowDownward, null, tint = glassSubTextColor(dark)) },
+                        onClick = {
+                            runCatching {
+                                importLauncher.launch(arrayOf(BackupManager.MIME, "text/plain", "*/*"))
+                            }.onFailure { nav.toast(Lang.s(R.string.backup_invalid)) }
+                        }
+                    )
+                }
+            }
+            Text(
+                Lang.s(R.string.backup_note),
+                fontSize = 11.sp,
+                color = glassSubTextColor(dark),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+            )
+        }
+        item {
             SectionTitle(Lang.s(R.string.sec_system), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
@@ -570,6 +663,52 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             onDismiss = { showUpdateResult = false },
             onRetry = { showUpdateResult = false; doCheck(silent = false) }
         )
+    }
+
+    pendingImport?.let { info ->
+        DuoDialog(
+            Lang.s(R.string.backup_import_confirm_title), dark, opaque = true,
+            onDismiss = { pendingImport = null }
+        ) {
+            Text(
+                Lang.s(R.string.backup_import_from, info.exportedAt, info.versionName),
+                fontSize = 13.sp, color = glassTextColor(dark)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                Lang.s(
+                    R.string.backup_import_summary, info.homeCount, info.sidebarCount,
+                    info.folderCount, info.hiddenCount, info.widgetCount
+                ),
+                fontSize = 12.sp, color = glassSubTextColor(dark)
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                Lang.s(R.string.backup_import_warn),
+                fontSize = 12.sp, color = glassTextColor(dark)
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { pendingImport = null }) {
+                    Text(Lang.s(R.string.cancel), fontSize = 13.sp, color = glassSubTextColor(dark))
+                }
+                Spacer(Modifier.weight(1f))
+                GlassPrimaryButton(Lang.s(R.string.backup_import_confirm), dark, onClick = {
+                    val ok = BackupManager.apply(ctx, info)
+                    pendingImport = null
+                    if (ok) {
+                        nav.toast(Lang.s(R.string.backup_import_ok))
+                        ctx.asActivity()?.let { act ->
+                            // 重建后仍停留在设置页，方便核对恢复结果；语言变化也随之生效
+                            Lang.markReopenSettings(ctx)
+                            act.recreate()
+                        }
+                    } else {
+                        nav.toast(Lang.s(R.string.backup_import_fail))
+                    }
+                })
+            }
+        }
     }
 
 }

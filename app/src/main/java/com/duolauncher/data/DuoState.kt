@@ -25,6 +25,11 @@ object DuoState {
     const val IOS_RED = 0xFFFF3B30.toInt()
     private lateinit var sp: SharedPreferences
     private var ready = false
+    /**
+     * 是否读到过存档。全新安装为 false，只有这时才铺默认侧栏；
+     * 有存档（含备份导入）时，用户主动清空的侧栏 / 主屏都要保持空，不被 onResume 重新填满。
+     */
+    private var hasArchive = false
 
     var selfPackage = "com.duolauncher"
         private set
@@ -58,6 +63,16 @@ object DuoState {
     var showBadges by mutableStateOf(true)          // 图标右上角显示未读数字
     var badgeColor by mutableStateOf(IOS_RED)       // 角标底色（ARGB）
 
+    // ── 搜索 ──
+    /** 搜索页「最近常用」显示数量：5 / 10 / 15 / 20 */
+    var recentCount by mutableStateOf(10)
+    /** 网页搜索引擎 id：baidu / bing / google */
+    var searchEngine by mutableStateOf("baidu")
+    /** 是否在搜索结果里包含通讯录联系人（需要 READ_CONTACTS） */
+    var searchContacts by mutableStateOf(true)
+    /** 主屏幕是否显示玻璃侧边栏 */
+    var showSidebar by mutableStateOf(true)
+
     // ── GitHub Releases 更新检查 ──
     /** 更新源地址；可以改成自建镜像，空串会自动回落到默认地址 */
     var updateUrl by mutableStateOf(UpdateChecker.DEFAULT_URL)
@@ -87,10 +102,10 @@ object DuoState {
     var dragging by mutableStateOf(false)
     var sidebarVer by mutableStateOf(0)             // 侧栏默认槽位版本：<7 表示还是老的 5 槽布局
     /**
-     * 主屏是否已经生成过默认图标。
-     * 之前用 "homeApps 为空" 判断是否首次启动，导致用户把主屏清空后，
+     * 主屏是否已经初始化过。
+     * 早期版本用 "homeApps 为空" 判断是否首次启动，导致用户把主屏清空后，
      * 每次 onResume（reloadApps → ensureDefaults）都会把 16 个应用重新填回去。
-     * 现在用一次性标记：有存档就视为已初始化，清空后不会再自动回填。
+     * 现在用一次性标记；且新版本默认就是空主屏，该标记主要用于兼容老存档。
      */
     var homeSeeded by mutableStateOf(false)
     /**
@@ -122,6 +137,7 @@ object DuoState {
 
     private fun load() {
         val raw = sp.getString("state", null) ?: return
+        hasArchive = true
         runCatching {
             val o = JSONObject(raw)
             homeApps.clear(); homeApps.addAll(o.strArray("home"))
@@ -178,6 +194,12 @@ object DuoState {
             statusScale = o.optDouble("statusScale", 1.0).toFloat()
             showBadges = o.optBoolean("badgeOn", true)
             badgeColor = o.optInt("badgeColor", IOS_RED)
+            recentCount = o.optInt("recentCnt", 10).let { n ->
+                if (n in listOf(5, 10, 15, 20)) n else 10
+            }
+            searchEngine = o.optString("searchEng", "baidu").ifBlank { "baidu" }
+            searchContacts = o.optBoolean("searchContacts", true)
+            showSidebar = o.optBoolean("showSb", true)
             updateUrl = o.optString("updUrl", UpdateChecker.DEFAULT_URL)
                 .ifBlank { UpdateChecker.DEFAULT_URL }
             autoCheckUpdate = o.optBoolean("updAuto", true)
@@ -231,12 +253,24 @@ object DuoState {
             o.put("statusScale", statusScale.toDouble())
             o.put("badgeOn", showBadges)
             o.put("badgeColor", badgeColor)
+            o.put("recentCnt", recentCount)
+            o.put("searchEng", searchEngine)
+            o.put("searchContacts", searchContacts)
+            o.put("showSb", showSidebar)
             o.put("updUrl", updateUrl)
             o.put("updAuto", autoCheckUpdate)
             o.put("updAt", lastUpdateCheck)
             o.put("updVer", lastSeenVersion)
             sp.edit().putString("state", o.toString()).apply()
         }
+    }
+
+    /**
+     * 备份导入后重新读取存档，把新配置灌回这些 Compose State。
+     * [load] 会给每个字段都赋值（缺失的走缺省），所以直接复用即可，不用先手动清空。
+     */
+    fun reload() {
+        if (ready) load()
     }
 
     private fun JSONObject.strArray(key: String): List<String> {
@@ -253,25 +287,13 @@ object DuoState {
             statusTopVer = 1
         }
         val installed = apps.filter { it.packageName != selfPackage }
-        // 只在「首次启动」填一次默认主屏。用户主动清空后必须保持空，
-        // 否则 onResume 每次调用 ensureDefaults 都会把应用塞回去。
-        if (!homeSeeded && homeApps.isEmpty() && installed.isNotEmpty()) {
-            val preferred = listOf(
-                "phone", "dialer", "mms", "sms", "messaging", "camera", "gallery", "photos",
-                "settings", "browser", "chrome", "wechat", "mm", "qq", "alipay", "map",
-                "amap", "baidumap", "calendar", "clock", "music", "file", "documents", "store"
-            )
-            val picked = linkedSetOf<String>()
-            preferred.forEach { key ->
-                installed.firstOrNull { a ->
-                    a.packageName.lowercase().contains(key) && !picked.contains(a.packageName)
-                }?.let { picked.add(it.packageName) }
-            }
-            installed.forEach { if (picked.size < 16 && !picked.contains(it.packageName)) picked.add(it.packageName) }
-            homeApps.addAll(picked.take(16))
-        }
+        // 新安装默认「空主屏」：不再自动塞 16 个应用图标，桌面放什么完全由用户决定。
+        // 想加图标：App 资源库里长按应用 → 添加到主屏幕（或长按主屏空白处）。
+        // homeSeeded 仍置 true：用户主动清空主屏后不会在 onResume 被重新填满。
         homeSeeded = true
-        if (sidebar.isEmpty()) {
+        // 只有全新安装才铺默认侧栏；有存档时（含备份导入 / 用户主动清空）保持现状，
+        // 否则清空侧栏后每次回到桌面都会被自动塞回去。
+        if (!hasArchive && sidebar.isEmpty()) {
             sidebar.addAll(defaultSidebar(installed))
             sidebarVer = SIDEBAR_SLOTS
         } else if (sidebarVer < SIDEBAR_SLOTS && sidebar.size in 4 until SIDEBAR_SLOTS) {

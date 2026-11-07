@@ -122,6 +122,8 @@ fun AppIconCell(
     onWallpaper: Boolean = false,
     wobble: Boolean = false,
     overrideIcon: Drawable? = null,
+    /** 编辑主屏幕时在左上角显示 iOS 风格「-」按钮；非编辑态传 null */
+    onMinusClick: (() -> Unit)? = null,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
@@ -132,53 +134,76 @@ fun AppIconCell(
     )
     val wobbleAngle = if (wobble) wobbleAnim else 0f
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .width(size + 14.dp)
-            .graphicsLayer { rotationZ = wobbleAngle }
-            .combinedClickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-    ) {
-        Box(Modifier.size(size)) {
-            Image(
-                painter = rememberDrawablePainter(overrideIcon ?: rememberAppIcon(app)),
-                contentDescription = app.label,
-                modifier = Modifier.fillMaxSize().clip(squircle(24))
-            )
-            val badge = DuoState.badgeOf(app.packageName)
-            if (badge > 0) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = size * 0.06f, y = -size * 0.04f)
-                ) {
-                    NotificationBadge(badge, size, Color(DuoState.badgeColor))
+    // 外层 Box 不参与抖动：iOS 里只有图标轻微摆动，左上角「-」是静止的
+    Box(contentAlignment = Alignment.TopCenter) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .width(size + 14.dp)
+                .graphicsLayer { rotationZ = wobbleAngle }
+                .combinedClickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                )
+        ) {
+            Box(Modifier.size(size)) {
+                Image(
+                    painter = rememberDrawablePainter(overrideIcon ?: rememberAppIcon(app)),
+                    contentDescription = app.label,
+                    modifier = Modifier.fillMaxSize().clip(squircle(24))
+                )
+                val badge = DuoState.badgeOf(app.packageName)
+                if (badge > 0) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = size * 0.06f, y = -size * 0.04f)
+                    ) {
+                        NotificationBadge(badge, size, Color(DuoState.badgeColor))
+                    }
                 }
             }
+            if (showLabel) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    text = app.label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = (11 * (size.value / 54f)).coerceIn(9.5f, 13f).sp,
+                    textAlign = TextAlign.Center,
+                    color = when {
+                        onWallpaper -> Color.White
+                        else -> glassTextColor(dark)
+                    },
+                    style = TextStyle(
+                        shadow = if (onWallpaper) Shadow(Color(0x88000000), androidx.compose.ui.geometry.Offset(0f, 2f), 4f)
+                        else null
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
-        if (showLabel) {
-            Spacer(Modifier.height(5.dp))
-            Text(
-                text = app.label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = (11 * (size.value / 54f)).coerceIn(9.5f, 13f).sp,
-                textAlign = TextAlign.Center,
-                color = when {
-                    onWallpaper -> Color.White
-                    else -> glassTextColor(dark)
-                },
-                style = TextStyle(
-                    shadow = if (onWallpaper) Shadow(Color(0x88000000), androidx.compose.ui.geometry.Offset(0f, 2f), 4f)
-                    else null
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
+        if (onMinusClick != null) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = (-5).dp, y = (-9).dp)
+                    .size(24.dp)
+                    .shadow(2.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(Color(0xFFAEB4C0))
+                    .clickable(onClick = onMinusClick),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Remove,
+                    Lang.s(R.string.remove_from_home),
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }
@@ -426,6 +451,103 @@ fun DuoDialog(
                 content()
             }
         }
+    }
+}
+
+/** 一排紧凑的分段选项（最近常用数量 / 搜索引擎等共用） */
+@Composable
+fun SegmentedChips(
+    options: List<Pair<String, String>>,
+    selected: String,
+    dark: Boolean,
+    onSelect: (String) -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        options.forEach { (value, label) ->
+            val on = value == selected
+            Text(
+                label,
+                fontSize = 12.sp,
+                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (on) Color.White else glassTextColor(dark),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
+                    .clickable { onSelect(value) }
+                    .padding(horizontal = 11.dp, vertical = 6.dp)
+            )
+            Spacer(Modifier.width(5.dp))
+        }
+    }
+}
+
+/**
+ * 编辑主屏幕时点「-」弹出的 iOS 风格移除确认：
+ * 从主屏幕移除（保留在 App 资源库）/ 删除 App / 取消。
+ */
+@Composable
+fun RemoveAppDialog(
+    appLabel: String,
+    dark: Boolean,
+    onDismiss: () -> Unit,
+    onRemoveHome: () -> Unit,
+    onUninstall: () -> Unit
+) {
+    DuoDialog(
+        title = Lang.s(R.string.remove_app_title, appLabel),
+        dark = dark,
+        onDismiss = onDismiss,
+        level = 0.86f,
+        opaque = true
+    ) {
+        Text(
+            Lang.s(R.string.remove_app_desc),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            color = glassSubTextColor(dark)
+        )
+        Spacer(Modifier.height(16.dp))
+        RemoveDialogButton(Lang.s(R.string.remove_from_home_ios), false, false, dark) {
+            onDismiss(); onRemoveHome()
+        }
+        Spacer(Modifier.height(9.dp))
+        RemoveDialogButton(Lang.s(R.string.delete_app), true, false, dark) {
+            onDismiss(); onUninstall()
+        }
+        Spacer(Modifier.height(9.dp))
+        RemoveDialogButton(Lang.s(R.string.cancel), false, true, dark) { onDismiss() }
+    }
+}
+
+@Composable
+private fun RemoveDialogButton(
+    text: String,
+    danger: Boolean,
+    secondary: Boolean,
+    dark: Boolean,
+    onClick: () -> Unit
+) {
+    // 浅色主题下弹窗底板接近纯白，取消按钮若仍用透明底 + 白字会完全看不见
+    val bg = when {
+        secondary && dark -> Color(0x22FFFFFF)
+        secondary -> Color(0xFFE7E9F2)
+        else -> glassBlue.copy(alpha = 0.52f)
+    }
+    val fg = when {
+        danger -> Color(0xFFFF453A)
+        secondary && !dark -> Color(0xFF1B2030)
+        else -> Color.White
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .clip(RoundedCornerShape(23.dp))
+            .background(bg)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = fg)
     }
 }
 

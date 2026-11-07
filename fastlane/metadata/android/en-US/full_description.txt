@@ -9,6 +9,10 @@ FEATURES
 * Side dock on the right or left, editable and reorderable, with its own icon size
 * App library: category cards OR a strict A-Z list with a wide, draggable alphabet index (the two views are mutually exclusive)
 * Instant app search; right-swipe on the leftmost home page opens it, left-swipe closes it
+* Search apps, contacts or the web (Baidu / Bing / Google); Enter opens the first result, web results open in the default browser
+* Configurable recent-app count (5/10/15/20); the side dock can be hidden
+* Edit mode shows an iOS-style "−" on each icon: Remove from Home / Uninstall / Cancel
+* Fresh installs start with an empty home screen; Settings can export / import the full configuration
 * Notification badges in 8 colors (optional Notification Access)
 * Gestures: split-area down-swipe for notifications / quick settings, double-tap to sleep
 * Third-party icon packs, per-app icon overrides, hidden apps, manual categories
@@ -18,6 +22,7 @@ FEATURES
 PERMISSIONS - WHAT EACH ONE IS FOR
 
 * QUERY_ALL_PACKAGES: the app library and search must enumerate every installed app. The list never leaves the device.
+* READ_CONTACTS: only for the optional contact search. Names and numbers are matched on device; nothing is uploaded or copied into a separate database.
 * Notification Access: counts unread notifications for badges, processed entirely on device.
 * Accessibility Service: used only for double-tap to sleep. canRetrieveWindowContent is false, so it cannot read screen content or keystrokes. It never performs actions on its own.
 * EXPAND_STATUS_BAR: down-swipe gestures that open the notification shade or quick settings.
@@ -30,7 +35,7 @@ PERMISSIONS - WHAT EACH ONE IS FOR
 
 PRIVACY
 
-No ads, no analytics, no crash reporting, no tracking SDK, no Google Play Services and no Firebase. Layout, categories and settings are stored in one local JSON file. There is no account and no sign-in. Nothing is uploaded, and no installed-app list is transmitted. Full privacy policy: https://github.com/d3ja7u/DuoLauncher/blob/main/PRIVACY.md
+No ads, no analytics, no crash reporting, no tracking SDK, no Google Play Services and no Firebase. Layout, categories and settings are stored in one local JSON file. There is no account and no sign-in. Nothing is uploaded, and no installed-app list is transmitted. "Backup & Restore" in Settings uses the system file picker to save the configuration wherever you choose or read it back; it never uploads anything and needs no storage permission. Full privacy policy: https://github.com/d3ja7u/DuoLauncher/blob/main/PRIVACY.md
 
 The optional update checker queries the GitHub Releases API (or releases.atom as fallback) for version information only. It never downloads, installs or executes APKs. When a new version exists, a dialog lets you choose to open the release page in a browser or copy the link - both require a deliberate tap. The check is on demand, at most once per interval when auto-check is enabled, and can be disabled in Settings; the update source is editable or can be pointed at any endpoint. GitHub is a proprietary service, which is why this app carries the NonFreeNet anti-feature.
 

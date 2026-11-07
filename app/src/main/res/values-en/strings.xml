@@ -256,6 +256,51 @@
     <string name="quick_silent">Silent</string>
     <string name="quick_search">Search</string>
     <string name="quick_settings">Settings</string>
+    <!-- Search: settings / recents / engine / contacts / web -->
+    <string name="search_settings">Search settings</string>
+    <string name="sec_search">Search</string>
+    <string name="recent_count">Recent apps count</string>
+    <string name="recent_count_value">%1$d apps</string>
+    <string name="search_engine">Search engine</string>
+    <string name="engine_baidu">Baidu</string>
+    <string name="engine_bing">Bing</string>
+    <string name="engine_google">Google</string>
+    <string name="search_contacts">Search contacts</string>
+    <string name="search_contacts_desc">Include phone contacts in results; requires the Contacts permission</string>
+    <string name="contacts_permission_needed">Tap to allow contact search</string>
+    <string name="section_apps">Apps · %1$d</string>
+    <string name="section_contacts">Contacts · %1$d</string>
+    <string name="section_web">Web search</string>
+    <string name="web_search_with">Search with %1$s</string>
+    <string name="no_match_anything">No matching apps or contacts. Try the web search below.</string>
+    <string name="no_browser">No browser available</string>
+    <string name="open_contact_failed">Could not open contact</string>
+    <string name="call_contact">Call</string>
+    <!-- Sidebar visibility -->
+    <string name="show_sidebar">Show sidebar</string>
+    <string name="show_sidebar_desc">When off, home screen icons use the full width</string>
+    <!-- Edit home screen: iOS style minus confirmation -->
+    <string name="remove_app_title">Remove “%1$s”</string>
+    <string name="remove_app_desc">Removing from Home Screen keeps the app in the App Library; it is not uninstalled.</string>
+    <string name="remove_from_home_ios">Remove from Home Screen</string>
+    <string name="delete_app">Uninstall</string>
+    <!-- Backup and restore -->
+    <string name="sec_backup">Backup and restore</string>
+    <string name="backup_export">Export settings</string>
+    <string name="backup_export_desc">Save a JSON file to share or move to another device</string>
+    <string name="backup_import">Import settings</string>
+    <string name="backup_import_desc">Restore from a backup file; replaces all current settings</string>
+    <string name="backup_export_ok">Backup saved</string>
+    <string name="backup_export_fail">Export failed, try another location</string>
+    <string name="backup_import_confirm_title">Restore this backup?</string>
+    <string name="backup_import_from">Exported %1$s\nVersion %2$s</string>
+    <string name="backup_import_summary">Home %1$d · Sidebar %2$d · Folders %3$d\nHidden %4$d · Widgets %5$d</string>
+    <string name="backup_import_warn">Importing replaces the current home layout and every setting. The launcher will restart.</string>
+    <string name="backup_import_confirm">Restore and restart</string>
+    <string name="backup_import_ok">Settings restored</string>
+    <string name="backup_import_fail">Import failed; the file may be damaged</string>
+    <string name="backup_invalid">Not a valid DuoLauncher backup file</string>
+    <string name="backup_note">A backup contains on-device settings and layout only (including language, icon pack and update source). It excludes badge state, wallpaper images and app data. The file stays where you choose; nothing is uploaded.</string>
     <string-array name="language_options">
         <item>Follow system</item>
         <item>简体中文</item>

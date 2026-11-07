@@ -35,11 +35,14 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 | iOS-style status bar | Time + arc signal + Wi-Fi dots replaces the Android status bar; switchable side, 12/24-hour clock |
 | Sidebar dock | A vertical column of favorite apps on the right (or left); fully editable, reorderable, with its own icon scale |
 | App Library | Category cards plus an iOS-style A–Z list; the right-hand index bar supports tap and drag |
+| Unified search | Apps + phone contacts + web search in one place; Enter opens the first result, web search opens in the default browser |
 | Notification badges | Unread counts on icons, Apple-style outlined bubbles, 8 colors |
 | Gestures | Split swipe-down for notifications / quick settings, swipe right for search, double-tap to sleep |
 | Icon packs | Third-party packs (e.g. Smartisan) with per-app manual icon override |
 | Category management | Automatic grouping by app type, manual per-app override, hide apps |
 | **Multilingual UI** | Simplified Chinese, English and Japanese; follows the device language automatically, with a manual override in Settings |
+| **Clean start** | A fresh install leaves the home screen grid empty; you decide what goes on it |
+| **Settings backup** | Export / import a JSON file covering home layout, sidebar, folders, categories, icons, language and every other setting |
 
 ---
 
@@ -47,16 +50,18 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 
 ### 2.1 Home screen
 
+- **A fresh install starts empty**: no app icons are placed on the home grid (the default sidebar is still there). To add one, tap `···` in the bottom-left → **Add App to Home**, or long-press an app in the App Library. Upgrading an existing setup never clears your icons.
 - **Open an app**: tap its icon.
 - **Change page**: swipe left or right. By default, swiping right goes back one page; swiping right on the leftmost page opens Search (see Gestures).
 - **Move / reorder icons**: long-press and drag; the grid makes room automatically.
-- **Edit Home Screen**: tap `···` in the bottom-left → **Edit Home Screen**. Icons start jiggling; long-press one for its menu (change icon / app info / uninstall). Tap the menu item again to exit.
+- **Edit Home Screen**: tap `···` in the bottom-left → **Edit Home Screen**. Icons jiggle and an iOS-style `-` badge appears at their top-left. Tapping `-` offers **Remove from Home Screen / Uninstall / Cancel** — removing from the Home Screen only sends the icon back to the App Library and does **not** uninstall the app. Long-pressing an icon still opens the full menu (change icon / app info / uninstall). Tap the menu item again to exit.
 - **Home menu** (bottom-left `···`): Edit Home Screen / Add App to Home / Launcher Settings / Change Wallpaper.
 
 ### 2.2 Sidebar
 
 A vertical strip of frequently used apps on the right edge. Tap to launch. Spacing tightens automatically as you add icons, so the search button in the bottom-right stays clear.
 
+- Show / hide: Settings → Sidebar → **Show sidebar**. When off, home icons use the full width; the status indicator stays.
 - Position: Settings → Sidebar → Position (Right / Left).
 - Contents: Settings → Sidebar → Edit Sidebar — add apps or action buttons, drag to reorder.
 - Size: Settings → Sidebar → Sidebar icon size (separate from home icon size).
@@ -80,8 +85,11 @@ Swipe left from the home screen (or right, if **Reverse swipe direction** is ena
 
 Open it by **swiping right on the home screen**, tapping the magnifier in the bottom-right, or swiping right on the leftmost page.
 
-- Filters app names and package names as you type.
-- With an empty query it shows two rows of **Recent** apps.
+- **Apps**: filters names and package names as you type. With an empty query it shows **Recent** apps — the count is configurable (5 / 10 / 15 / 20).
+- **Contacts**: matches names and phone numbers (the Contacts permission is requested on first use). Tap a row to open the contact, tap the phone icon to dial directly.
+- **Web search**: a "Search with Baidu / Bing / Google" row at the bottom. Tapping it — or pressing Enter when no app or contact matches — opens the **system default browser**; there is no embedded web view.
+- **Enter = first result**: pressing Search / Enter on the keyboard opens the first result in order (app → contact → web search).
+- **Search settings**: the gear in the top-right of the search page, or Settings → Search, controls the recent count, search engine and contact toggle. Both edit the same state.
 - To close: **swipe left**, **swipe up**, or press **Back**. The IME is explicitly hidden on close, so no keyboard toolbar is left behind on the home screen.
 
 ### 2.5 Gestures
@@ -120,7 +128,8 @@ In edit mode or in the App Library, long-press an icon to:
 
 | Section | Items |
 |---|---|
-| Sidebar | Position, Edit Sidebar, Cutout top padding, Home icon size, Sidebar icon size |
+| Sidebar | Show sidebar, Position, Edit Sidebar, Cutout top padding, Home icon size, Sidebar icon size |
+| Search | Recent apps count (5 / 10 / 15 / 20), Search engine (Baidu / Bing / Google), Search contacts |
 | iOS-style Status Bar | Show time and arc signal, Position, 24-hour clock, Signal dots follow real strength, Top offset, Status bar size |
 | Home Screen & Gestures | Show Android status bar, Show page indicators, Reverse swipe direction, Double-tap to sleep, Swipe down for notifications / quick settings, Swipe right to search |
 | App Library | Smart categories, Edit App Category, Hide App |
@@ -128,6 +137,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Icon Pack | Current icon pack (auto-detects installed packs) |
 | Notification Badges | Show unread badges, Badge color, Notification access |
 | Updates | Check for updates, Auto-check for updates, Update source, Open project page |
+| Backup and restore | Export settings, Import settings |
 | System | **Language**, Set as default launcher, Change Wallpaper, DuoLauncher app info, About |
 
 Open it from the home screen: bottom-left `···` → Launcher Settings.
@@ -143,6 +153,17 @@ DuoLauncher ships with **Simplified Chinese**, **English** and **Japanese**.
 
 Translations live in `app/src/main/res/values/`, `values-en/` and `values-ja/`. `util/Lang.kt` handles locale switching and exposes `Lang.s()` for string lookups outside composables.
 
+### 3.2 Backup and restore
+
+Settings → **Backup and restore**:
+
+- **Export settings**: opens the system "Save file" dialog. The suggested name is `DuoLauncher-backup-YYYYMMDD-HHmm.json` and you choose where it goes (local storage, cloud drive, another device).
+- **Import settings**: pick a previously exported JSON. A summary is shown first (export time, version, counts of home icons / sidebar items / folders / hidden apps / widgets); only after confirming does it replace the current configuration and restart the launcher.
+
+A backup holds the full local configuration: home layout and order, sidebar, folders, hidden apps, categories and per-app icon overrides, icon pack, appearance and gestures, badge settings, search settings, UI language, update source and update-check records. It **does not** contain badge read state, wallpaper images, app data, contacts or accounts. The file is written only to the location you pick — nothing is uploaded, and importing reads only that one file.
+
+Import **replaces everything**; there is no per-item selection, so export your current setup first. When restoring on another device, icons referencing apps that are not installed there are skipped; the rest of the layout is preserved.
+
 ---
 
 ## 4. Permissions & privacy
@@ -153,6 +174,7 @@ Translations live in `app/src/main/res/values/`, `values-en/` and `values-ja/`. 
 | Accessibility (DuoLauncher Sleep Service) | Double-tap to sleep; fallback path for opening system panels | Only for double-tap sleep |
 | `EXPAND_STATUS_BAR` | Expand notifications / quick settings | Normal permission, granted at install |
 | `QUERY_ALL_PACKAGES` | List and launch installed apps | Required |
+| `READ_CONTACTS` | Match phone contacts in search results | Optional, requested on demand |
 | `REQUEST_DELETE_PACKAGES` | Uninstall apps | Optional |
 | `BIND_APPWIDGET` | Host home screen widgets | Optional |
 

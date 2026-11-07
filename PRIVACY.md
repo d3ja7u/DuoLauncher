@@ -17,7 +17,9 @@ This is a personal open-source project. Source and issue tracker: https://github
 
 ### 本机存储的数据
 
-应用只在设备本地保存一个配置文件（JSON）与一个语言偏好项，内容包括：桌面图标布局与顺序、侧边栏内容、分类与隐藏应用列表、壁纸与界面外观设置、手势开关、通知角标设置、界面语言、可选的更新源地址、上次检查更新的时间与上次看到的版本号。这些数据仅用于还原你自己的桌面配置，**不会离开设备**，卸载应用即全部删除；也可以在系统「设置 → 应用 → DuoLauncher → 清除数据」中随时清除。
+应用只在设备本地保存一个配置文件（JSON）与一个语言偏好项，内容包括：桌面图标布局与顺序、侧边栏内容与显隐、分类与隐藏应用列表、壁纸与界面外观设置、手势开关、通知角标设置、界面语言、搜索设置（最近常用数量、搜索引擎、是否搜索联系人）、可选的更新源地址、上次检查更新的时间与上次看到的版本号。这些数据仅用于还原你自己的桌面配置，**不会离开设备**，卸载应用即全部删除；也可以在系统「设置 → 应用 → DuoLauncher → 清除数据」中随时清除。
+
+**设置备份**：设置 → 备份与恢复 → 导出设置，会把上述配置写成一个 JSON 文件，保存位置完全由你在系统文件选择器里决定。应用不会自动上传，也不会访问该位置以外的文件；导入时只读取你主动选中的那一份文件，并整体覆盖当前配置。文件里除配置外还记录导出时间与应用版本号，不包含通知角标已读状态、壁纸图片、应用数据、通讯录或任何账号信息。此功能不需要存储权限（使用系统文件选择器 SAF）。
 
 ### 网络访问
 
@@ -28,13 +30,14 @@ This is a personal open-source project. Source and issue tracker: https://github
 - 更新源地址可以清空或改成任意地址。若把地址改为第三方服务，该服务将按它自己的政策处理请求，这一点由你自行决定。
 - GitHub 属于专有网络服务，因此在 F-Droid 类仓库中本应用会带 `NonFreeNet` 标记。
 
-除上述功能外，应用不发起任何网络请求，也没有后台数据同步。
+除上述功能外，应用本身不发起任何网络请求，也没有后台数据同步。**网页搜索**只是把关键词拼进搜索 URL，用 `Intent.ACTION_VIEW` 交给系统默认浏览器打开；实际联网发生在浏览器里，由浏览器按它自己的政策处理，应用不记录关键词、不接收搜索结果。
 
 ### 权限逐项说明
 
 | 权限 / 能力 | 用途 | 是否必需 |
 |---|---|---|
 | `QUERY_ALL_PACKAGES` | 枚举已安装应用，用于 App 资源库、字母索引与搜索 | 启动器核心功能，必需；应用列表仅在本地使用 |
+| `READ_CONTACTS` | 在搜索结果里按姓名 / 号码匹配通讯录联系人 | 可选，首次使用时按需申请；只在设备本地查询，不上传、不保存副本、不读取其它联系人字段 |
 | 通知使用权（`BIND_NOTIFICATION_LISTENER_SERVICE`） | 统计未读通知数量以显示角标 | 可选，仅本机处理，不读取通知正文上传 |
 | 无障碍服务（`BIND_ACCESSIBILITY_SERVICE`） | 仅用于「双击桌面熄屏」，调用系统锁屏全局操作 | 可选；`canRetrieveWindowContent=false`，不读取屏幕内容、不监听输入、不自主执行动作 |
 | `EXPAND_STATUS_BAR` | 下滑手势展开通知栏 / 控制中心 | 可选，未授权时有降级处理 |
@@ -76,6 +79,8 @@ This is a personal open-source project. Source and issue tracker: https://github
 
 The app keeps one local JSON configuration file and one language preference, containing home screen layout and icon order, dock contents, categories and hidden apps, wallpaper and appearance settings, gesture toggles, badge settings, UI language, the optional update source URL, the last update-check timestamp, and the last version seen. This data exists only to restore your own setup, **never leaves the device**, and is removed when you uninstall the app. You can also clear it at any time via Android Settings → Apps → DuoLauncher → Clear data.
 
+**Settings backup**: Settings → Backup and restore → Export settings writes that configuration to a JSON file at a location you choose with the system file picker. Nothing is uploaded and the app never accesses files outside that single selection; importing reads only the file you explicitly pick and replaces the current configuration. Apart from the settings, the file holds the export time and app version — no badge read state, wallpaper image, app data, contacts or account information. No storage permission is needed (it uses the Storage Access Framework).
+
 ### Network access
 
 The only network feature is the **optional update check** (Settings → Updates). It performs a plain HTTPS GET against the GitHub Releases API (default `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`, with automatic fallback to `releases.atom`) or a URL you enter yourself. The request contains **no** device identifiers, account information, location, installed-app list, or local settings. The response is parsed only for the version number, release notes, and the APK file name and size.
@@ -85,13 +90,14 @@ The only network feature is the **optional update check** (Settings → Updates)
 - The update source can be cleared or pointed at any endpoint. If you change it to a third-party service, that service's own policy applies.
 - GitHub is a proprietary service, so the app carries the `NonFreeNet` anti-feature in F-Droid-style repositories.
 
-No other network requests are made and there is no background synchronization.
+No other network requests are made and there is no background synchronization. **Web search** only builds a search URL from your query and hands it to the system default browser via `Intent.ACTION_VIEW`; the request itself happens inside the browser under its own policy. The launcher neither logs the query nor receives the results.
 
 ### Permissions
 
 | Permission / capability | Purpose | Required |
 |---|---|---|
 | `QUERY_ALL_PACKAGES` | Enumerate installed apps for the library, alphabet index and search | Core launcher function; the list stays on device |
+| `READ_CONTACTS` | Match contact names / numbers in search results | Optional, requested on first use; queried on device only, never uploaded, copied or used beyond the current query |
 | Notification Access (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Count unread notifications for badges | Optional; processed on device only, no content uploaded |
 | Accessibility Service (`BIND_ACCESSIBILITY_SERVICE`) | Double-tap to sleep, via the system lock-screen action | Optional; `canRetrieveWindowContent=false`, cannot read screen content or input, takes no autonomous actions |
 | `EXPAND_STATUS_BAR` | Down-swipe to open the notification shade / quick settings | Optional, with a graceful fallback |
@@ -133,6 +139,8 @@ Any future feature that changes the above will be reflected here first and noted
 
 設定は端末内の JSON ファイル 1 つと言語設定 1 項に保存されます。内容はホーム画面のレイアウトと並び順、サイドドック、カテゴリと非表示アプリ、壁紙・外観設定、ジェスチャー、バッジ設定、表示言語、任意の更新元 URL、最終確認日時、最後に確認したバージョンです。これらは自分の設定を復元するためだけに使われ、**端末外に送信されません**。アンインストールで削除され、Android の設定 → アプリ → DuoLauncher → データを消去 からいつでも消せます。
 
+**設定のバックアップ**：設定 → バックアップと復元 → 設定を書き出す と、上記の設定をシステムのファイル選択画面で指定した場所へ JSON ファイルとして保存します。自動アップロードは行わず、選択したファイル以外にアクセスすることもありません。読み込み時に参照するのも利用者が明示的に選んだ 1 ファイルだけで、現在の設定を丸ごと上書きします。ファイルには設定のほかに書き出し日時とアプリのバージョンが含まれますが、通知バッジの既読状態、壁紙画像、アプリデータ、連絡先、アカウント情報は含まれません。ストレージ権限は不要です（SAF を利用）。
+
 ### ネットワークアクセス
 
 唯一の通信は**任意の「更新確認」**（設定 → 更新）です。GitHub Releases API（既定 `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`、利用不可時は `releases.atom` へ自動フォールバック）、または利用者が指定した URL に通常の HTTPS GET を 1 回送ります。リクエストには端末識別子、アカウント、位置情報、インストール済みアプリ一覧、端末内設定は**含まれません**。レスポンスからはバージョン番号、更新内容、APK のファイル名とサイズのみを読み取ります。
@@ -142,13 +150,14 @@ Any future feature that changes the above will be reflected here first and noted
 - 更新元は空にすることも任意の URL に変更することもできます。第三者サービスに変更した場合はそのサービスのポリシーが適用されます。
 - GitHub はプロプライエタリなサービスのため、F-Droid 系リポジトリでは `NonFreeNet` アンチフィーチャーが付きます。
 
-これ以外の通信はなく、バックグラウンド同期もありません。
+これ以外の通信はなく、バックグラウンド同期もありません。**Web 検索**は入力語を検索 URL に組み込み、`Intent.ACTION_VIEW` でシステム標準ブラウザに渡すだけです。実際の通信はブラウザ側で行われ、ランチャーは検索語を記録せず結果も受け取りません。
 
 ### 権限
 
 | 権限・機能 | 用途 | 必須か |
 |---|---|---|
 | `QUERY_ALL_PACKAGES` | アプリライブラリ・文字インデックス・検索のため全アプリを列挙 | ランチャーの中核機能。一覧は端末内のみ |
+| `READ_CONTACTS` | 検索結果に連絡先の名前／番号を表示 | 任意。初回時に要求。端末内のみで照会し、外部送信・複製はしない |
 | 通知アクセス（`BIND_NOTIFICATION_LISTENER_SERVICE`） | 未読数をバッジに表示 | 任意。端末内処理のみ、本文の送信なし |
 | アクセシビリティサービス（`BIND_ACCESSIBILITY_SERVICE`） | ダブルタップでスリープ（システムのロック操作を呼ぶだけ） | 任意。`canRetrieveWindowContent=false` で画面内容・入力を読み取らず、自律動作もしない |
 | `EXPAND_STATUS_BAR` | 下スワイプで通知欄／クイック設定 | 任意。未許可時は代替動作 |

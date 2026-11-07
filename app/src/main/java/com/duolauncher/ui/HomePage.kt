@@ -78,6 +78,8 @@ fun HomePage(
     var sidebarMenu by remember { mutableStateOf<SidebarItem?>(null) }
     var showHomeMenu by remember { mutableStateOf(false) }
     var openFolder by remember { mutableStateOf<FolderItem?>(null) }
+    /** 编辑态点「-」后待确认移除的应用 */
+    var removeTarget by remember { mutableStateOf<AppInfo?>(null) }
 
     val packPkg = DuoState.iconPack
 
@@ -120,8 +122,10 @@ fun HomePage(
     // 图标多（8 个以上）时收紧纵向间距，否则整条侧栏会顶到右下角搜索键上
     val sidebarItemCount = DuoState.sidebar.size.coerceAtMost(9)
     val sidebarItemGap = if (sidebarItemCount >= 8) 5.dp else 9.dp
-    val gridStart = if (leftSide) lane else 14.dp
-    val gridEnd = if (leftSide) 14.dp else lane
+    // 侧边栏隐藏后，主屏网格不再为那条玻璃通道留白，左右都回到常规边距
+    val showSidebar = DuoState.showSidebar
+    val gridStart = if (!showSidebar) 14.dp else if (leftSide) lane else 14.dp
+    val gridEnd = if (!showSidebar) 14.dp else if (leftSide) 14.dp else lane
 
     // 主屏条目：按 DuoState.homeTokens() 的统一顺序（应用与文件夹可混排，支持拖拽排序）
     val entries: List<HomeEntry> = DuoState.homeTokens().mapNotNull { token ->
@@ -357,6 +361,8 @@ fun HomePage(
                                             showLabel = true,
                                             onWallpaper = true,
                                             wobble = editMode,
+                                            // 编辑态左上角显示 iOS 风格「-」，点它弹移除确认
+                                            onMinusClick = if (editMode) ({ removeTarget = app }) else null,
                                             onClick = {
                                                 if (editMode) nav.showAppMenu(app, "home")
                                                 else AppRepository.launch(ctx, app.packageName)
@@ -419,6 +425,8 @@ fun HomePage(
         }
 
         // ── 玻璃侧边栏：与状态栏同处一条纵向通道，顶部与网格对齐 ──
+        // 设置里可以整体隐藏；隐藏后状态指示器仍保留，但不再为侧栏留白
+        if (showSidebar) {
         GlassCard(
             modifier = Modifier
                 .align(if (leftSide) Alignment.TopStart else Alignment.TopEnd)
@@ -486,6 +494,7 @@ fun HomePage(
                     }
                 }
             }
+        }
         }
 
         // ── iOS 风格状态指示：与侧边栏共用同一条纵向通道，水平完全居中对齐 ──
@@ -555,6 +564,17 @@ fun HomePage(
                 }
             }
         }
+    }
+
+    // 编辑态点「-」→ iOS 风格移除确认（从主屏幕移除 / 卸载应用 / 取消）
+    removeTarget?.let { app ->
+        RemoveAppDialog(
+            appLabel = app.label,
+            dark = dark,
+            onDismiss = { removeTarget = null },
+            onRemoveHome = { DuoState.removeHome(app.packageName) },
+            onUninstall = { AppRepository.uninstall(ctx, app.packageName) }
+        )
     }
 
     // 文件夹展开

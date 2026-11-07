@@ -1,0 +1,6 @@
+· Search settings: choose 5 / 10 / 15 / 20 recent apps
+· Search apps, contacts or the web (Baidu / Bing / Google); Enter opens the first result, web results open in your default browser
+· Edit mode now shows an iOS-style "−" on each icon: Remove from Home / Uninstall / Cancel; the side dock can be hidden
+· Fresh installs start with an empty home screen (side dock keeps its defaults); clearing the home screen no longer refills it
+· New Backup & Restore section: export / import the full configuration with a summary confirmation
+· Updated all three translations, README files and the privacy policy

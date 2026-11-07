@@ -256,6 +256,51 @@
     <string name="quick_silent">静音</string>
     <string name="quick_search">搜索</string>
     <string name="quick_settings">启动器</string>
+    <!-- 搜索：设置 / 最近常用 / 搜索引擎 / 联系人 / 网页 -->
+    <string name="search_settings">搜索设置</string>
+    <string name="sec_search">搜索</string>
+    <string name="recent_count">最近常用数量</string>
+    <string name="recent_count_value">%1$d 个</string>
+    <string name="search_engine">搜索引擎</string>
+    <string name="engine_baidu">百度</string>
+    <string name="engine_bing">必应</string>
+    <string name="engine_google">谷歌</string>
+    <string name="search_contacts">搜索联系人</string>
+    <string name="search_contacts_desc">在搜索结果里显示通讯录联系人，需授权读取通讯录</string>
+    <string name="contacts_permission_needed">点此授权，搜索通讯录联系人</string>
+    <string name="section_apps">应用 · %1$d</string>
+    <string name="section_contacts">联系人 · %1$d</string>
+    <string name="section_web">网页搜索</string>
+    <string name="web_search_with">使用 %1$s 搜索</string>
+    <string name="no_match_anything">没有找到匹配的应用或联系人，可用下方网页搜索</string>
+    <string name="no_browser">没有可用的浏览器</string>
+    <string name="open_contact_failed">无法打开联系人</string>
+    <string name="call_contact">拨号</string>
+    <!-- 侧边栏显隐 -->
+    <string name="show_sidebar">显示侧边栏</string>
+    <string name="show_sidebar_desc">关闭后主屏幕图标将占满整行</string>
+    <!-- 编辑主屏幕：iOS 风格「-」移除确认 -->
+    <string name="remove_app_title">要移除「%1$s」吗</string>
+    <string name="remove_app_desc">「从主屏幕移除」会将应用保留在 App 资源库中，不会卸载应用。</string>
+    <string name="remove_from_home_ios">从主屏幕移除</string>
+    <string name="delete_app">卸载应用</string>
+    <!-- 设置备份与恢复 -->
+    <string name="sec_backup">备份与恢复</string>
+    <string name="backup_export">导出设置</string>
+    <string name="backup_export_desc">保存为 JSON 文件，可放进网盘或传到另一台设备</string>
+    <string name="backup_import">导入设置</string>
+    <string name="backup_import_desc">从备份文件恢复，会覆盖当前全部设置</string>
+    <string name="backup_export_ok">备份已保存</string>
+    <string name="backup_export_fail">导出失败，请换一个保存位置重试</string>
+    <string name="backup_import_confirm_title">确认恢复这份备份</string>
+    <string name="backup_import_from">导出时间 %1$s\n版本 %2$s</string>
+    <string name="backup_import_summary">主屏 %1$d · 侧栏 %2$d · 文件夹 %3$d\n隐藏 %4$d · 小组件 %5$d</string>
+    <string name="backup_import_warn">导入会覆盖当前的主屏布局与所有设置，启动器将自动重启。</string>
+    <string name="backup_import_confirm">恢复并重启</string>
+    <string name="backup_import_ok">设置已恢复</string>
+    <string name="backup_import_fail">导入失败，文件可能已损坏</string>
+    <string name="backup_invalid">不是有效的 DuoLauncher 备份文件</string>
+    <string name="backup_note">备份只包含本机设置与布局（含界面语言、图标包、更新源），不含通知角标、壁纸图片和应用数据；文件保存在你选择的位置，不会自动上传。</string>
     <string-array name="language_options">
         <item>跟随系统</item>
         <item>简体中文</item>
