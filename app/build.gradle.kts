@@ -16,8 +16,8 @@ android {
         applicationId = "com.duolauncher"
         minSdk = 28
         targetSdk = 34
-        versionCode = 144
-        versionName = "1.5.7"
+        versionCode = 145
+        versionName = "1.5.8"
     }
 
     signingConfigs {

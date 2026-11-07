@@ -1,18 +1,30 @@
 package com.duolauncher.data
 
 import android.graphics.drawable.Drawable
+import android.os.UserHandle
 import com.duolauncher.R
 import com.duolauncher.util.Lang
 
-/** 一个已安装、可启动的应用 */
+/** 一个已安装、可启动的应用（可来自主用户，也可来自克隆 / 工作资料） */
 data class AppInfo(
     val label: String,
     val packageName: String,
     val icon: Drawable,
     val systemCategory: Int = -1,
     /** 启动 Activity 的完整类名（含包名），用于图标包 appfilter 匹配 */
-    val activityClass: String = ""
-)
+    val activityClass: String = "",
+    /** 安装用户的序号：0 = 主用户；非 0 = 克隆 / 工作资料（UserManager.getSerialNumberForUser） */
+    val userId: Int = 0,
+    /** 非主用户时用于跨用户启动的 UserHandle；只在内存中，不持久化 */
+    val userHandle: UserHandle? = null
+) {
+    /**
+     * 全局唯一且稳定的配置键。主用户仍用纯包名，
+     * 因此旧存档里的主屏 / 侧栏 / 隐藏 / 图标覆盖等配置完全兼容。
+     */
+    val id: String get() = if (userId == 0) packageName else "$packageName@$userId"
+    val isClone: Boolean get() = userId != 0
+}
 
 /** 侧边栏条目：type = app | action，value = 包名 或 动作 id */
 data class SidebarItem(val type: String, val value: String) {

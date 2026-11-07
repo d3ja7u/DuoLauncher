@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_clone_suffix">（分身）</string>
     <string name="duo_lock_label">DuoLauncher 息屏服务</string>
     <string name="duo_lock_desc">仅用于「双击桌面息屏」。此服务不读取屏幕内容、不监听输入，只调用系统的「锁定屏幕」全局操作。</string>
     <string name="search">搜索</string>

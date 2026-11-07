@@ -82,7 +82,7 @@ fun IconPickerDialog(
     // 资源名 -> 原本对应的应用名（图标包里资源名常常是 icon00a1b2 这种，靠它才认得出）
     var owners by remember(pack) { mutableStateOf<Map<String, String>>(emptyMap()) }
     var loading by remember(pack) { mutableStateOf(true) }
-    val current = DuoState.iconOverride[app.packageName]
+    val current = DuoState.iconOverride[app.id]
 
     LaunchedEffect(pack) {
         loading = true
@@ -236,7 +236,7 @@ fun IconPickerDialog(
                                             else Color.Transparent
                                         )
                                         .clickable {
-                                            DuoState.iconOverride[app.packageName] = "$pack|$name"
+                                            DuoState.iconOverride[app.id] = "$pack|$name"
                                             DuoState.save()
                                             onDismiss()
                                         }
@@ -289,7 +289,7 @@ fun IconPickerDialog(
                     BottomBar(
                         dark = dark,
                         onReset = if (current != null) ({
-                            DuoState.iconOverride.remove(app.packageName)
+                            DuoState.iconOverride.remove(app.id)
                             DuoState.save()
                             onDismiss()
                         }) else null,

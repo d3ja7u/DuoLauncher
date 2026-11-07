@@ -359,23 +359,24 @@ object DuoState {
         val picked = linkedSetOf<String>()
         preferred.forEach { key ->
             installed.firstOrNull { a ->
-                a.packageName.lowercase().contains(key) && !picked.contains(a.packageName)
-            }?.let { picked.add(it.packageName) }
+                a.packageName.lowercase().contains(key) && !picked.contains(a.id)
+            }?.let { picked.add(it.id) }
         }
-        installed.forEach { if (picked.size < SIDEBAR_SLOTS - 1) picked.add(it.packageName) }
+        installed.forEach { if (picked.size < SIDEBAR_SLOTS - 1) picked.add(it.id) }
         val items = picked.take(SIDEBAR_SLOTS - 1).map { SidebarItem("app", it) }.toMutableList()
         items.add(SidebarItem("action", "search"))
         return items
     }
 
     fun visibleApps(): List<AppInfo> =
-        apps.filter { it.packageName != selfPackage && !hidden.contains(it.packageName) }
+        apps.filter { it.packageName != selfPackage && !hidden.contains(it.id) }
 
     fun categoryOf(app: AppInfo): String =
-        categoryOverride[app.packageName]
+        categoryOverride[app.id]
             ?: if (smartCategory) guessCategory(app.label, app.packageName, app.systemCategory) else "system"
 
-    fun appOf(pkg: String): AppInfo? = apps.firstOrNull { it.packageName == pkg }
+    /** 按 AppInfo.id 查找。主用户 id 仍是纯包名，旧存档无需迁移 */
+    fun appOf(key: String): AppInfo? = apps.firstOrNull { it.id == key }
 
     // ── 通知角标 ──
     /** 图标上要显示的数字；关闭角标或无未读时为 0 */
@@ -406,13 +407,13 @@ object DuoState {
         val sorted = usage.entries
             .sortedWith(compareByDescending<Map.Entry<String, UsageRec>> { it.value.last }
                 .thenByDescending { it.value.count })
-            .mapNotNull { e -> available.firstOrNull { it.packageName == e.key } }
-            .distinctBy { it.packageName }
+            .mapNotNull { e -> available.firstOrNull { it.id == e.key } }
+            .distinctBy { it.id }
             .take(count)
             .toMutableList()
         if (sorted.size < count) {
             available.sortedBy { it.label }.forEach {
-                if (sorted.size < count && sorted.none { a -> a.packageName == it.packageName }) sorted.add(it)
+                if (sorted.size < count && sorted.none { a -> a.id == it.id }) sorted.add(it)
             }
         }
         return sorted

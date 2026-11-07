@@ -370,7 +370,7 @@ fun HomePage(
                                             onMinusClick = if (editMode) ({ removeTarget = app }) else null,
                                             onClick = {
                                                 if (editMode) nav.showAppMenu(app, "home")
-                                                else AppRepository.launch(ctx, app.packageName)
+                                                else AppRepository.launch(ctx, app.id)
                                             },
                                             // 长按交给上面的拖拽手势：拿起→拖动；长按不动→松手时弹菜单
                                             onLongClick = {}
@@ -581,8 +581,8 @@ fun HomePage(
             appLabel = app.label,
             dark = dark,
             onDismiss = { removeTarget = null },
-            onRemoveHome = { DuoState.removeHome(app.packageName) },
-            onUninstall = { AppRepository.uninstall(ctx, app.packageName) }
+            onRemoveHome = { DuoState.removeHome(app.id) },
+            onUninstall = { AppRepository.uninstall(ctx, app.id) }
         )
     }
 
@@ -592,7 +592,7 @@ fun HomePage(
             folder = folder,
             dark = dark,
             onDismiss = { openFolder = null },
-            onLaunch = { app -> AppRepository.launch(ctx, app.packageName); openFolder = null },
+            onLaunch = { app -> AppRepository.launch(ctx, app.id); openFolder = null },
             onRename = { name -> DuoState.renameFolder(folder.id, name) },
             onRemoveApp = { pkg -> DuoState.removeAppFromFolder(folder.id, pkg) },
             onDelete = { DuoState.deleteFolder(folder.id); openFolder = null }
@@ -616,7 +616,7 @@ fun HomePage(
             if (item.type == "app") {
                 DuoState.appOf(item.value)?.let {
                     MenuRow(Icons.Filled.Info, Lang.s(R.string.app_info), dark = dark) {
-                        AppRepository.appDetails(ctx, it.packageName); sidebarMenu = null
+                        AppRepository.appDetails(ctx, it.id); sidebarMenu = null
                     }
                 }
             }
@@ -670,7 +670,7 @@ private fun FolderOpenDialog(
         dark = dark,
         onDismiss = onDismiss,
         onLaunch = onLaunch,
-        onLongClick = { onRemoveApp(it.packageName) },
+        onLongClick = { onRemoveApp(it.id) },
         footer = {
             if (editingName) {
                 BasicTextField(

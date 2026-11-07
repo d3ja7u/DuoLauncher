@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_clone_suffix">（クローン）</string>
     <string name="duo_lock_label">DuoLauncher スリープサービス</string>
     <string name="duo_lock_desc">ダブルタップでスリープするためだけに使用します。画面内容の読み取りや入力の監視は行わず、システムの画面ロック操作を呼び出すだけです。</string>
     <string name="search">検索</string>

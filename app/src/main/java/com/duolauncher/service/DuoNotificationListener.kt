@@ -4,6 +4,9 @@ import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Process
+import android.os.UserManager
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.NotificationListenerService.RankingMap
@@ -174,7 +177,23 @@ class DuoNotificationListener : NotificationListenerService() {
         }
     }
 
-    private fun keyOf(sbn: StatusBarNotification) = "${sbn.packageName}|${sbn.id}|${sbn.tag ?: ""}"
+    /**
+     * 通知所属应用对应的 AppInfo.id：主用户是纯包名，克隆空间是 `包名@用户序号`。
+     * 两个微信包名相同，不区分用户的话角标会串在一起。
+     */
+    private fun appKeyOf(sbn: StatusBarNotification): String {
+        val pkg = sbn.packageName ?: return ""
+        val serial = runCatching {
+            if (Build.VERSION.SDK_INT < 29) return@runCatching -1L
+            val uh = sbn.user ?: return@runCatching -1L
+            if (uh == Process.myUserHandle()) return@runCatching -1L
+            val um = getSystemService(Context.USER_SERVICE) as? UserManager
+            um?.getSerialNumberForUser(uh) ?: -1L
+        }.getOrDefault(-1L)
+        return if (serial > 0) "$pkg@$serial" else pkg
+    }
+
+    private fun keyOf(sbn: StatusBarNotification) = "${appKeyOf(sbn)}|${sbn.id}|${sbn.tag ?: ""}"
 
     private fun countOf(sbn: StatusBarNotification): Int {
         val n: Notification = sbn.notification ?: return 1

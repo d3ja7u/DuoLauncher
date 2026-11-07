@@ -154,7 +154,7 @@ fun AppIconCell(
                     contentDescription = app.label,
                     modifier = Modifier.fillMaxSize().clip(squircle(24))
                 )
-                val badge = DuoState.badgeOf(app.packageName)
+                val badge = DuoState.badgeOf(app.id)
                 if (badge > 0) {
                     Box(
                         Modifier
@@ -715,7 +715,7 @@ fun FolderWindow(
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
                             verticalArrangement = Arrangement.spacedBy(vGap)
                         ) {
-                            items(apps, key = { it.packageName }) { app ->
+                            items(apps, key = { it.id }) { app ->
                                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                                     AppIconCell(
                                         app = app,

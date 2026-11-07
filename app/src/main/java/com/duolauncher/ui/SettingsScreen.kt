@@ -1184,7 +1184,7 @@ private fun AppPickerDialog(
                     apps.forEach { app ->
                         Row(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                .clickable { onPick(app.packageName) }
+                                .clickable { onPick(app.id) }
                                 .padding(vertical = 9.dp, horizontal = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1227,7 +1227,7 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(10.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)) {
-            items(apps, key = { it.packageName }) { app ->
+            items(apps, key = { it.id }) { app ->
                 GlassCard(Modifier.fillMaxWidth().height(60.dp).padding(vertical = 5.dp), radius = 16.dp, level = 0.8f, dark = dark) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Image(rememberDrawablePainter(rememberAppIcon(app)), null, Modifier.size(34.dp).clip(squircle(24)))
@@ -1235,7 +1235,7 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
                         Column(Modifier.weight(1f)) {
                             Text(app.label, fontSize = 14.sp, color = glassTextColor(dark), maxLines = 1)
                             Text(
-                                if (DuoState.categoryOverride.containsKey(app.packageName)) Lang.s(R.string.manual_category)
+                                if (DuoState.categoryOverride.containsKey(app.id)) Lang.s(R.string.manual_category)
                                 else if (DuoState.smartCategory) Lang.s(R.string.smart_category_switch) else Lang.s(R.string.uncategorized),
                                 fontSize = 10.sp, color = glassSubTextColor(dark)
                             )
@@ -1253,11 +1253,11 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
     editing?.let { app ->
         DuoDialog(Lang.s(R.string.cat_of_app, app.label), dark, onDismiss = { editing = null }) {
             MenuRow(Icons.Filled.AutoAwesome, Lang.s(R.string.follow_smart_category), dark = dark) {
-                DuoState.setCategory(app.packageName, null); editing = null
+                DuoState.setCategory(app.id, null); editing = null
             }
             CATEGORY_LIST.forEach { (id, nameRes) ->
                 MenuRow(Icons.Filled.Category, Lang.s(nameRes), dark = dark) {
-                    DuoState.setCategory(app.packageName, id); editing = null
+                    DuoState.setCategory(app.id, id); editing = null
                 }
             }
         }

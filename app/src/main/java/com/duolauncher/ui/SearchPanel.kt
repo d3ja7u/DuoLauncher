@@ -132,7 +132,7 @@ fun SearchPanel(
         when {
             results.isNotEmpty() -> {
                 close()
-                AppRepository.launch(ctx, results.first().packageName)
+                AppRepository.launch(ctx, results.first().id)
             }
             contactHits.isNotEmpty() -> openContact(contactHits.first())
             query.isNotBlank() -> openWeb()
@@ -280,7 +280,7 @@ fun SearchPanel(
                                 size = iconSize,
                                 dark = dark,
                                 showLabel = true,
-                                onClick = { close(); AppRepository.launch(ctx, app.packageName) },
+                                onClick = { close(); AppRepository.launch(ctx, app.id) },
                                 onLongClick = { nav.showAppMenu(app, "search") }
                             )
                         }
@@ -308,7 +308,7 @@ fun SearchPanel(
                                         size = iconSize,
                                         dark = dark,
                                         showLabel = true,
-                                        onClick = { close(); AppRepository.launch(ctx, app.packageName) },
+                                        onClick = { close(); AppRepository.launch(ctx, app.id) },
                                         onLongClick = { nav.showAppMenu(app, "search") }
                                     )
                                 }
