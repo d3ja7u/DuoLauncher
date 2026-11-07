@@ -339,7 +339,7 @@ private fun RecentsWidget(dark: Boolean, nav: Nav) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             apps.forEach { app ->
                 AppIconCell(app, 44.dp, dark = dark, showLabel = true,
-                    onClick = { AppRepository.launch(ctx, app.packageName) },
+                    onClick = { AppRepository.launch(ctx, app.id) },
                     onLongClick = { nav.showAppMenu(app, "widget") })
             }
         }

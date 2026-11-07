@@ -436,19 +436,19 @@ class MainActivity : ComponentActivity() {
                             app = app,
                             dark = dark,
                             onDismiss = { menuApp = null },
-                            onUninstall = { AppRepository.uninstall(ctx, app.packageName) },
+                            onUninstall = { AppRepository.uninstall(ctx, app.id) },
                             onRemoveHome = if (menuSource == "home")
-                                ({ DuoState.removeHome(app.packageName) }) else null,
-                            onHide = { DuoState.hideApp(app.packageName) },
-                            onInfo = { AppRepository.appDetails(ctx, app.packageName) },
+                                ({ DuoState.removeHome(app.id) }) else null,
+                            onHide = { DuoState.hideApp(app.id) },
+                            onInfo = { AppRepository.appDetails(ctx, app.id) },
                             onCategory = { categoryTarget = app },
                             onAddSidebar = {
-                                DuoState.sidebar.add(SidebarItem("app", app.packageName))
+                                DuoState.sidebar.add(SidebarItem("app", app.id))
                                 DuoState.save()
                             },
                             onAddToFolder = { folderTarget = app },
                             onAddHome = if (menuSource != "home")
-                                ({ DuoState.addHome(app.packageName) }) else null,
+                                ({ DuoState.addHome(app.id) }) else null,
                             onChangeIcon = { iconTarget = app }
                         )
                     }
@@ -460,11 +460,11 @@ class MainActivity : ComponentActivity() {
                     categoryTarget?.let { app ->
                         DuoDialog(Lang.s(R.string.cat_of_app, app.label), dark, onDismiss = { categoryTarget = null }) {
                             MenuRow(Icons.Filled.AutoAwesome, Lang.s(R.string.follow_smart_category), dark = dark) {
-                                DuoState.setCategory(app.packageName, null); categoryTarget = null
+                                DuoState.setCategory(app.id, null); categoryTarget = null
                             }
                             CATEGORY_LIST.forEach { (id, nameRes) ->
                                 MenuRow(Icons.Filled.Category, Lang.s(nameRes), dark = dark) {
-                                    DuoState.setCategory(app.packageName, id); categoryTarget = null
+                                    DuoState.setCategory(app.id, id); categoryTarget = null
                                 }
                             }
                         }
@@ -472,8 +472,8 @@ class MainActivity : ComponentActivity() {
 
                     folderTarget?.let { app ->
                         FolderPickerDialog(app, dark, onDismiss = { folderTarget = null }) { folderId, newName ->
-                            if (folderId != null) DuoState.addAppToFolder(folderId, app.packageName)
-                            else DuoState.createFolder(newName ?: Lang.s(R.string.folder), listOf(app.packageName))
+                            if (folderId != null) DuoState.addAppToFolder(folderId, app.id)
+                            else DuoState.createFolder(newName ?: Lang.s(R.string.folder), listOf(app.id))
                             folderTarget = null
                         }
                     }

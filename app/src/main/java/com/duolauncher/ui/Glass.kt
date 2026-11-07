@@ -77,8 +77,8 @@ fun rememberDrawablePainter(drawable: Drawable): Painter = remember(drawable) {
 fun rememberAppIcon(app: AppInfo): Drawable {
     val ctx = LocalContext.current
     val pack = DuoState.iconPack
-    val ov = DuoState.iconOverride[app.packageName]
-    return remember(pack, ov, app.packageName, app.activityClass, app.icon) {
+    val ov = DuoState.iconOverride[app.id]
+    return remember(pack, ov, app.id, app.activityClass, app.icon) {
         runCatching { IconPacks.resolveIcon(ctx, pack, app) }.getOrNull() ?: app.icon
     }
 }

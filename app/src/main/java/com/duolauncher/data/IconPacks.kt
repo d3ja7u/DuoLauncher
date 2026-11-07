@@ -126,9 +126,9 @@ object IconPacks {
      * 都取不到返回 null（调用方用系统图标）。
      */
     fun resolveIcon(ctx: Context, packPkg: String, app: AppInfo): Drawable? {
-        val ov = DuoState.iconOverride[app.packageName]
+        val ov = DuoState.iconOverride[app.id]
         if (packPkg.isBlank() && ov == null) return null
-        val cacheKey = "$packPkg|${ov ?: ""}|${app.packageName}|${app.activityClass}"
+        val cacheKey = "$packPkg|${ov ?: ""}|${app.id}|${app.activityClass}"
         iconCache[cacheKey]?.let { return it }
 
         val pm = ctx.packageManager

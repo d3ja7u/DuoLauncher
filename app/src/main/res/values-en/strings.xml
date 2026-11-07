@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_clone_suffix">" (Clone)"</string>
     <string name="duo_lock_label">DuoLauncher Sleep Service</string>
     <string name="duo_lock_desc">Only used for double-tap to sleep. This service does not read screen content or monitor input; it only invokes the system lock-screen action.</string>
     <string name="search">Search</string>

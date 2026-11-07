@@ -86,7 +86,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
     var indexActive by remember { mutableStateOf<Char?>(null) }
     // false = 文件夹视图，true = 字母列表视图。两者互斥，列表视图里不会有文件夹卡
     var listMode by remember { mutableStateOf(false) }
-    val all = DuoState.visibleApps().filter { !DuoState.hidden.contains(it.packageName) }
+    val all = DuoState.visibleApps().filter { !DuoState.hidden.contains(it.id) }
     val textColor = glassTextColor(dark)
     val subColor = glassSubTextColor(dark)
 
@@ -260,7 +260,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                                         title = if (cat == "all") Lang.s(R.string.all_apps) else categoryName(cat),
                                         list = list,
                                         dark = dark,
-                                        onLaunch = { app -> AppRepository.launch(ctx, app.packageName) },
+                                        onLaunch = { app -> AppRepository.launch(ctx, app.id) },
                                         onLongClick = { app -> nav.showAppMenu(app, "library") },
                                         onOpenFolder = { openCat = cat to list }
                                     )
@@ -271,11 +271,11 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                     } else {
                         sections.forEach { (ch, list) ->
                             stickyHeader(key = "hdr_$ch") { LetterHeader(ch, dark) }
-                            items(list, key = { it.packageName }) { app ->
+                            items(list, key = { it.id }) { app ->
                                 LetterRow(
                                     app = app,
                                     dark = dark,
-                                    onClick = { AppRepository.launch(ctx, app.packageName) },
+                                    onClick = { AppRepository.launch(ctx, app.id) },
                                     onLongClick = { nav.showAppMenu(app, "library") }
                                 )
                             }
@@ -321,7 +321,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
             apps = list,
             dark = dark,
             onDismiss = { openCat = null },
-            onLaunch = { app -> openCat = null; AppRepository.launch(ctx, app.packageName) },
+            onLaunch = { app -> openCat = null; AppRepository.launch(ctx, app.id) },
             onLongClick = { app -> openCat = null; nav.showAppMenu(app, "library") }
         )
     }
@@ -458,7 +458,7 @@ private fun AppGrid(list: List<AppInfo>, nav: Nav, dark: Boolean) {
                         size = size,
                         dark = dark,
                         showLabel = true,
-                        onClick = { AppRepository.launch(ctx, app.packageName) },
+                        onClick = { AppRepository.launch(ctx, app.id) },
                         onLongClick = { nav.showAppMenu(app, "library") }
                     )
                 }
@@ -563,7 +563,7 @@ private fun LetterRow(
                     contentDescription = app.label,
                     modifier = Modifier.fillMaxSize().clip(squircle(12))
                 )
-                val badge = DuoState.badgeOf(app.packageName)
+                val badge = DuoState.badgeOf(app.id)
                 if (badge > 0) {
                     Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-1).dp)) {
                         NotificationBadge(badge, 44.dp, Color(DuoState.badgeColor))
