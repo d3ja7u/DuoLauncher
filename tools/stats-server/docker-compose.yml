@@ -1,0 +1,32 @@
+services:
+  stats:
+    build: .
+    image: duolauncher-stats:local
+    container_name: duolauncher-stats
+    restart: unless-stopped
+    ports:
+      - "${STATS_PORT:-3000}:3000"
+    environment:
+      # CLOUD_MODE=off 即变成纯本地接收端，不写云数据库
+      CLOUD_MODE: "${CLOUD_MODE:-on}"
+      # 留空则使用随代码发布的 cloud-config.json
+      CLOUD_ENDPOINT: "${CLOUD_ENDPOINT:-}"
+      CLOUD_PUBLISHABLE_KEY: "${CLOUD_PUBLISHABLE_KEY:-}"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:3000/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # 家宽 80/443 被封时用：免入站端口映射、自动 HTTPS。
+  # 用法：docker compose --profile tunnel up -d
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: duolauncher-tunnel
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run", "--token", "${TUNNEL_TOKEN}"]
+    depends_on:
+      - stats
