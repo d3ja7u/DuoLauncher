@@ -324,4 +324,24 @@
     <string name="show_bottom_left_desc">关闭后长按主屏空白处仍可进入设置</string>
     <string name="show_bottom_right">右下角搜索图标</string>
     <string name="show_bottom_right_desc">关闭后可在最左页右滑打开搜索</string>
+
+    <string name="sec_privacy">隐私与统计</string>
+    <string name="stats_toggle">匿名使用统计</string>
+    <string name="stats_toggle_desc">帮助开发者了解安装设备数量；关闭后立即删除本机匿名 ID</string>
+    <string name="stats_anon_id">本机匿名 ID</string>
+    <string name="stats_anon_id_none">未生成（统计未启用）</string>
+    <string name="stats_endpoint">统计上报地址</string>
+    <string name="stats_endpoint_empty">未设置（不会上报）</string>
+    <string name="stats_endpoint_title">编辑统计上报地址</string>
+    <string name="stats_endpoint_hint">留空即完全不上报。也可填自建服务地址，需兼容 POST /ping 的 JSON 接口（见 tools/stats-server）。</string>
+    <string name="stats_endpoint_placeholder">https://…</string>
+    <string name="stats_endpoint_clear">清空</string>
+    <string name="stats_endpoint_cleared">已清空，不再上报任何数据</string>
+    <string name="stats_view">查看统计数据</string>
+    <string name="stats_view_desc">在浏览器打开汇总页</string>
+    <string name="stats_note">仅发送随机匿名 ID、应用版本、界面语言、Android API 等级和上报类型（首次安装 / 升级 / 每日活跃）。不采集设备标识、IP、位置、通讯录或应用列表；首次启动会询问一次，可随时在此关闭，上报地址可改为自建服务。</string>
+    <string name="stats_consent_title">匿名使用统计</string>
+    <string name="stats_consent_body">为了了解有多少设备在使用 DuoLauncher，应用会在首次启动、版本升级以及每天首次使用时，向统计服务发送一个随机匿名 ID、版本号、界面语言和 Android 版本。\n\n不含设备标识、IP、位置、通讯录、已安装应用列表，也不会记录你的任何使用内容。\n\n你可以在「设置 → 隐私与统计」随时关闭；关闭后本机匿名 ID 会立即删除，之后不再发送任何数据。不上报也完全不影响启动器功能。</string>
+    <string name="stats_keep_on">保持开启</string>
+    <string name="stats_disable">关闭统计</string>
 </resources>

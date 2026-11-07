@@ -770,3 +770,41 @@ private fun crossWindowBlurEnabled(ctx: Context): Boolean {
     val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
     return runCatching { wm.isCrossWindowBlurEnabled }.getOrDefault(false)
 }
+
+/**
+ * 首次启动的一次性匿名统计告知。
+ * 不点「保持开启」就绝不会联网；点外部或返回键只是暂不决定，下次启动还会再问。
+ */
+@Composable
+fun StatsConsentDialog(
+    dark: Boolean,
+    visible: Boolean,
+    onDecideLater: () -> Unit,
+    onKeep: () -> Unit,
+    onDisable: () -> Unit
+) {
+    if (!visible) return
+    DuoDialog(
+        Lang.s(R.string.stats_consent_title), dark, opaque = true,
+        onDismiss = onDecideLater
+    ) {
+        Text(
+            Lang.s(R.string.stats_consent_body),
+            fontSize = 13.sp,
+            lineHeight = 20.sp,
+            color = glassSubTextColor(dark)
+        )
+        Spacer(Modifier.height(18.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onDisable) {
+                Text(
+                    Lang.s(R.string.stats_disable),
+                    fontSize = 13.sp,
+                    color = glassSubTextColor(dark)
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            GlassPrimaryButton(Lang.s(R.string.stats_keep_on), dark, onClick = onKeep)
+        }
+    }
+}

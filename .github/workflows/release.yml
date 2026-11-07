@@ -162,6 +162,8 @@ jobs:
 
             新版默认主屏为空，可在长按空白的菜单里编辑；旧配置可在「设置 → 备份与恢复」导出后导入到新设备。
 
+            首次启动会询问是否启用「匿名使用统计」（只发送随机匿名 ID、版本号、界面语言与 Android 版本），可在「设置 → 隐私与统计」随时关闭；关闭后立即删除本机匿名 ID 并停止上报，不影响任何功能。详见 [隐私政策](https://github.com/d3ja7u/DuoLauncher/blob/main/PRIVACY.md)。
+
             详细操作说明见 [README](https://github.com/d3ja7u/DuoLauncher#readme)。
 
             > 此包为 release 构建（非 debuggable、已开启 R8），签名与旧版一致，手机上装有旧版时可直接覆盖安装。

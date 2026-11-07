@@ -43,6 +43,7 @@ import com.duolauncher.data.IconPacks
 import com.duolauncher.service.DuoNotificationListener
 import com.duolauncher.util.ApkUpdater
 import com.duolauncher.util.BackupManager
+import com.duolauncher.util.InstallStats
 import com.duolauncher.util.ScreenOff
 import com.duolauncher.util.SearchEngines
 import com.duolauncher.util.UpdateChecker
@@ -102,6 +103,9 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     var showLangPicker by remember { mutableStateOf(false) }
     var langChoice by remember { mutableStateOf(Lang.get(ctx)) }
     var urlDraft by remember(DuoState.updateUrl) { mutableStateOf(DuoState.updateUrl) }
+    var editStatsUrl by remember { mutableStateOf(false) }
+    var statsUrlDraft by remember(DuoState.statsUrl) { mutableStateOf(DuoState.statsUrl) }
+    var statsIdPreview by remember { mutableStateOf(InstallStats.anonymousId(ctx)?.take(8) ?: "") }
     var checking by remember { mutableStateOf(false) }
     var showUpdateResult by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
@@ -538,6 +542,52 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             )
         }
         item {
+            SectionTitle(Lang.s(R.string.sec_privacy), dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    SettingToggle(
+                        Lang.s(R.string.stats_toggle),
+                        Lang.s(R.string.stats_toggle_desc),
+                        DuoState.statsEnabled, dark
+                    ) { on ->
+                        DuoState.statsEnabled = on
+                        if (on) {
+                            // 在设置里主动打开即视为已知情，不必再弹首次告知
+                            DuoState.statsConsentShown = true
+                            statsIdPreview = InstallStats.ensureId(ctx).take(8)
+                            InstallStats.reportIfAllowed(ctx, force = true)
+                        } else {
+                            InstallStats.clear(ctx)
+                            statsIdPreview = ""
+                        }
+                        DuoState.save()
+                    }
+                    SettingRow(
+                        Lang.s(R.string.stats_anon_id),
+                        if (statsIdPreview.isBlank()) Lang.s(R.string.stats_anon_id_none) else "$statsIdPreview…",
+                        dark
+                    )
+                    val shownStatsUrl = when {
+                        DuoState.statsUrl.isBlank() -> Lang.s(R.string.stats_endpoint_empty)
+                        DuoState.statsUrl.length > 40 -> DuoState.statsUrl.take(40) + "…"
+                        else -> DuoState.statsUrl
+                    }
+                    SettingRow(Lang.s(R.string.stats_endpoint), shownStatsUrl, dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                        onClick = { statsUrlDraft = DuoState.statsUrl; editStatsUrl = true })
+                    SettingRow(Lang.s(R.string.stats_view), Lang.s(R.string.stats_view_desc), dark,
+                        trailing = { Icon(Icons.Filled.OpenInNew, null, tint = glassSubTextColor(dark)) },
+                        onClick = { UpdateChecker.openInBrowser(ctx, InstallStats.STATS_PAGE) })
+                }
+            }
+            Text(
+                Lang.s(R.string.stats_note),
+                fontSize = 11.sp,
+                color = glassSubTextColor(dark),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+            )
+        }
+        item {
             SectionTitle(Lang.s(R.string.sec_backup), dark)
             GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                 Column(Modifier.padding(vertical = 6.dp)) {
@@ -716,6 +766,56 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         editUpdateUrl = false
                         nav.toast(Lang.s(R.string.toast_url_saved))
                     }
+                })
+            }
+        }
+    }
+
+    if (editStatsUrl) {
+        DuoDialog(
+            Lang.s(R.string.stats_endpoint_title), dark, opaque = true,
+            onDismiss = { editStatsUrl = false }
+        ) {
+            Text(
+                Lang.s(R.string.stats_endpoint_hint),
+                fontSize = 12.sp, color = glassSubTextColor(dark)
+            )
+            Spacer(Modifier.height(10.dp))
+            GlassCard(Modifier.fillMaxWidth().heightIn(min = 60.dp), radius = 12.dp, level = 0.8f, dark = dark) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    if (statsUrlDraft.isEmpty()) {
+                        Text(
+                            Lang.s(R.string.stats_endpoint_placeholder),
+                            fontSize = 12.sp, color = glassSubTextColor(dark)
+                        )
+                    }
+                    BasicTextField(
+                        statsUrlDraft, { statsUrlDraft = it }, maxLines = 3,
+                        textStyle = TextStyle(fontSize = 12.sp, color = glassTextColor(dark)),
+                        cursorBrush = SolidColor(glassBlue),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { statsUrlDraft = "" }) {
+                    Text(Lang.s(R.string.stats_endpoint_clear), fontSize = 13.sp, color = glassSubTextColor(dark))
+                }
+                TextButton(onClick = { statsUrlDraft = InstallStats.DEFAULT_URL }) {
+                    Text(Lang.s(R.string.restore_default), fontSize = 13.sp, color = glassSubTextColor(dark))
+                }
+                Spacer(Modifier.weight(1f))
+                GlassPrimaryButton(Lang.s(R.string.save), dark, onClick = {
+                    // 留空是合法的：表示彻底不上报
+                    val t = statsUrlDraft.replace(Regex("\\s+"), "")
+                    DuoState.statsUrl = t
+                    DuoState.save()
+                    editStatsUrl = false
+                    nav.toast(
+                        if (t.isBlank()) Lang.s(R.string.stats_endpoint_cleared)
+                        else Lang.s(R.string.toast_url_saved)
+                    )
                 })
             }
         }

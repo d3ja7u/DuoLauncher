@@ -99,6 +99,7 @@ Release builds are not debuggable, R8-minified, and do not contain a DEPENDENCY_
 ### Anti-Features to declare
 
 * NonFreeNet: the optional "Check for updates" feature queries the GitHub Releases API (or releases.atom as fallback) for version information, and downloads an APK only when the user explicitly taps "Download and install". GitHub is a proprietary service. The check is disabled by default and can be turned off in Settings; nothing is fetched or installed in the background. The launcher works fully offline.
+* Tracking: optional, opt-out anonymous usage statistics. A random local ID, app version, UI language, Android API level and report type are sent to a statistics endpoint to count devices. A first-launch notice asks before anything is sent; the user can turn it off at any time in Settings (which deletes the local ID), clear the endpoint, or point it at a self-hosted server. No device identifiers, no IP storage, no contacts, location or usage content. The launcher works fully offline with statistics disabled. Declare this proactively in the MR - F-Droid reviewers will otherwise find the network call.
 
 ### Sensitive permissions (all justified, see PRIVACY.md)
 
@@ -109,16 +110,17 @@ Release builds are not debuggable, R8-minified, and do not contain a DEPENDENCY_
 * CAMERA / FLASHLIGHT - optional flashlight toggle (CameraManager.setTorchMode); never takes photos.
 * BIND_DEVICE_ADMIN - optional fallback screen-off on a few ROMs; never auto-activated, can be disabled in system settings.
 * REQUEST_INSTALL_PACKAGES - optional in-place updates: opens the system installer after a user-initiated download; the install still needs user confirmation and can be revoked in system settings.
+* INTERNET - the optional update check / in-place download and the opt-out anonymous statistics; no business requests when both are disabled.
 * VIBRATE, ACCESS_WIFI_STATE, ACCESS_NETWORK_STATE, REQUEST_DELETE_PACKAGES, BIND_APPWIDGET - haptics, status-bar indicators, uninstall shortcut, widgets.
 
-No ads, no analytics, no crash reporting, no tracking SDK, no Google Play Services, no Firebase, no proprietary libraries. Dependencies are AndroidX / Jetpack Compose / Kotlin (Apache-2.0) only.
+No ads, no third-party analytics / crash reporting / tracking SDK, no Google Play Services, no Firebase, no proprietary libraries. The anonymous statistic is implemented in-app with HttpURLConnection, without any embedded SDK. Dependencies are AndroidX / Jetpack Compose / Kotlin (Apache-2.0) only.
 
 ### Notes
 
 Hand-tuned for the Unihertz Titan 2 Elite (near-square 1080x1200 screen with a physical keyboard), but works on Android 9+ devices. UI is available in Simplified Chinese, English and Japanese.
 ```
 
-审核者可能会要求**真机测试**（标签 `needs/on-device-testing`），届时按对方要求回复即可；他们会把 APK 传到 VirusTotal / Pithus 扫描，并用网络监控工具确认没有意外外联——本应用除可选的更新检查外没有联网行为。
+审核者可能会要求**真机测试**（标签 `needs/on-device-testing`），届时按对方要求回复即可；他们会把 APK 传到 VirusTotal / Pithus 扫描，并用网络监控工具确认没有意外外联——本应用除**可选的更新检查**与**可关闭的匿名统计**外没有联网行为，两者都可在设置里关闭，关闭后完全离线可用。提交时务必主动申报 `Tracking`，并说明首次启动会先询问、关闭即删除匿名 ID。
 
 ---
 

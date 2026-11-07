@@ -324,4 +324,24 @@
     <string name="show_bottom_left_desc">オフにすると、ホームの空白を長押しで設定を開けます</string>
     <string name="show_bottom_right">右下の検索アイコン</string>
     <string name="show_bottom_right_desc">オフにすると、最左ページで右スワイプで検索を開きます</string>
+
+    <string name="sec_privacy">プライバシーと統計</string>
+    <string name="stats_toggle">匿名利用統計</string>
+    <string name="stats_toggle_desc">利用台数の把握に役立ちます。オフにすると端末内の匿名 ID をすぐ削除します</string>
+    <string name="stats_anon_id">端末の匿名 ID</string>
+    <string name="stats_anon_id_none">未作成（統計オフ）</string>
+    <string name="stats_endpoint">統計の送信先</string>
+    <string name="stats_endpoint_empty">未設定（送信しません）</string>
+    <string name="stats_endpoint_title">統計の送信先を編集</string>
+    <string name="stats_endpoint_hint">空欄にすると一切送信しません。POST /ping の JSON を受け付ける自前サーバーも指定できます（tools/stats-server 参照）。</string>
+    <string name="stats_endpoint_placeholder">https://…</string>
+    <string name="stats_endpoint_clear">クリア</string>
+    <string name="stats_endpoint_cleared">クリアしました。以降は送信しません</string>
+    <string name="stats_view">統計を見る</string>
+    <string name="stats_view_desc">ブラウザで集計ページを開く</string>
+    <string name="stats_note">送信するのはランダムな匿名 ID、アプリバージョン、表示言語、Android API レベル、種別（初回 / 更新 / 日次）のみです。端末識別子・IP・位置情報・連絡先・アプリ一覧は取得しません。初回起動時に一度確認し、ここからいつでもオフにでき、送信先も自前サーバーに変更できます。</string>
+    <string name="stats_consent_title">匿名利用統計</string>
+    <string name="stats_consent_body">DuoLauncher の利用台数を把握するため、初回起動時・バージョン更新時・1 日 1 回、ランダムな匿名 ID・バージョン・表示言語・Android バージョンを統計サーバーに送信します。\n\n端末識別子・IP アドレス・位置情報・連絡先・インストール済みアプリ一覧や、利用内容は一切収集しません。\n\n「設定 → プライバシーと統計」からいつでもオフにできます。オフにすると端末内の匿名 ID をただちに削除し、以降は送信しません。オフにしてもランチャーの機能は変わりません。</string>
+    <string name="stats_keep_on">オンのまま</string>
+    <string name="stats_disable">オフにする</string>
 </resources>

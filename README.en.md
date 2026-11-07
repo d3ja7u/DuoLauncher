@@ -141,6 +141,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Icon Pack | Current icon pack (auto-detects installed packs) |
 | Notification Badges | Show unread badges, Badge color, Notification access |
 | Updates | Check for updates, In-place download & install, Auto-check for updates, Update source, Open project page |
+| Privacy and statistics | Anonymous statistics toggle, local anonymous ID, endpoint, View statistics |
 | Backup and restore | Export settings, Import settings |
 | System | **Language**, Set as default launcher, Change Wallpaper, DuoLauncher app info, About |
 
@@ -164,7 +165,7 @@ Settings → **Backup and restore**:
 - **Export settings**: opens the system "Save file" dialog. The suggested name is `DuoLauncher-backup-YYYYMMDD-HHmm.json` and you choose where it goes (local storage, cloud drive, another device).
 - **Import settings**: pick a previously exported JSON. A summary is shown first (export time, version, counts of home icons / sidebar items / folders / hidden apps / widgets); only after confirming does it replace the current configuration and restart the launcher.
 
-A backup holds the full local configuration: home layout and order, sidebar, folders, hidden apps, categories and per-app icon overrides, icon pack, appearance and gestures, badge settings, search settings, UI language, update source and update-check records. It **does not** contain badge read state, wallpaper images, app data, contacts or accounts. The file is written only to the location you pick — nothing is uploaded, and importing reads only that one file.
+A backup holds the full local configuration: home layout and order, sidebar, folders, hidden apps, categories and per-app icon overrides, icon pack, appearance and gestures, badge settings, search settings, UI language, update source and update-check records. It **does not** contain the anonymous statistics ID (kept separately, so importing someone else's backup cannot mix IDs), badge read state, wallpaper images, app data, contacts or accounts. The file is written only to the location you pick — nothing is uploaded, and importing reads only that one file.
 
 Import **replaces everything**; there is no per-item selection, so export your current setup first. When restoring on another device, icons referencing apps that are not installed there are skipped; the rest of the layout is preserved.
 
@@ -181,9 +182,10 @@ Import **replaces everything**; there is no per-item selection, so export your c
 | `READ_CONTACTS` | Match phone contacts in search results | Optional, requested on demand |
 | `REQUEST_DELETE_PACKAGES` | Uninstall apps | Optional |
 | `REQUEST_INSTALL_PACKAGES` | Opens the system installer for in-place updates (requires granting Install unknown apps in system settings) | Optional, only when you tap Download and install |
+| `INTERNET` | Update checks, in-place downloads and optional anonymous statistics | Optional; no business requests when both are disabled |
 | `BIND_APPWIDGET` | Host home screen widgets | Optional |
 
-The app **uploads nothing** and has no backend. Layouts and preferences are stored locally in `SharedPreferences`. The update checker only calls the public GitHub Releases API (or the configured mirror) and stores no token.
+Layouts and preferences are stored locally in `SharedPreferences`. There are no accounts and the app never reads or uploads personal content. **The only data that can leave the device is the opt-out anonymous usage statistic** (random ID + version + UI language + Android API level + report type): you are asked once on first launch, and Settings → Privacy and statistics can turn it off at any time, which immediately deletes the local anonymous ID. See [PRIVACY.md](PRIVACY.md) for details.
 
 ---
 
@@ -241,6 +243,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.5.6 | Opt-out anonymous usage statistics: first-launch notice, Settings toggle / endpoint / View statistics, turning it off deletes the local ID; bundled zero-dependency stats server; privacy policy rewritten in three languages |
 | 1.5.5 | In-place updates: download progress, cancel, install-permission guidance, private cache + FileProvider, fallback to download page; Atom fallback now derives the APK link too |
 | 1.5.0 | Multilingual UI: Chinese / English / Japanese, follows the device language, manual override in Settings; this English README |
 | 1.4.1 | Solid background for the update-source dialog, long URLs wrap, whitespace stripped on save |
@@ -295,6 +298,18 @@ Accepted sources: a GitHub repo URL or `/releases` page (converted to the API au
 The anonymous GitHub API allows only 60 requests per IP per hour — easy to exhaust on a shared campus or carrier NAT. On 403/429 the launcher falls back to the official `releases.atom` feed (no quota; it lacks the APK size but derives the direct link from the project's fixed `DuoLauncher-<version>.apk` naming rule, so in-place updates still work). Only if both fail does it ask you to check the connection or the URL. Only `INTERNET` is required; no login, no token stored on the device.
 
 Versions are compared segment by segment, so `1.3.10` is correctly newer than `1.3.9`.
+
+### Anonymous usage statistics
+
+Settings → **Privacy and statistics**: toggle, local anonymous ID, endpoint, View statistics.
+
+- **Sent**: a random UUID generated by the app itself (**not** IMEI / Android ID / advertising ID / account), version and versionCode, UI language, Android API level, and report type (`install` / `upgrade` / `heartbeat`). A first-launch notice asks before anything is sent; afterwards once per upgrade and at most one daily heartbeat (24-hour throttle).
+- **Never sent**: device model / serial / IMEI / Android ID / advertising ID, location, contacts, messages, accounts, wallpaper, installed app list, home layout, search queries, notification content or any file content. The receiver does not store IP addresses either.
+- **Opt out**: turning the toggle off immediately deletes the local anonymous ID and stops all reporting; clearing the endpoint also disables it completely. Every launcher feature keeps working, and turning it back on creates a brand-new ID that cannot be linked to previous records.
+- **Endpoint is configurable**: it defaults to this project's stats service ([summary page](https://duolauncher-stats.app.workbuddy.host/?sharecode=AKJCYWSUYS)). For production use, self-host `tools/stats-server` (zero-dependency Python + SQLite, with `/ping`, `/stats`, `/export`) and paste its HTTPS URL into Settings — no client update needed.
+- The anonymous ID is stored separately and **excluded from settings backups**; the toggle and endpoint are backed up, the ID is not.
+
+Note on interpretation: the number is "devices with statistics enabled", not true installs. Devices that opt out, stay offline, or are sideloaded without enabling it are not counted, and reinstalling generates a new ID. See [PRIVACY.md](PRIVACY.md) for the full policy.
 
 ---
 

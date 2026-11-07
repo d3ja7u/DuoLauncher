@@ -40,6 +40,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.duolauncher.data.*
 import com.duolauncher.ui.*
+import com.duolauncher.util.InstallStats
 import com.duolauncher.util.Lang
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -89,6 +90,8 @@ class MainActivity : ComponentActivity() {
         reloadApps()
         // 从系统「通知使用权」授权页返回、或监听服务被回收后回到桌面，都重新对齐一次角标
         runCatching { com.duolauncher.service.DuoNotificationListener.ensureBound(this) }
+        // 匿名统计：只有已确认告知且开关打开才会联网，内部有 24 小时心跳节流
+        InstallStats.reportIfAllowed(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -135,6 +138,10 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(if (Lang.consumeReopenSettings(ctx)) "settings" else null)
         }
         var settingsSub by remember { mutableStateOf<String?>(null) }
+        // 首次启动的一次性统计告知：未确认前 InstallStats 不会发任何请求
+        var statsConsentVisible by remember {
+            mutableStateOf(!DuoState.statsConsentShown && DuoState.statsEnabled)
+        }
 
         // 搜索页揭示进度：0 = 桌面，1 = 搜索页完全覆盖。
         // 右滑手势逐帧直接写 reveal（跟手），松手 / 点击时由 spring 逐帧写回，
@@ -470,6 +477,25 @@ class MainActivity : ComponentActivity() {
                             folderTarget = null
                         }
                     }
+
+                    StatsConsentDialog(
+                        dark = dark,
+                        visible = statsConsentVisible,
+                        onDecideLater = { statsConsentVisible = false },
+                        onKeep = {
+                            DuoState.statsConsentShown = true
+                            DuoState.save()
+                            InstallStats.reportIfAllowed(ctx, force = true)
+                            statsConsentVisible = false
+                        },
+                        onDisable = {
+                            DuoState.statsEnabled = false
+                            DuoState.statsConsentShown = true
+                            DuoState.save()
+                            InstallStats.clear(ctx)
+                            statsConsentVisible = false
+                        }
+                    )
                 }
             }
         }

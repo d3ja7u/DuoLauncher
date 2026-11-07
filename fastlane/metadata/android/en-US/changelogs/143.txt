@@ -1,0 +1,4 @@
+* Added opt-out anonymous usage statistics: a one-time notice on first launch, toggle in Settings - Privacy and statistics
+* Only a random anonymous ID, app version, UI language and Android version are sent; turning it off deletes the local ID immediately
+* The endpoint can be cleared or pointed at a self-hosted server; a summary page is one tap away
+* Privacy policy and documentation updated in Chinese, English and Japanese

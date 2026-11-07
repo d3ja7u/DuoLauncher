@@ -324,4 +324,24 @@
     <string name="show_bottom_left_desc">When off, long-press an empty home area to open Settings</string>
     <string name="show_bottom_right">Bottom-right search icon</string>
     <string name="show_bottom_right_desc">When off, swipe right on the leftmost page to open Search</string>
+
+    <string name="sec_privacy">Privacy and statistics</string>
+    <string name="stats_toggle">Anonymous usage statistics</string>
+    <string name="stats_toggle_desc">Helps the developer know how many devices use the launcher; turning it off deletes the local anonymous ID</string>
+    <string name="stats_anon_id">Local anonymous ID</string>
+    <string name="stats_anon_id_none">Not created (statistics off)</string>
+    <string name="stats_endpoint">Statistics endpoint</string>
+    <string name="stats_endpoint_empty">Not set (nothing is sent)</string>
+    <string name="stats_endpoint_title">Edit statistics endpoint</string>
+    <string name="stats_endpoint_hint">Leave empty to send nothing. You can point this at a self-hosted service that accepts the POST /ping JSON payload (see tools/stats-server).</string>
+    <string name="stats_endpoint_placeholder">https://…</string>
+    <string name="stats_endpoint_clear">Clear</string>
+    <string name="stats_endpoint_cleared">Cleared; no data will be sent</string>
+    <string name="stats_view">View statistics</string>
+    <string name="stats_view_desc">Open the summary page in a browser</string>
+    <string name="stats_note">Sends only a random anonymous ID, app version, UI language, Android API level and report type (install / upgrade / daily active). No device identifiers, IP, location, contacts or app list. You are asked once on first launch, can turn it off here at any time, and can point the endpoint at your own server.</string>
+    <string name="stats_consent_title">Anonymous usage statistics</string>
+    <string name="stats_consent_body">To understand how many devices use DuoLauncher, the app sends a random anonymous ID, its version, the UI language and the Android version to a statistics service on first launch, after an upgrade, and once a day.\n\nNo device identifiers, IP address, location, contacts, installed app list, or any of your content is collected.\n\nYou can turn this off at any time in Settings - Privacy and statistics. Turning it off immediately deletes the local anonymous ID and stops all further reports. Declining does not affect any launcher feature.</string>
+    <string name="stats_keep_on">Keep on</string>
+    <string name="stats_disable">Turn off</string>
 </resources>

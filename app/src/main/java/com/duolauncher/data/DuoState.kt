@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.duolauncher.R
+import com.duolauncher.util.InstallStats
 import com.duolauncher.util.Lang
 import com.duolauncher.util.UpdateChecker
 import org.json.JSONArray
@@ -85,6 +86,14 @@ object DuoState {
     var lastUpdateCheck by mutableStateOf(0L)
     /** 上次查到的最新版本号，只用来在设置行上显示提示，不弹窗打扰 */
     var lastSeenVersion by mutableStateOf("")
+
+    // ── 匿名使用统计 ──
+    /** 是否启用匿名统计；可在「设置 → 隐私与统计」随时关闭，关闭即删除本地匿名 ID */
+    var statsEnabled by mutableStateOf(true)
+    /** 首次启动的告知弹窗是否已确认；未确认前绝不联网上报 */
+    var statsConsentShown by mutableStateOf(false)
+    /** 上报地址；留空 = 完全不上报，可改成自建服务 */
+    var statsUrl by mutableStateOf(InstallStats.DEFAULT_URL)
 
     var smartCategory by mutableStateOf(true)
     var sidebarLeft by mutableStateOf(false)
@@ -211,6 +220,9 @@ object DuoState {
             autoCheckUpdate = o.optBoolean("updAuto", true)
             lastUpdateCheck = o.optLong("updAt", 0L)
             lastSeenVersion = o.optString("updVer", "")
+            statsEnabled = o.optBoolean("statOn", true)
+            statsConsentShown = o.optBoolean("statConsent", false)
+            statsUrl = o.optString("statUrl", InstallStats.DEFAULT_URL)
         }
     }
 
@@ -269,6 +281,9 @@ object DuoState {
             o.put("updAuto", autoCheckUpdate)
             o.put("updAt", lastUpdateCheck)
             o.put("updVer", lastSeenVersion)
+            o.put("statOn", statsEnabled)
+            o.put("statConsent", statsConsentShown)
+            o.put("statUrl", statsUrl)
             sp.edit().putString("state", o.toString()).apply()
         }
     }

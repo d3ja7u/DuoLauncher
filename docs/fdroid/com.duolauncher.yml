@@ -5,7 +5,7 @@
 # 跑 fdroid lint / fdroid build 后在 GitLab 提 Merge Request。
 #
 # ⚠️ 提交前必须做两处替换：
-#   1. Builds[0].commit 改成 v1.5.5 tag 对应的完整 40 位 commit hash（不能用 tag 名）
+#   1. Builds[0].commit 改成 v1.5.6 tag 对应的完整 40 位 commit hash（不能用 tag 名）
 #   2. versionName / versionCode 与实际发版一致
 # 详细步骤见 ../DISTRIBUTION.md
 
@@ -24,13 +24,15 @@ AutoName: DuoLauncher
 AntiFeatures:
   NonFreeNet:
     en-US: The optional "Check for updates" feature queries the GitHub Releases API (or releases.atom), and can download an APK only when the user explicitly taps "Download and install". GitHub is a proprietary service. The check is off by default, can be disabled in Settings, and is not required for the launcher to function. Nothing is downloaded or installed in the background.
+  Tracking:
+    en-US: Optional anonymous usage statistics send a random local ID, app version, UI language and Android API level to a statistics endpoint to count devices. The user is asked on first launch before anything is sent, can turn it off at any time in Settings (which deletes the local ID), clear the endpoint, or point it at a self-hosted server. No device identifiers, IP storage, contacts, location or usage content. Disabling it affects no launcher feature. See PRIVACY.md.
 
 RepoType: git
 Repo: https://github.com/d3ja7u/DuoLauncher.git
 
 Builds:
-  - versionName: '1.5.5'
-    versionCode: 142
+  - versionName: '1.5.6'
+    versionCode: 143
     commit: 0000000000000000000000000000000000000000
     subdir: app
     gradle:
@@ -43,5 +45,5 @@ Builds:
 
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags
-CurrentVersion: '1.5.5'
-CurrentVersionCode: 142
+CurrentVersion: '1.5.6'
+CurrentVersionCode: 143
