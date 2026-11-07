@@ -14,7 +14,7 @@ DuoLauncher 是用 Kotlin + Jetpack Compose 编写的完整桌面启动器（and
 * 编辑主屏时图标左上角显示 iOS 风格「−」：从主屏幕移除 / 卸载应用 / 取消
 * 新安装默认空主屏；设置可导出 / 导入整份配置备份
 * 通知角标：8 种颜色可选（需按需授予通知使用权）
-* 手势：左右分区下滑分别呼出通知栏 / 控制中心，双击桌面熄屏
+* 手势：左右分区下滑分别呼出通知栏 / 控制中心，双击桌面息屏
 * 支持第三方图标包、单应用换图标、隐藏应用、手动指定分类
 * 支持桌面小组件
 * 界面语言：简体中文 / English / 日本語，默认跟随设备，设置里可手动指定
@@ -24,14 +24,14 @@ DuoLauncher 是用 Kotlin + Jetpack Compose 编写的完整桌面启动器（and
 * QUERY_ALL_PACKAGES：资源库与搜索必须枚举全部已安装应用，应用列表不会离开设备。
 * READ_CONTACTS：仅用于按需开启的「通讯录联系人搜索」，姓名与号码只在设备本地匹配，不上传、不保存副本。
 * 通知使用权：仅在本机统计未读数量用于角标，不上传内容。
-* 无障碍服务：仅用于「双击桌面熄屏」。canRetrieveWindowContent 为 false，不读取屏幕内容、不监听按键，也不会自主执行动作。
+* 无障碍服务：仅用于「双击桌面息屏」。canRetrieveWindowContent 为 false，不读取屏幕内容、不监听按键，也不会自主执行动作。
 * EXPAND_STATUS_BAR：下滑手势展开通知栏 / 控制中心。
 * CAMERA / FLASHLIGHT：可选的手电筒快捷动作（CameraManager.setTorchMode）。
 * INTERNET：仅用于下述可选的更新检查。
 * ACCESS_WIFI_STATE / ACCESS_NETWORK_STATE：绘制自定义状态栏里的 Wi-Fi 与信号指示。
 * VIBRATE：触感反馈；REQUEST_DELETE_PACKAGES：图标菜单里的卸载入口。
 * BIND_APPWIDGET：桌面小组件。
-* 设备管理器：仅在个别 ROM 上作为熄屏的备用方案，不会自动激活，可在系统设置里关闭。
+* 设备管理器：仅在个别 ROM 上作为息屏的备用方案，不会自动激活，可在系统设置里关闭。
 
 隐私
 

@@ -61,7 +61,7 @@ class DuoLockService : AccessibilityService() {
             }
         }
 
-        /** 熄屏；返回 false 表示服务尚未连上 */
+        /** 息屏；返回 false 表示服务尚未连上 */
         fun lockScreen(): Boolean {
             val svc = instance ?: return false
             return runCatching {

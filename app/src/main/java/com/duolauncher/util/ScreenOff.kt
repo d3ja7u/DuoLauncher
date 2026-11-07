@@ -6,7 +6,7 @@ import android.provider.Settings
 import com.duolauncher.service.DuoLockService
 
 /**
- * 熄屏能力（无障碍模式）。
+ * 息屏能力（无障碍模式）。
  *
  * Android 上普通应用无法直接灭屏，两条合规路径：
  *  1. 设备管理员 + DevicePolicyManager.lockNow() —— 权限面过大（含擦除数据），已弃用；
@@ -16,17 +16,17 @@ import com.duolauncher.service.DuoLockService
  */
 object ScreenOff {
 
-    /** 是否可以直接熄屏（服务已连上） */
+    /** 是否可以直接息屏（服务已连上） */
     fun isReady(): Boolean = DuoLockService.isRunning()
 
     /** 用户是否已在系统设置里开启该无障碍服务 */
     fun isEnabled(ctx: Context): Boolean =
         DuoLockService.isRunning() || DuoLockService.isEnabled(ctx)
 
-    /** 熄屏；返回 false 表示服务未连上，调用方负责引导 */
+    /** 息屏；返回 false 表示服务未连上，调用方负责引导 */
     fun lock(): Boolean = DuoLockService.lockScreen()
 
-    /** 打开系统「无障碍 / 已安装的服务」页面，让用户开启 DuoLauncher 熄屏服务 */
+    /** 打开系统「无障碍 / 已安装的服务」页面，让用户开启 DuoLauncher 息屏服务 */
     fun requestPermission(ctx: Context) {
         runCatching {
             ctx.startActivity(

@@ -39,7 +39,7 @@ This is a personal open-source project. Source and issue tracker: https://github
 | `QUERY_ALL_PACKAGES` | 枚举已安装应用，用于 App 资源库、字母索引与搜索 | 启动器核心功能，必需；应用列表仅在本地使用 |
 | `READ_CONTACTS` | 在搜索结果里按姓名 / 号码匹配通讯录联系人 | 可选，首次使用时按需申请；只在设备本地查询，不上传、不保存副本、不读取其它联系人字段 |
 | 通知使用权（`BIND_NOTIFICATION_LISTENER_SERVICE`） | 统计未读通知数量以显示角标 | 可选，仅本机处理，不读取通知正文上传 |
-| 无障碍服务（`BIND_ACCESSIBILITY_SERVICE`） | 仅用于「双击桌面熄屏」，调用系统锁屏全局操作 | 可选；`canRetrieveWindowContent=false`，不读取屏幕内容、不监听输入、不自主执行动作 |
+| 无障碍服务（`BIND_ACCESSIBILITY_SERVICE`） | 仅用于「双击桌面息屏」，调用系统锁屏全局操作 | 可选；`canRetrieveWindowContent=false`，不读取屏幕内容、不监听输入、不自主执行动作 |
 | `EXPAND_STATUS_BAR` | 下滑手势展开通知栏 / 控制中心 | 可选，未授权时有降级处理 |
 | `CAMERA` / `FLASHLIGHT` | 可选的手电筒快捷动作 | 可选，不会拍照或录像 |
 | `ACCESS_WIFI_STATE` / `ACCESS_NETWORK_STATE` | 在自定义状态栏绘制 Wi-Fi 与信号指示 | 仅本机读取系统状态 |
@@ -47,7 +47,7 @@ This is a personal open-source project. Source and issue tracker: https://github
 | `VIBRATE` | 长按等操作的触感反馈 | 可选 |
 | `REQUEST_DELETE_PACKAGES` | 图标菜单中的卸载入口，需系统确认 | 可选 |
 | `BIND_APPWIDGET` | 桌面小组件 | 可选 |
-| 设备管理器（`BIND_DEVICE_ADMIN`） | 个别 ROM 上熄屏的备用方案 | 可选，从不自动激活，可在系统设置中停用 |
+| 设备管理器（`BIND_DEVICE_ADMIN`） | 个别 ROM 上息屏的备用方案 | 可选，从不自动激活，可在系统设置中停用 |
 
 所有可选权限都可以在系统设置中随时撤销，撤销后对应功能停用，不影响桌面主体功能。
 

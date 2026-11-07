@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="duo_lock_label">DuoLauncher 熄屏服务</string>
-    <string name="duo_lock_desc">仅用于「双击桌面熄屏」。此服务不读取屏幕内容、不监听输入，只调用系统的「锁定屏幕」全局操作。</string>
+    <string name="duo_lock_label">DuoLauncher 息屏服务</string>
+    <string name="duo_lock_desc">仅用于「双击桌面息屏」。此服务不读取屏幕内容、不监听输入，只调用系统的「锁定屏幕」全局操作。</string>
     <string name="search">搜索</string>
     <string name="clear">清空</string>
     <string name="cancel">取消</string>
@@ -134,9 +134,9 @@
     <string name="show_page_dots">显示页面指示点</string>
     <string name="reverse_pages">反转左右滑页方向</string>
     <string name="reverse_pages_desc">开启后资源库出现在左边</string>
-    <string name="double_tap_lock">双击桌面熄屏</string>
-    <string name="double_tap_lock_on">已开启无障碍熄屏服务</string>
-    <string name="double_tap_lock_off">首次使用需在「无障碍」中开启 DuoLauncher 熄屏服务（仅锁屏）</string>
+    <string name="double_tap_lock">双击桌面息屏</string>
+    <string name="double_tap_lock_on">已开启无障碍息屏服务</string>
+    <string name="double_tap_lock_off">首次使用需在「无障碍」中开启 DuoLauncher 息屏服务（仅锁屏）</string>
     <string name="swipe_down_panels">下滑打开通知栏 / 控制中心</string>
     <string name="swipe_down_panels_desc">左半屏下滑出通知栏，右半屏下滑出控制中心；与左右翻页互不影响</string>
     <string name="swipe_right_search">右滑打开搜索</string>
@@ -217,8 +217,8 @@
     <string name="err_no_release">该仓库还没有发布过 Release</string>
     <string name="err_bad_json">返回内容不是 Release 信息（缺少 tag_name）</string>
     <string name="err_no_tag">订阅源里找不到版本标签</string>
-    <string name="toast_sleep_starting">熄屏服务正在启动，请稍后再试</string>
-    <string name="toast_enable_accessibility">请在「无障碍 → 已下载的服务」中开启 DuoLauncher 熄屏服务</string>
+    <string name="toast_sleep_starting">息屏服务正在启动，请稍后再试</string>
+    <string name="toast_enable_accessibility">请在「无障碍 → 已下载的服务」中开启 DuoLauncher 息屏服务</string>
     <string name="toast_enable_service">请在「无障碍」中开启 DuoLauncher 服务后重试</string>
     <string name="search_results">搜索结果 · %1$d</string>
     <string name="app_count">%1$d 个应用</string>

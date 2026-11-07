@@ -94,7 +94,7 @@ object DuoState {
     var hideStatusBar by mutableStateOf(true)
     var showPageDots by mutableStateOf(true)
     var reversePages by mutableStateOf(false)
-    var doubleTapSleep by mutableStateOf(true)      // 双击桌面空白处熄屏
+    var doubleTapSleep by mutableStateOf(true)      // 双击桌面空白处息屏
     var gesturePanels by mutableStateOf(true)       // 下滑呼出通知栏 / 控制中心（左半屏=通知，右半屏=控制中心）
     var gestureSearch by mutableStateOf(true)       // 桌面最左页右滑打开搜索
     var iconScale by mutableStateOf(1.0f)            // 主屏图标大小

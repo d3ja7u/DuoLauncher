@@ -141,7 +141,7 @@ fun HomePage(
         Modifier
             .fillMaxSize()
             .onGloballyPositioned { pageOrigin = it.positionInRoot() }
-            // 主屏空白处手势：双击熄屏 + 长按进「启动器设置」，两个手势互不干扰
+            // 主屏空白处手势：双击息屏 + 长按进「启动器设置」，两个手势互不干扰
             // （双击在超时前等第二击；长按超过阈值即触发，并取消 pending taps）。
             // 图标自身的长按拖拽会先 consume 该 down 事件，所以长按图标不会误触发设置。
             .pointerInput(DuoState.doubleTapSleep) {
@@ -149,7 +149,7 @@ fun HomePage(
                     onDoubleTap = {
                         if (!DuoState.doubleTapSleep) return@detectTapGestures
                         if (ScreenOff.lock()) {
-                            // 已熄屏
+                            // 已息屏
                         } else if (ScreenOff.isEnabled(ctx)) {
                             nav.toast(Lang.s(R.string.toast_sleep_starting))
                         } else {

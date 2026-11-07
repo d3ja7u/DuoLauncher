@@ -16,7 +16,7 @@ import com.duolauncher.service.DuoLockService
  *     不需要用户去开无障碍。个别 ROM 把方法删了或加了签名校验，会抛异常 → 返回 false。
  *
  *  2. **无障碍 GLOBAL_ACTION_NOTIFICATIONS / GLOBAL_ACTION_QUICK_SETTINGS（兜底）**
- *     复用双击熄屏那个最小的 [DuoLockService]（只调 performGlobalAction、不读窗口内容），
+ *     复用双击息屏那个最小的 [DuoLockService]（只调 performGlobalAction、不读窗口内容），
  *     用户开了无障碍就一定可用。
  *
  * 两者都失败时返回 false，由调用方提示用户去开无障碍。
