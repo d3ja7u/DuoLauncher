@@ -307,4 +307,8 @@
         <item>English</item>
         <item>日本語</item>
     </string-array>
+    <string name="show_bottom_left">左下の設定アイコン</string>
+    <string name="show_bottom_left_desc">オフにすると、ホームの空白を長押しで設定を開けます</string>
+    <string name="show_bottom_right">右下の検索アイコン</string>
+    <string name="show_bottom_right_desc">オフにすると、最左ページで右スワイプで検索を開きます</string>
 </resources>

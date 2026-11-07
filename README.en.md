@@ -43,6 +43,8 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 | **Multilingual UI** | Simplified Chinese, English and Japanese; follows the device language automatically, with a manual override in Settings |
 | **Clean start** | A fresh install leaves the home screen grid empty; you decide what goes on it |
 | **Settings backup** | Export / import a JSON file covering home layout, sidebar, folders, categories, icons, language and every other setting |
+| **Long-press to open Settings** | Long-press empty home area to jump straight into Launcher Settings — no need to tap the bottom-left menu first |
+| **Hide bottom icons** | The bottom-left settings icon and bottom-right search icon can be hidden in Settings → Home Screen & Gestures; after hiding, long-press still opens Settings and swipe-right on the leftmost page still opens Search |
 
 ---
 
@@ -56,6 +58,8 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 - **Move / reorder icons**: long-press and drag; the grid makes room automatically.
 - **Edit Home Screen**: tap `···` in the bottom-left → **Edit Home Screen**. Icons jiggle and an iOS-style `-` badge appears at their top-left. Tapping `-` offers **Remove from Home Screen / Uninstall / Cancel** — removing from the Home Screen only sends the icon back to the App Library and does **not** uninstall the app. Long-pressing an icon still opens the full menu (change icon / app info / uninstall). Tap the menu item again to exit.
 - **Home menu** (bottom-left `···`): Edit Home Screen / Add App to Home / Launcher Settings / Change Wallpaper.
+- **Long-press empty home area**: opens Launcher Settings directly.
+- **Hide bottom icons**: both the bottom-left `···` and the bottom-right search icon can be turned off in Settings → Home Screen & Gestures; after that, long-press still opens Settings and swipe-right on the leftmost page still opens Search.
 
 ### 2.2 Sidebar
 
@@ -101,7 +105,7 @@ Open it by **swiping right on the home screen**, tapping the magnifier in the bo
 | **Swipe down · left half** | Notifications | Fires after ≥ 96dp of accumulated travel |
 | **Swipe down · right half** | Quick Settings | The half where the gesture starts decides which panel opens |
 | **Double-tap empty area** | Sleep | Requires the accessibility service |
-| Long-press empty area | Home menu | |
+| **Long-press empty area** | Enter Launcher Settings | Direct entry to Settings; still the main way in after hiding the bottom icons |
 
 > The swipe-down handler only claims vertical drags. It does not interfere with page swipes or icon long-press drags, and short swipes are ignored.
 
@@ -131,7 +135,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Sidebar | Show sidebar, Position, Edit Sidebar, Cutout top padding, Home icon size, Sidebar icon size |
 | Search | Recent apps count (5 / 10 / 15 / 20), Search engine (Baidu / Bing / Google), Search contacts |
 | iOS-style Status Bar | Show time and arc signal, Position, 24-hour clock, Signal dots follow real strength, Top offset, Status bar size |
-| Home Screen & Gestures | Show Android status bar, Show page indicators, Reverse swipe direction, Double-tap to sleep, Swipe down for notifications / quick settings, Swipe right to search |
+| Home Screen & Gestures | Show Android status bar, Show page indicators, Reverse swipe direction, Double-tap to sleep, Swipe down for notifications / quick settings, Swipe right to search, Bottom-left settings icon, Bottom-right search icon |
 | App Library | Smart categories, Edit App Category, Hide App |
 | Appearance | Glass blur intensity, Dark glass |
 | Icon Pack | Current icon pack (auto-detects installed packs) |
@@ -140,7 +144,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Backup and restore | Export settings, Import settings |
 | System | **Language**, Set as default launcher, Change Wallpaper, DuoLauncher app info, About |
 
-Open it from the home screen: bottom-left `···` → Launcher Settings.
+Open it from the home screen: bottom-left `···` → Launcher Settings, or long-press an empty home area.
 
 ### 3.1 Language
 

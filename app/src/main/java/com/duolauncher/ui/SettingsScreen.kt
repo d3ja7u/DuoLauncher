@@ -333,6 +333,16 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         Lang.s(R.string.swipe_right_search_desc),
                         DuoState.gestureSearch, dark
                     ) { on -> DuoState.gestureSearch = on; DuoState.save() }
+                    SettingToggle(
+                        Lang.s(R.string.show_bottom_left),
+                        Lang.s(R.string.show_bottom_left_desc),
+                        DuoState.showBottomLeft, dark
+                    ) { DuoState.showBottomLeft = it; DuoState.save() }
+                    SettingToggle(
+                        Lang.s(R.string.show_bottom_right),
+                        Lang.s(R.string.show_bottom_right_desc),
+                        DuoState.showBottomRight, dark
+                    ) { DuoState.showBottomRight = it; DuoState.save() }
                 }
             }
         }

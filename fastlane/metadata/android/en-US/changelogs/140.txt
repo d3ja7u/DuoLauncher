@@ -1,0 +1,3 @@
+- Long-press an empty home area to open Launcher Settings directly
+- New toggles to hide the bottom-left settings icon and bottom-right search icon (Settings → Home & Gestures)
+- After hiding: long-press still opens Settings; swipe-right on the leftmost page still opens Search

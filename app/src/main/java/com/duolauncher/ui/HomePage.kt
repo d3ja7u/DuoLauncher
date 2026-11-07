@@ -141,21 +141,26 @@ fun HomePage(
         Modifier
             .fillMaxSize()
             .onGloballyPositioned { pageOrigin = it.positionInRoot() }
-            // 搜索只走右下角的搜索按钮，桌面不再用下滑呼出搜索
-            // 双击桌面空白处熄屏（无障碍服务 GLOBAL_ACTION_LOCK_SCREEN，不用设备管理员）：
-            // 图标 / 文件夹自身消费点击事件，故只有点空白才触发
+            // 主屏空白处手势：双击熄屏 + 长按进「启动器设置」，两个手势互不干扰
+            // （双击在超时前等第二击；长按超过阈值即触发，并取消 pending taps）。
+            // 图标自身的长按拖拽会先 consume 该 down 事件，所以长按图标不会误触发设置。
             .pointerInput(DuoState.doubleTapSleep) {
-                if (!DuoState.doubleTapSleep) return@pointerInput
-                detectTapGestures(onDoubleTap = {
-                    if (ScreenOff.lock()) {
-                        // 已熄屏
-                    } else if (ScreenOff.isEnabled(ctx)) {
-                        nav.toast(Lang.s(R.string.toast_sleep_starting))
-                    } else {
-                        ScreenOff.requestPermission(ctx)
-                        nav.toast(Lang.s(R.string.toast_enable_accessibility))
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (!DuoState.doubleTapSleep) return@detectTapGestures
+                        if (ScreenOff.lock()) {
+                            // 已熄屏
+                        } else if (ScreenOff.isEnabled(ctx)) {
+                            nav.toast(Lang.s(R.string.toast_sleep_starting))
+                        } else {
+                            ScreenOff.requestPermission(ctx)
+                            nav.toast(Lang.s(R.string.toast_enable_accessibility))
+                        }
+                    },
+                    onLongPress = {
+                        if (!DuoState.dragging) nav.openSettings()
                     }
-                })
+                )
             }
             // 下滑呼出系统面板（iOS 那套分区）：左半屏 → 通知栏，右半屏 → 控制中心。
             // 竖直手势和左右翻页互不干扰；图标长按拖拽会先消费事件，这里自然让位。
@@ -520,6 +525,7 @@ fun HomePage(
                 .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (DuoState.showBottomLeft) {
             GlassCard(modifier = Modifier.size(34.dp), radius = 17.dp, level = DuoState.glassLevel, dark = dark) {
                 Box(
                     Modifier.fillMaxSize().clickable(
@@ -533,6 +539,7 @@ fun HomePage(
                         Lang.s(R.string.home_menu), tint = glassTextColor(dark), modifier = Modifier.size(18.dp)
                     )
                 }
+            }
             }
             Spacer(Modifier.weight(1f))
             // 只有一页主屏时不画指示点（去掉负一屏后单页很常见）
@@ -552,6 +559,7 @@ fun HomePage(
                 }
             }
             Spacer(Modifier.weight(1f))
+            if (DuoState.showBottomRight) {
             GlassCard(modifier = Modifier.size(34.dp), radius = 17.dp, level = DuoState.glassLevel, dark = dark) {
                 Box(
                     Modifier.fillMaxSize().clickable(
@@ -562,6 +570,7 @@ fun HomePage(
                 ) {
                     Icon(Icons.Filled.Search, Lang.s(R.string.search), tint = glassTextColor(dark), modifier = Modifier.size(18.dp))
                 }
+            }
             }
         }
     }

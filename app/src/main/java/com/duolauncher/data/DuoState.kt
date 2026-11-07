@@ -72,6 +72,10 @@ object DuoState {
     var searchContacts by mutableStateOf(true)
     /** 主屏幕是否显示玻璃侧边栏 */
     var showSidebar by mutableStateOf(true)
+    /** 主屏左下角「菜单」图标（点开含启动器设置）是否显示 */
+    var showBottomLeft by mutableStateOf(true)
+    /** 主屏右下角「搜索」图标是否显示 */
+    var showBottomRight by mutableStateOf(true)
 
     // ── GitHub Releases 更新检查 ──
     /** 更新源地址；可以改成自建镜像，空串会自动回落到默认地址 */
@@ -200,6 +204,8 @@ object DuoState {
             searchEngine = o.optString("searchEng", "baidu").ifBlank { "baidu" }
             searchContacts = o.optBoolean("searchContacts", true)
             showSidebar = o.optBoolean("showSb", true)
+            showBottomLeft = o.optBoolean("bl", true)
+            showBottomRight = o.optBoolean("br", true)
             updateUrl = o.optString("updUrl", UpdateChecker.DEFAULT_URL)
                 .ifBlank { UpdateChecker.DEFAULT_URL }
             autoCheckUpdate = o.optBoolean("updAuto", true)
@@ -257,6 +263,8 @@ object DuoState {
             o.put("searchEng", searchEngine)
             o.put("searchContacts", searchContacts)
             o.put("showSb", showSidebar)
+            o.put("bl", showBottomLeft)
+            o.put("br", showBottomRight)
             o.put("updUrl", updateUrl)
             o.put("updAuto", autoCheckUpdate)
             o.put("updAt", lastUpdateCheck)

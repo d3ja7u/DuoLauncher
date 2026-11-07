@@ -307,4 +307,8 @@
         <item>English</item>
         <item>日本語</item>
     </string-array>
+    <string name="show_bottom_left">左下角设置图标</string>
+    <string name="show_bottom_left_desc">关闭后长按主屏空白处仍可进入设置</string>
+    <string name="show_bottom_right">右下角搜索图标</string>
+    <string name="show_bottom_right_desc">关闭后可在最左页右滑打开搜索</string>
 </resources>
