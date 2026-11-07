@@ -301,11 +301,7 @@ Versions are compared segment by segment, so `1.3.10` is correctly newer than `1
 
 ### Anonymous usage statistics
 
-Settings → **Privacy and statistics**: toggle, local anonymous ID, endpoint, View statistics.
-
-Only a random anonymous ID, app version, UI language and Android API level are sent — no device identifiers or personal content. You are asked once on first launch, and can turn it off at any time (which immediately deletes the local ID). The number means "devices with statistics enabled", not true installs.
-
-The default receiver now persists to the WorkBuddy cloud database; you can also point the endpoint at your own `tools/stats-server` (HTTPS required) with no client update. The [summary page](https://duolauncher-stats.app.workbuddy.host/?sharecode=AKJCYWSUYS) shows device counts, activity and version distribution. See [PRIVACY.md](PRIVACY.md) for details.
+Only a random anonymous ID, app version, UI language and Android API level are sent — no device identifiers or personal content. Turn it off any time in Settings → Privacy and statistics (which immediately deletes the local ID). The number means "devices with statistics enabled", not true installs. See [PRIVACY.md](PRIVACY.md) for details.
 
 ---
 
