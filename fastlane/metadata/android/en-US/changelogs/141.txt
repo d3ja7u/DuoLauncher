@@ -1,1 +1,1 @@
-- Term unification: "熄屏" (screen off) renamed to "息屏" across the launcher UI and docs (e.g. double-tap to sleep, sleep service)
+- Term unification: the launcher UI and docs now consistently use "息屏" (screen off), e.g. double-tap to sleep
