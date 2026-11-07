@@ -1,0 +1,4 @@
+* Statistics receiver now persists to a cloud database, so data survives a hosted-instance restart
+* Redesigned summary page shows cloud aggregates, version and language distribution
+* Added Docker / compose self-hosting; the endpoint stays configurable with no client update needed
+* Documentation and privacy policy updated
