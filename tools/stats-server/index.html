@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DuoLauncher 匿名统计</title>
+<style>
+:root{color-scheme:light dark}
+body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:760px;margin:40px auto;padding:0 20px}
+h1{font-size:22px;margin-bottom:4px}
+.sub{opacity:.65;font-size:13px;margin-bottom:24px}
+.src{display:inline-block;font-size:12px;padding:3px 9px;border-radius:20px;border:1px solid rgba(128,128,128,.35);margin-bottom:20px}
+.src.ok{border-color:#2e9e5b;color:#2e9e5b}
+.src.warn{border-color:#d08a1d;color:#d08a1d}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:28px}
+.card{border:1px solid rgba(128,128,128,.3);border-radius:14px;padding:16px}
+.card b{display:block;font-size:28px;line-height:1.2;margin-bottom:4px}
+.card span{font-size:12px;opacity:.65}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid rgba(128,128,128,.2)}
+th{font-size:12px;opacity:.6;font-weight:600}
+h2{font-size:16px;margin:26px 0 8px}
+code{background:rgba(128,128,128,.15);padding:2px 5px;border-radius:4px}
+.msg{font-size:13px;padding:10px 12px;border-radius:10px;background:rgba(208,138,29,.12);margin-bottom:16px;display:none}
+button{font:inherit;font-size:13px;padding:8px 14px;border-radius:10px;border:1px solid rgba(128,128,128,.4);background:transparent;cursor:pointer}
+footer{margin-top:36px;font-size:12px;opacity:.6}
+</style>
+</head>
+<body>
+<h1>DuoLauncher 匿名统计</h1>
+<div class="sub">仅统计随机匿名 ID 的数量，不采集设备标识、IP、位置或任何个人信息 · 每 60 秒刷新</div>
+<div class="src" id="src">正在连接…</div>
+<div class="msg" id="msg"></div>
+<div class="cards" id="cards"></div>
+<h2>版本分布</h2><table id="versions"></table>
+<h2>界面语言</h2><table id="langs"></table>
+<h2>最近 30 天</h2><table id="days"></table>
+<div id="selftest" style="display:none;margin-bottom:20px">
+  <button id="btn-test">云端连通性自检（写入一条 test 记录）</button>
+  <span id="test-result" style="font-size:12px;opacity:.7;margin-left:10px"></span>
+</div>
+<footer>关闭统计：启动器 设置 → 隐私与统计 → 匿名使用统计。原始数据可用 <code>/export</code> 备份。</footer>
+
+<!-- 官方云服务 SDK：CDN 形态（本项目无 npm 构建步骤） -->
+<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
+<script src="./cloud-config.js"></script>
+<script>
+(function () {
+  var cfg = window.publicConfig;
+  var cloud = null;
+
+  function showMsg(text) {
+    var el = document.getElementById('msg');
+    el.textContent = text;
+    el.style.display = text ? 'block' : 'none';
+  }
+
+  // 初始化：endpoint / oauthRelayBaseUrl / publishableKey 全部来自 publicConfig
+  if (cfg && cfg.endpoint && cfg.publishableKey && window.WorkBuddyCloud) {
+    try {
+      cloud = WorkBuddyCloud.createWorkBuddyCloud({
+        endpoint: cfg.endpoint,
+        oauthRelayBaseUrl: cfg.oauthRelayBaseUrl,
+        publishableKey: cfg.publishableKey
+      });
+    } catch (e) {
+      showMsg('云服务初始化失败：' + e.message + '；已切换到本地数据。');
+    }
+  } else if (!window.WorkBuddyCloud) {
+    showMsg('云服务 SDK 加载失败，已切换到本地数据。请检查网络后刷新。');
+  }
+
+  function table(el, head, rows) {
+    document.getElementById(el).innerHTML =
+      '<tr>' + head.map(function (x) { return '<th>' + x + '</th>'; }).join('') + '</tr>' +
+      (rows.length ? rows.map(function (r) {
+        return '<tr>' + r.map(function (x) { return '<td>' + (x == null ? '' : x) + '</td>'; }).join('') + '</tr>';
+      }).join('') : '<tr><td colspan="9">暂无数据</td></tr>');
+  }
+
+  function render(d, from) {
+    var src = document.getElementById('src');
+    src.className = 'src ' + (from === 'cloud' ? 'ok' : 'warn');
+    src.textContent = from === 'cloud' ? '数据来源：云服务数据库' : '数据来源：本地 SQLite（云服务未启用或不可用）';
+    document.getElementById('cards').innerHTML = [
+      ['累计安装设备', d.devices], ['近 7 天活跃', d.active_7d],
+      ['近 30 天活跃', d.active_30d], ['累计上报次数', d.pings]
+    ].map(function (x) {
+      return '<div class="card"><b>' + (x[1] || 0) + '</b><span>' + x[0] + '</span></div>';
+    }).join('');
+    table('versions', ['版本', '设备数'], (d.versions || []).map(function (x) { return [x.app || '未知', x.devices]; }));
+    table('langs', ['语言', '设备数'], (d.langs || []).map(function (x) { return [x.lang || '未知', x.devices]; }));
+    table('days', ['日期', '活跃设备', '上报次数'], (d.days || []).map(function (x) { return [x.day, x.devices, x.pings]; }));
+    if (d.generated_at) document.querySelector('.sub').lastChild.textContent = ' · 更新于 ' + d.generated_at;
+  }
+
+  // 云端聚合：stats_summary() 只返回聚合数字，不暴露任何匿名 ID
+  async function fromCloud() {
+    var res = await cloud.database.rpc('stats_summary');
+    if (res.error) throw new Error(res.error.message || 'RPC 调用失败');
+    var d = res.data;
+    if (Array.isArray(d)) d = d[0];
+    if (d && d.stats_summary) d = d.stats_summary;
+    if (!d || typeof d.devices === 'undefined') throw new Error('云端返回格式异常');
+    return d;
+  }
+
+  // 本地 SQLite 兜底（自托管 / 云服务额度用尽 / 网络异常时仍可查看）
+  async function fromLocal() {
+    var r = await fetch('./stats', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }
+
+  async function load() {
+    if (cloud) {
+      try {
+        render(await fromCloud(), 'cloud');
+        showMsg('');
+        return;
+      } catch (e) {
+        showMsg('云端读取失败：' + e.message + '；已切换到本地数据。');
+      }
+    }
+    try {
+      render(await fromLocal(), 'local');
+    } catch (e) {
+      showMsg('本地数据也读取失败：' + e.message);
+    }
+  }
+
+  // 部署验证入口：仅 ?selftest=1 时显示，避免公开页面被随意写入
+  if (new URLSearchParams(location.search).get('selftest') === '1') {
+    document.getElementById('selftest').style.display = 'block';
+    document.getElementById('btn-test').onclick = async function () {
+      var out = document.getElementById('test-result');
+      if (!cloud) { out.textContent = '云服务未启用'; return; }
+      out.textContent = '写入中…';
+      var row = {
+        anon_id: 'web-selftest-' + Math.random().toString(36).slice(2, 14),
+        app: '1.5.6', code: 143, lang: 'zh', api: 33, kind: 'test'
+      };
+      try {
+        var res = await cloud.database.from('stats_pings').insert(row).select();
+        if (res.error) throw new Error(res.error.message || '写入被拒绝');
+        out.textContent = '写入成功，正在读回…';
+        var d = await fromCloud();
+        render(d, 'cloud');
+        out.textContent = '读回成功：累计 ' + d.pings + ' 次上报 / ' + d.devices + ' 台设备';
+      } catch (e) {
+        out.textContent = '失败：' + e.message;
+      }
+    };
+  }
+
+  load();
+  setInterval(load, 60000);
+})();
+</script>
+</body>
+</html>

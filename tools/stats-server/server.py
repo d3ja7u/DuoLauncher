@@ -7,20 +7,28 @@ DuoLauncher 匿名安装统计接收端（零依赖，仅 Python 标准库）。
 不接收也不落盘 IP、设备型号、广告 ID、通讯录、位置等任何可识别信息。
 
 端点：
-  POST /ping    上报一条记录（body 见下）
-  GET  /stats   聚合统计 JSON
-  GET  /        人看的统计页
-  GET  /export  原始记录 JSONL（备份用）
-  GET  /health  健康检查
+  POST /ping             上报一条记录（body 见下）
+  GET  /stats            本地 SQLite 聚合统计 JSON
+  GET  /                 统计看板（优先读取 index.html，使用官方云服务 SDK）
+  GET  /cloud-config.js  看板用的 publicConfig（可公开的应用标识）
+  GET  /export           原始记录 JSONL（备份用）
+  GET  /health           健康检查（含云服务状态）
 
 POST /ping 请求体示例：
   {"v":1,"id":"c0a8...","app":"1.5.6","code":143,"lang":"zh","api":33,"kind":"install"}
 
 环境变量：
-  PORT            监听端口（默认 3000）
-  STATS_DATA_DIR  SQLite 数据目录（默认脚本同级 data/）
+  PORT                    监听端口（默认 3000）
+  STATS_DATA_DIR          SQLite 数据目录（默认脚本同级 data/）
+  CLOUD_ENDPOINT          云服务数据面地址（默认读 cloud-config.json）
+  CLOUD_PUBLISHABLE_KEY   云服务应用标识（默认读 cloud-config.json）
+  CLOUD_MODE=off          关闭云端同步，变成纯本地接收端
 
-自托管：python3 server.py，再用 Nginx/Caddy 反代并启用 HTTPS。
+数据双写：本地 SQLite 始终是可靠副本；配置云服务后，每条通过校验的上报会异步
+同步到云数据库 stats_pings（服务端 → 数据面桥接；浏览器看板用官方 CDN SDK 读取）。
+云端写入失败不影响本地记录，也不影响客户端返回。
+
+自托管：python3 server.py，再用 Nginx/Caddy 反代并启用 HTTPS；或直接用 Docker 部署。
 """
 
 import json
@@ -29,6 +37,7 @@ import re
 import sqlite3
 import threading
 import time
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -47,6 +56,73 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 KINDS = {"install", "upgrade", "heartbeat", "test"}
 MAX_BODY = 4096
 THROTTLE_SEC = 60  # 同一匿名 ID 60 秒内的重复上报只更新时间，不重复计数
+CLOUD_REST = "/.cloud/database/rest/stats_pings"
+
+
+def load_cloud_config():
+    """publicConfig 由 workbuddy_cloud_service 激活后写入 cloud-config.json；
+    环境变量只用于覆盖（家里自托管时可设 CLOUD_MODE=off 走纯本地）。"""
+    cfg = {}
+    try:
+        with open(os.path.join(BASE, "cloud-config.json"), "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except Exception:
+        pass
+    cfg["endpoint"] = (cfg.get("endpoint") or "").rstrip("/")
+    cfg["publishableKey"] = cfg.get("publishableKey") or ""
+    # 空环境变量不覆盖配置文件，方便 compose 里保留占位变量
+    if os.environ.get("CLOUD_ENDPOINT", "").strip():
+        cfg["endpoint"] = os.environ["CLOUD_ENDPOINT"].strip().rstrip("/")
+    if os.environ.get("CLOUD_PUBLISHABLE_KEY", "").strip():
+        cfg["publishableKey"] = os.environ["CLOUD_PUBLISHABLE_KEY"].strip()
+    if os.environ.get("CLOUD_MODE", "").strip().lower() in ("off", "0", "false"):
+        cfg["endpoint"] = ""
+    return cfg
+
+
+CLOUD = load_cloud_config()
+
+
+def cloud_push(uid, app, code, lang, api, kind):
+    """把一条已校验的上报同步进云数据库。
+
+    浏览器看板使用官方 CDN SDK；Android 原生与 Python 服务端没有 SDK 形态，
+    因此这里沿用 SDK 注入的 x-wb-webapp-access-key 头访问同一数据面。
+    失败静默，本地 SQLite 始终是可靠副本，绝不因云端故障影响客户端。
+    """
+    ep = CLOUD.get("endpoint", "")
+    key = CLOUD.get("publishableKey", "")
+    if not ep or not key:
+        return False
+    row = {"anon_id": uid, "app": app, "code": code,
+           "lang": lang, "api": api, "kind": kind}
+    req = urllib.request.Request(
+        ep + CLOUD_REST,
+        data=json.dumps(row).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "Prefer": "return=minimal",
+            "x-wb-webapp-access-key": key,
+            "Origin": ep,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return 200 <= resp.status < 300
+    except Exception as exc:
+        # 不打印配置内容或响应体，只留异常类型
+        print("cloud push skipped: %s" % type(exc).__name__, flush=True)
+        return False
+
+
+def dashboard_html():
+    try:
+        with open(os.path.join(BASE, "index.html"), "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return HTML
 
 
 def db():
@@ -97,6 +173,7 @@ def record(payload):
 
     now = int(time.time())
     day = datetime.fromtimestamp(now, timezone.utc).astimezone().strftime("%Y-%m-%d")
+    push_row = None
     with LOCK, db() as c:
         row = c.execute("SELECT last_seen, pings FROM devices WHERE id=?", (uid,)).fetchone()
         if row and now - row["last_seen"] < THROTTLE_SEC:
@@ -104,6 +181,8 @@ def record(payload):
             c.execute("UPDATE devices SET last_seen=?, app=?, code=?, lang=?, api=? WHERE id=?",
                       (now, app, code, lang, api, uid))
         else:
+            # 只有真正落一条 event 时才同步云端，避免节流窗口内的重复计数
+            push_row = (uid, app, code, lang, api, kind)
             c.execute("INSERT INTO events(id,ts,day,kind,app,code,lang,api) VALUES(?,?,?,?,?,?,?,?)",
                       (uid, now, day, kind, app, code, lang, api))
             if row:
@@ -116,6 +195,9 @@ def record(payload):
                           (uid, now, now, app, code, lang, api))
         devices = c.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
         pings = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+    if push_row:
+        # 异步推送：云端超时/故障不阻塞客户端，也不改变本地计数
+        threading.Thread(target=cloud_push, args=push_row, daemon=True).start()
     return True, "ok", {"devices": devices, "pings": pings}
 
 
@@ -216,11 +298,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path.rstrip("/") or "/"
         if path == "/health":
-            return self.send(200, json.dumps({"ok": True}))
+            return self.send(200, json.dumps({"ok": True, "cloud": bool(CLOUD.get("endpoint"))}))
         if path == "/stats":
             return self.send(200, json.dumps(stats(), ensure_ascii=False))
-        if path == "/":
-            return self.send(200, HTML, "text/html; charset=utf-8")
+        if path == "/cloud-config.js":
+            body = "window.publicConfig=%s;" % json.dumps({
+                k: CLOUD.get(k, "") for k in ("endpoint", "oauthRelayBaseUrl", "publishableKey")
+            }, ensure_ascii=False)
+            return self.send(200, body, "application/javascript; charset=utf-8")
+        if path in ("/", "/index.html"):
+            return self.send(200, dashboard_html(), "text/html; charset=utf-8")
         if path == "/export":
             with LOCK, db() as c:
                 rows = [dict(r) for r in c.execute("SELECT * FROM events ORDER BY seq")]
@@ -252,5 +339,6 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init_db()
-    print("DuoLauncher stats server on 0.0.0.0:%s, db=%s" % (PORT, DB_PATH), flush=True)
+    print("DuoLauncher stats server on 0.0.0.0:%s, db=%s, cloud=%s"
+          % (PORT, DB_PATH, "on" if CLOUD.get("endpoint") else "off"), flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

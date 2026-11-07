@@ -306,8 +306,10 @@ GitHub 匿名 API 每个 IP 每小时只有 60 次，校园网 / 运营商共享
 - **只发送**：应用自己生成的随机 UUID（**不是** IMEI / Android ID / 广告 ID / 账号）、版本号与 versionCode、界面语言、Android API 等级、上报类型（`install` / `upgrade` / `heartbeat`）。首次启动会先弹一次说明，确认后才上报；之后应用升级时一次、每天最多一次心跳（24 小时节流）。
 - **不发送**：设备型号 / 序列号 / IMEI / Android ID / 广告 ID、位置、通讯录、短信、账号、壁纸、已安装应用列表、桌面布局、搜索关键词、通知内容或任何文件内容。接收端也不落盘 IP。
 - **关闭**：关掉开关会立即删除本机匿名 ID 并停止一切上报；把上报地址清空也能彻底停用。关闭后所有启动器功能完全不受影响，再次打开会生成一个全新 ID，无法与之前关联。
-- **上报地址可改**：默认指向本项目提供的统计服务（[汇总页](https://duolauncher-stats.app.workbuddy.host/?sharecode=AKJCYWSUYS)）。正式使用建议自托管 `tools/stats-server`（零依赖 Python + SQLite，支持 `/ping`、`/stats`、`/export`），把地址填进设置即可，客户端不需要升级。自托管时请用 HTTPS。
+- **上报地址可改**：默认指向本项目提供的统计服务（[汇总页](https://duolauncher-stats.app.workbuddy.host/?sharecode=AKJCYWSUYS)）。该接收端已接入 WorkBuddy 云数据库，一条上报会同时落本地 SQLite 与云端 `stats_pings` 表。也可自托管 `tools/stats-server`（零依赖 Python + SQLite，附 Docker / compose 配置，支持 `/ping`、`/stats`、`/export`），把地址填进设置即可，客户端不需要升级。自托管时请用 HTTPS。
 - 匿名 ID 单独存放，**不写进设置备份**；统计开关与上报地址会随备份走，但 ID 不会。
+
+**查看统计数据**：设置 → 隐私与统计 → 「查看统计数据」，或直接打开[汇总页](https://duolauncher-stats.app.workbuddy.host/?sharecode=AKJCYWSUYS)。页面显示累计设备数、近 7/30 天活跃、版本与界面语言分布、最近 30 天趋势，顶部会标明数据来自云端还是本地 SQLite。原始数据可在 WorkBuddy 应用面板的「数据」页查看 `stats_pings` 表，或用接收端 `/export` 导出 JSONL；汇总页加 `?selftest=1` 会出现云端连通性自检按钮。
 
 统计口径：数字是「开启统计的设备数」，不等于真实安装量——关闭统计、离线使用、从第三方渠道安装后未开启的设备都不会计入；同一设备卸载重装会生成新 ID。隐私细节以 [PRIVACY.md](PRIVACY.md) 为准。
 
