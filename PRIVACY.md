@@ -23,10 +23,10 @@ This is a personal open-source project. Source and issue tracker: https://github
 
 ### 网络访问
 
-唯一的联网功能是**可选的「检查更新」**（设置 → 更新）。它会向 GitHub Releases API（默认 `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`，接口受限时自动回退到 `releases.atom`）或你在设置里自行填写的地址发起一次普通 HTTPS GET 请求。请求中**不包含**设备标识、账号、位置、已安装应用列表或任何本机配置。响应只被用来解析版本号、更新说明以及安装包的文件名与大小。
+唯一的联网功能是**可选的「检查更新」**（设置 → 更新）。它会向 GitHub Releases API（默认 `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`，接口受限时自动回退到 `releases.atom`）或你在设置里自行填写的地址发起一次普通 HTTPS GET 请求。请求中**不包含**设备标识、账号、位置、已安装应用列表或任何本机配置。响应只被用来解析版本号、更新说明以及安装包的文件名与大小；只有你主动点「下载并安装」时，才会再发起一次 APK 下载请求。
 
 - 该功能默认需要你手动点击「检查更新」；开启「自动检查更新」后也设有最短检查间隔，可在设置里随时关闭。
-- 应用**不会自动下载、安装或执行任何 APK**，也不申请安装未知应用的权限。发现新版本时只显示一个提示框，是否打开下载页、是否复制链接，完全由你主动点击决定。
+- 发现新版本时，是否下载、是否安装**完全由你主动点击决定**，应用不会在后台自动下载或静默安装。点「下载并安装」后，APK 只写入应用私有缓存目录（`cache/updates/`），不写入公共目录、不申请外部存储权限；下载完通过 FileProvider 临时授权给系统安装器，由你在系统弹窗中确认安装。首次使用需在系统设置里允许「安装未知来源应用」（`REQUEST_INSTALL_PACKAGES`），该授权可随时撤销。也可以只打开下载页或复制链接，完全跳过下载。
 - 更新源地址可以清空或改成任意地址。若把地址改为第三方服务，该服务将按它自己的政策处理请求，这一点由你自行决定。
 - GitHub 属于专有网络服务，因此在 F-Droid 类仓库中本应用会带 `NonFreeNet` 标记。
 
@@ -46,6 +46,7 @@ This is a personal open-source project. Source and issue tracker: https://github
 | `INTERNET` | 上述可选的更新检查 | 可选，关闭更新检查后不产生业务请求 |
 | `VIBRATE` | 长按等操作的触感反馈 | 可选 |
 | `REQUEST_DELETE_PACKAGES` | 图标菜单中的卸载入口，需系统确认 | 可选 |
+| `REQUEST_INSTALL_PACKAGES` | 在线更新时调起系统安装器；安装仍须你在系统弹窗中确认 | 可选，仅手动点「下载并安装」时用到，可在系统设置中撤销 |
 | `BIND_APPWIDGET` | 桌面小组件 | 可选 |
 | 设备管理器（`BIND_DEVICE_ADMIN`） | 个别 ROM 上息屏的备用方案 | 可选，从不自动激活，可在系统设置中停用 |
 
@@ -83,10 +84,10 @@ The app keeps one local JSON configuration file and one language preference, con
 
 ### Network access
 
-The only network feature is the **optional update check** (Settings → Updates). It performs a plain HTTPS GET against the GitHub Releases API (default `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`, with automatic fallback to `releases.atom`) or a URL you enter yourself. The request contains **no** device identifiers, account information, location, installed-app list, or local settings. The response is parsed only for the version number, release notes, and the APK file name and size.
+The only network feature is the **optional update check** (Settings → Updates). It performs a plain HTTPS GET against the GitHub Releases API (default `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`, with automatic fallback to `releases.atom`) or a URL you enter yourself. The request contains **no** device identifiers, account information, location, installed-app list, or local settings. The response is parsed only for the version number, release notes, and the APK file name and size; a download request is made only after you explicitly tap Download and install.
 
 - The check is triggered by tapping "Check for updates"; if auto-check is enabled it is rate-limited and can be disabled at any time.
-- The app **never downloads, installs, or executes an APK** and does not request the install-unknown-apps permission. When a new version exists it only shows a dialog; opening the download page or copying the link always requires a deliberate tap.
+- Whether to download or install is **always your deliberate tap** — nothing is fetched in the background or installed silently. After you tap Download and install, the APK is written only to the app's private cache (`cache/updates/`): no shared storage, no storage permission. It is shared with the system installer through a temporary FileProvider grant, and the install itself still needs your confirmation in the system dialog. On first use you must grant the Install unknown apps permission (`REQUEST_INSTALL_PACKAGES`), which can be revoked at any time. You can also just open the download page or copy the link and skip the download entirely.
 - The update source can be cleared or pointed at any endpoint. If you change it to a third-party service, that service's own policy applies.
 - GitHub is a proprietary service, so the app carries the `NonFreeNet` anti-feature in F-Droid-style repositories.
 
@@ -106,6 +107,7 @@ No other network requests are made and there is no background synchronization. *
 | `INTERNET` | The optional update check above | Optional; no business requests when disabled |
 | `VIBRATE` | Haptic feedback | Optional |
 | `REQUEST_DELETE_PACKAGES` | Uninstall shortcut in the icon menu, with system confirmation | Optional |
+| `REQUEST_INSTALL_PACKAGES` | Opens the system installer for in-place updates; the install still needs your confirmation | Optional, only used when you tap Download and install; revocable in system settings |
 | `BIND_APPWIDGET` | Home screen widgets | Optional |
 | Device Admin (`BIND_DEVICE_ADMIN`) | Fallback screen-off on some ROMs | Optional; never auto-activated, can be disabled in system settings |
 
@@ -143,10 +145,10 @@ Any future feature that changes the above will be reflected here first and noted
 
 ### ネットワークアクセス
 
-唯一の通信は**任意の「更新確認」**（設定 → 更新）です。GitHub Releases API（既定 `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`、利用不可時は `releases.atom` へ自動フォールバック）、または利用者が指定した URL に通常の HTTPS GET を 1 回送ります。リクエストには端末識別子、アカウント、位置情報、インストール済みアプリ一覧、端末内設定は**含まれません**。レスポンスからはバージョン番号、更新内容、APK のファイル名とサイズのみを読み取ります。
+唯一の通信は**任意の「更新確認」**（設定 → 更新）です。GitHub Releases API（既定 `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest`、利用不可時は `releases.atom` へ自動フォールバック）、または利用者が指定した URL に通常の HTTPS GET を 1 回送ります。リクエストには端末識別子、アカウント、位置情報、インストール済みアプリ一覧、端末内設定は**含まれません**。レスポンスからはバージョン番号、更新内容、APK のファイル名とサイズのみを読み取ります。APK のダウンロードは「ダウンロードしてインストール」を明示的にタップした場合にのみ行います。
 
 - 確認は「更新を確認」のタップで実行されます。自動確認を有効にした場合も間隔が制限され、設定から無効化できます。
-- アプリが **APK をダウンロード・インストール・実行することは一切なく**、不明アプリのインストール権限も要求しません。新バージョン時はダイアログを出すのみで、ページを開く／リンクをコピーするかは利用者の明示的な操作が必要です。
+- ダウンロードとインストールは**常に利用者の明示的なタップで開始**され、バックグラウンドで自動ダウンロードやサイレントインストールは行いません。「ダウンロードしてインストール」をタップすると、APK はアプリ専用キャッシュ（`cache/updates/`）にのみ保存され、共有ストレージへの書き込みやストレージ権限は不要です。FileProvider でシステムのインストーラーに一時共有し、インストール自体もシステム画面で利用者の確認が必要です。初回は「提供元不明のアプリのインストール」の許可（`REQUEST_INSTALL_PACKAGES`）が必要で、いつでも取り消せます。ダウンロードページを開く／リンクをコピーするだけなら、ダウンロードは一切行われません。
 - 更新元は空にすることも任意の URL に変更することもできます。第三者サービスに変更した場合はそのサービスのポリシーが適用されます。
 - GitHub はプロプライエタリなサービスのため、F-Droid 系リポジトリでは `NonFreeNet` アンチフィーチャーが付きます。
 
@@ -166,6 +168,7 @@ Any future feature that changes the above will be reflected here first and noted
 | `INTERNET` | 上記の任意の更新確認 | 任意。無効時は業務通信なし |
 | `VIBRATE` | 触覚フィードバック | 任意 |
 | `REQUEST_DELETE_PACKAGES` | アイコンメニューのアンインストール（システム確認あり） | 任意 |
+| `REQUEST_INSTALL_PACKAGES` | アプリ内更新でシステムのインストーラーを起動（インストールはシステム画面で要確認） | 任意。「ダウンロードしてインストール」をタップした時のみ、システム設定で取り消し可能 |
 | `BIND_APPWIDGET` | ホーム画面ウィジェット | 任意 |
 | デバイス管理（`BIND_DEVICE_ADMIN`） | 一部 ROM での代替スリープ | 任意。自動有効化せず、システム設定で無効化可能 |
 

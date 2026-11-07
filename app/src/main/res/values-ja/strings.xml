@@ -181,7 +181,7 @@
     <string name="auto_check_desc">設定を開いた際、12 時間以上経過していれば静かに確認します</string>
     <string name="update_source">更新元</string>
     <string name="open_project">プロジェクトページを開く</string>
-    <string name="update_note">公開 GitHub API を使用（ログイン不要）。更新元は自前のミラーに変更できます。</string>
+    <string name="update_note">公開 GitHub API を使用（ログイン不要）。新版はその場でダウンロードしてインストールできます（提供元不明のアプリのインストールの許可が必要）。更新元は自前のミラーに変更できます。</string>
     <string name="update_source_title">更新元の URL</string>
     <string name="update_source_hint">GitHub のリポジトリ URL、Releases ページ、api.github.com の URL を指定できます。Web URL は API に変換され、同じ JSON を返す自前ミラーも利用可能です。</string>
     <string name="restore_default">既定に戻す</string>
@@ -243,6 +243,19 @@
     <string name="copied_toast">%1$s をコピーしました</string>
     <string name="err_rate_limit">GitHub API の利用制限 (HTTP %1$d、残り %2$s)</string>
     <string name="err_http">サーバーが HTTP %1$d を返しました</string>
+    <!-- アプリ内アップデート：ダウンロードとインストール -->
+    <string name="update_download_install">ダウンロードしてインストール</string>
+    <string name="update_downloading">APK をダウンロード中…</string>
+    <string name="update_download_progress">%1$s / %2$s MB ダウンロード済み · %3$s</string>
+    <string name="update_download_unknown">%1$s MB ダウンロード済み</string>
+    <string name="update_download_cancel">キャンセル</string>
+    <string name="update_download_failed">ダウンロード失敗</string>
+    <string name="update_install_hint">ダウンロード後にシステムのインストーラーが開きます。画面でインストールを確認してください。</string>
+    <string name="err_install_permission">直接インストールするには「提供元不明のアプリのインストール」を許可してください</string>
+    <string name="err_download_http">ダウンロード失敗 (HTTP %1$d)</string>
+    <string name="err_download_redirect">リダイレクトが多すぎます。ダウンロードページをご利用ください</string>
+    <string name="err_download_bad_apk">APK の検証に失敗しました。ダウンロードページから手動でインストールしてください</string>
+    <string name="err_install_start">インストーラーを開けません。ダウンロードページから手動でインストールしてください</string>
     <string name="week_sun">日</string>
     <string name="week_mon">月</string>
     <string name="week_tue">火</string>

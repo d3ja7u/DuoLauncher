@@ -18,6 +18,7 @@ FEATURES
 * Third-party icon packs, per-app icon overrides, hidden apps, manual categories
 * Home screen widgets
 * UI in Simplified Chinese, English and Japanese; follows the device language by default, with a manual override in Settings
+* In-place updates: when a new release is found, download and install it directly, with progress, cancel and a user-confirmed install
 
 PERMISSIONS - WHAT EACH ONE IS FOR
 
@@ -27,7 +28,8 @@ PERMISSIONS - WHAT EACH ONE IS FOR
 * Accessibility Service: used only for double-tap to sleep. canRetrieveWindowContent is false, so it cannot read screen content or keystrokes. It never performs actions on its own.
 * EXPAND_STATUS_BAR: down-swipe gestures that open the notification shade or quick settings.
 * CAMERA / FLASHLIGHT: the optional flashlight toggle action (CameraManager.setTorchMode).
-* INTERNET: only the optional update checker described below.
+* INTERNET: only the optional update check and the in-place download you explicitly start, described below.
+* REQUEST_INSTALL_PACKAGES: opens the system installer for in-place updates; requires granting Install unknown apps in system settings.
 * ACCESS_WIFI_STATE / ACCESS_NETWORK_STATE: draws Wi-Fi and signal indicators in the custom status bar.
 * VIBRATE: haptic feedback. REQUEST_DELETE_PACKAGES: the uninstall shortcut in the icon menu.
 * BIND_APPWIDGET: home screen widgets.
@@ -37,7 +39,7 @@ PRIVACY
 
 No ads, no analytics, no crash reporting, no tracking SDK, no Google Play Services and no Firebase. Layout, categories and settings are stored in one local JSON file. There is no account and no sign-in. Nothing is uploaded, and no installed-app list is transmitted. "Backup & Restore" in Settings uses the system file picker to save the configuration wherever you choose or read it back; it never uploads anything and needs no storage permission. Full privacy policy: https://github.com/d3ja7u/DuoLauncher/blob/main/PRIVACY.md
 
-The optional update checker queries the GitHub Releases API (or releases.atom as fallback) for version information only. It never downloads, installs or executes APKs. When a new version exists, a dialog lets you choose to open the release page in a browser or copy the link - both require a deliberate tap. The check is on demand, at most once per interval when auto-check is enabled, and can be disabled in Settings; the update source is editable or can be pointed at any endpoint. GitHub is a proprietary service, which is why this app carries the NonFreeNet anti-feature.
+The optional update checker queries the GitHub Releases API (or releases.atom as fallback) for version information. Whether to download or install is always your deliberate tap: after you choose Download and install, the APK is written only to the app's private cache and shared with the system installer through a temporary FileProvider grant, with the install confirmed in the system dialog. Nothing is downloaded in the background or installed silently, and no storage permission is needed. You can also just open the download page or copy the link and skip the download. The check is on demand, at most once per interval when auto-check is enabled, and can be disabled in Settings; the update source is editable or can be pointed at any endpoint. GitHub is a proprietary service, which is why this app carries the NonFreeNet anti-feature.
 
 OPEN SOURCE
 

@@ -140,7 +140,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Appearance | Glass blur intensity, Dark glass |
 | Icon Pack | Current icon pack (auto-detects installed packs) |
 | Notification Badges | Show unread badges, Badge color, Notification access |
-| Updates | Check for updates, Auto-check for updates, Update source, Open project page |
+| Updates | Check for updates, In-place download & install, Auto-check for updates, Update source, Open project page |
 | Backup and restore | Export settings, Import settings |
 | System | **Language**, Set as default launcher, Change Wallpaper, DuoLauncher app info, About |
 
@@ -180,6 +180,7 @@ Import **replaces everything**; there is no per-item selection, so export your c
 | `QUERY_ALL_PACKAGES` | List and launch installed apps | Required |
 | `READ_CONTACTS` | Match phone contacts in search results | Optional, requested on demand |
 | `REQUEST_DELETE_PACKAGES` | Uninstall apps | Optional |
+| `REQUEST_INSTALL_PACKAGES` | Opens the system installer for in-place updates (requires granting Install unknown apps in system settings) | Optional, only when you tap Download and install |
 | `BIND_APPWIDGET` | Host home screen widgets | Optional |
 
 The app **uploads nothing** and has no backend. Layouts and preferences are stored locally in `SharedPreferences`. The update checker only calls the public GitHub Releases API (or the configured mirror) and stores no token.
@@ -240,6 +241,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.5.5 | In-place updates: download progress, cancel, install-permission guidance, private cache + FileProvider, fallback to download page; Atom fallback now derives the APK link too |
 | 1.5.0 | Multilingual UI: Chinese / English / Japanese, follows the device language, manual override in Settings; this English README |
 | 1.4.1 | Solid background for the update-source dialog, long URLs wrap, whitespace stripped on save |
 | 1.4.0 | New Updates section: configurable GitHub Releases source, manual / silent auto check, fallback to the official Atom feed |
@@ -282,13 +284,15 @@ Home screen → bottom-left `···` → **Launcher Settings** → the **Updates
 
 | Item | Details |
 |---|---|
-| Check for updates | Queries the update source immediately; shows current vs latest version, publish date and release notes, with buttons to open the download page or copy the APK link |
+| Check for updates | Queries the update source immediately; shows current vs latest version, publish date and release notes. For a new release you can **download and install in place**, or open the download page / copy the APK link |
 | Auto-check for updates | Silently checks when Settings opens, throttled to once per 12 hours; no dialog, just a "new version available" hint on the settings row |
 | Update source | Editable; defaults to `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest` |
 
+**In-place update**: tapping *Download and install* fetches the APK into the app's private cache (`cache/updates/`), shows progress and lets you cancel. The package name is verified before the system installer is opened, where you confirm the install. On first use you must grant the *Install unknown apps* permission — the app opens the system settings page and resumes automatically when you return. Any download or install failure is reported with a reason, and *Open download page* remains a fallback. The APK never goes to shared storage, needs no storage permission, and is shared with the installer only through a temporary FileProvider grant. The system installer still verifies signing certificates, so a differently signed APK cannot replace the app. Nothing is downloaded or installed silently in the background; every step starts with a tap.
+
 Accepted sources: a GitHub repo URL or `/releases` page (converted to the API automatically), an `api.github.com` Releases endpoint (single object or array), or a self-hosted mirror returning the same JSON (`tag_name` / `name` / `body` / `html_url` / `published_at` / `assets`).
 
-The anonymous GitHub API allows only 60 requests per IP per hour — easy to exhaust on a shared campus or carrier NAT. On 403/429 the launcher falls back to the official `releases.atom` feed (no quota, but no APK size or direct link). Only if both fail does it ask you to check the connection or the URL. Only `INTERNET` is required; no login, no token stored on the device.
+The anonymous GitHub API allows only 60 requests per IP per hour — easy to exhaust on a shared campus or carrier NAT. On 403/429 the launcher falls back to the official `releases.atom` feed (no quota; it lacks the APK size but derives the direct link from the project's fixed `DuoLauncher-<version>.apk` naming rule, so in-place updates still work). Only if both fail does it ask you to check the connection or the URL. Only `INTERNET` is required; no login, no token stored on the device.
 
 Versions are compared segment by segment, so `1.3.10` is correctly newer than `1.3.9`.
 

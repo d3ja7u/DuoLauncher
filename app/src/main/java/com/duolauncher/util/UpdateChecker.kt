@@ -193,7 +193,11 @@ object UpdateChecker {
         )
     }
 
-    /** GitHub releases.atom：无配额限制，但没有 assets 信息，下载统一走 Release 页面 */
+    /**
+     * GitHub releases.atom：无配额限制，但没有 assets 信息。
+     * 本项目的 APK 命名固定为 DuoLauncher-<version>.apk，可按 tag 拼出直链，
+     * 这样即使主接口被限流、退回订阅源，也仍然支持在线下载安装。
+     */
     private fun parseAtom(body: String): ReleaseInfo {
         val entry = Regex("""<entry>([\s\S]*?)</entry>""").find(body)?.groupValues?.get(1)
             ?: error(Lang.s(R.string.err_no_release))
@@ -210,6 +214,11 @@ object UpdateChecker {
         // atom 把渲染后的 HTML 做了实体转义：第一次解开实体得到 HTML，第二次再转成纯文本
         val html = Html.fromHtml(raw, Html.FROM_HTML_MODE_LEGACY).toString()
         val notes = Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT).toString()
+        val repo = Regex("""github\.com/([^/]+)/([^/]+)""").find(pageUrl)
+        val apkName = "DuoLauncher-$version.apk"
+        val apkUrl = repo?.let {
+            "https://github.com/${it.groupValues[1]}/${it.groupValues[2]}/releases/download/$tag/$apkName"
+        } ?: ""
         return ReleaseInfo(
             tag = tag,
             version = version,
@@ -217,8 +226,8 @@ object UpdateChecker {
             notes = notes,
             pageUrl = pageUrl,
             publishedAt = updated,
-            apkUrl = "",
-            apkName = "",
+            apkUrl = apkUrl,
+            apkName = if (apkUrl.isBlank()) "" else apkName,
             apkSize = 0L
         )
     }

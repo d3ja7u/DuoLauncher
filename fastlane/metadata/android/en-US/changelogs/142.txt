@@ -1,0 +1,4 @@
+- When a new version is found, download and install the APK in place, with progress and a cancel option
+- The system installer opens automatically after download; requires the Install unknown apps permission
+- APK is kept in the app's private cache and shared with the installer via FileProvider; the download page remains a fallback
+- Even when the GitHub API falls back to the Atom feed, the APK link is now derived from the project naming rule

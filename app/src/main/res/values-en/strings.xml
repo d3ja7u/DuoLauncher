@@ -181,7 +181,7 @@
     <string name="auto_check_desc">Silently checks once when Settings opens, if 12+ hours have passed</string>
     <string name="update_source">Update source</string>
     <string name="open_project">Open project page</string>
-    <string name="update_note">Checks the public GitHub API (no login required). You can point the update source at your own mirror.</string>
+    <string name="update_note">Checks the public GitHub API (no login required). New versions can be downloaded and installed in place (requires the Install unknown apps permission). You can point the update source at your own mirror.</string>
     <string name="update_source_title">Update source URL</string>
     <string name="update_source_hint">Accepts a GitHub repo URL, a Releases page, or an api.github.com endpoint. Web URLs are converted to the API; self-hosted mirrors returning the same JSON also work.</string>
     <string name="restore_default">Restore default</string>
@@ -243,6 +243,19 @@
     <string name="copied_toast">Copied %1$s</string>
     <string name="err_rate_limit">GitHub API rate limit reached (HTTP %1$d, remaining %2$s)</string>
     <string name="err_http">Server returned HTTP %1$d</string>
+    <!-- In-app update: download and install -->
+    <string name="update_download_install">Download and install</string>
+    <string name="update_downloading">Downloading APK…</string>
+    <string name="update_download_progress">%1$s / %2$s MB · %3$s downloaded</string>
+    <string name="update_download_unknown">%1$s MB downloaded</string>
+    <string name="update_download_cancel">Cancel</string>
+    <string name="update_download_failed">Download failed</string>
+    <string name="update_install_hint">The system installer opens when the download finishes. Confirm the install in its dialog.</string>
+    <string name="err_install_permission">Allow Install unknown apps for DuoLauncher to install updates directly</string>
+    <string name="err_download_http">Download failed (HTTP %1$d)</string>
+    <string name="err_download_redirect">Too many redirects; use the download page instead</string>
+    <string name="err_download_bad_apk">APK verification failed; use the download page instead</string>
+    <string name="err_install_start">Could not open the installer; use the download page instead</string>
     <string name="week_sun">S</string>
     <string name="week_mon">M</string>
     <string name="week_tue">T</string>

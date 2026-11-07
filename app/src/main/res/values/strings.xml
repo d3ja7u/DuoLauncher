@@ -181,7 +181,7 @@
     <string name="auto_check_desc">打开设置时若距上次超过 12 小时，静默查一次</string>
     <string name="update_source">更新源</string>
     <string name="open_project">打开项目主页</string>
-    <string name="update_note">检查走 GitHub 公开接口，无需登录；更新源可改成自建镜像地址。</string>
+    <string name="update_note">检查走 GitHub 公开接口，无需登录；发现新版可直接下载安装（需允许「安装未知来源应用」）。更新源可改成自建镜像地址。</string>
     <string name="update_source_title">更新源地址</string>
     <string name="update_source_hint">可填 GitHub 仓库主页、Releases 网页地址或 api.github.com 接口地址；网页地址会自动转成接口地址，也支持自建镜像的 JSON 地址。</string>
     <string name="restore_default">恢复默认</string>
@@ -243,6 +243,19 @@
     <string name="copied_toast">已复制%1$s</string>
     <string name="err_rate_limit">GitHub API 触发访问限制（HTTP %1$d，剩余配额 %2$s）</string>
     <string name="err_http">服务器返回 HTTP %1$d</string>
+    <!-- 在线更新：下载与安装 -->
+    <string name="update_download_install">下载并安装</string>
+    <string name="update_downloading">正在下载安装包…</string>
+    <string name="update_download_progress">已下载 %1$s / %2$s MB · %3$s</string>
+    <string name="update_download_unknown">已下载 %1$s MB</string>
+    <string name="update_download_cancel">取消</string>
+    <string name="update_download_failed">下载失败</string>
+    <string name="update_install_hint">下载完成后会调起系统安装器，请在系统弹窗中确认安装。</string>
+    <string name="err_install_permission">需要允许「安装未知来源应用」后才能直接安装</string>
+    <string name="err_download_http">下载失败（HTTP %1$d）</string>
+    <string name="err_download_redirect">下载重定向次数过多，请改用下载页</string>
+    <string name="err_download_bad_apk">安装包校验失败，请改用下载页手动安装</string>
+    <string name="err_install_start">无法调起安装器，请打开下载页手动安装</string>
     <string name="week_sun">日</string>
     <string name="week_mon">一</string>
     <string name="week_tue">二</string>

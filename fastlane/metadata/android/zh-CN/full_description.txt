@@ -18,6 +18,7 @@ DuoLauncher 是用 Kotlin + Jetpack Compose 编写的完整桌面启动器（and
 * 支持第三方图标包、单应用换图标、隐藏应用、手动指定分类
 * 支持桌面小组件
 * 界面语言：简体中文 / English / 日本語，默认跟随设备，设置里可手动指定
+* 检查更新发现新版后可直接在线下载并安装（显示进度、可取消，安装需用户确认）
 
 权限用途说明
 
@@ -27,7 +28,8 @@ DuoLauncher 是用 Kotlin + Jetpack Compose 编写的完整桌面启动器（and
 * 无障碍服务：仅用于「双击桌面息屏」。canRetrieveWindowContent 为 false，不读取屏幕内容、不监听按键，也不会自主执行动作。
 * EXPAND_STATUS_BAR：下滑手势展开通知栏 / 控制中心。
 * CAMERA / FLASHLIGHT：可选的手电筒快捷动作（CameraManager.setTorchMode）。
-* INTERNET：仅用于下述可选的更新检查。
+* INTERNET：仅用于下述可选的更新检查，以及你手动触发的在线下载。
+* REQUEST_INSTALL_PACKAGES：在线更新时调起系统安装器，需你在系统设置里允许「安装未知来源应用」。
 * ACCESS_WIFI_STATE / ACCESS_NETWORK_STATE：绘制自定义状态栏里的 Wi-Fi 与信号指示。
 * VIBRATE：触感反馈；REQUEST_DELETE_PACKAGES：图标菜单里的卸载入口。
 * BIND_APPWIDGET：桌面小组件。
@@ -37,7 +39,7 @@ DuoLauncher 是用 Kotlin + Jetpack Compose 编写的完整桌面启动器（and
 
 无广告、无统计、无崩溃上报、无追踪 SDK，不含 Google Play Services 与 Firebase。桌面布局、分类和设置保存在本机一个 JSON 文件里，没有账号、没有登录、不上传任何数据，也不会上传已安装应用列表。设置里的「备份与恢复」通过系统文件选择器把配置写到你自己选的位置，或从中读回，不会自动上传、不需要存储权限。完整隐私政策：https://github.com/d3ja7u/DuoLauncher/blob/main/PRIVACY.md
 
-可选的更新检查只向 GitHub Releases API（受限时自动回退 releases.atom）查询版本信息，从不下载、安装或执行 APK。发现新版本时只弹窗提示，由你主动选择「打开下载页」或「复制链接」。检查可手动触发，自动检查有间隔限制且可在设置里关闭，更新源地址可自行修改。GitHub 属于专有网络服务，因此本应用带 NonFreeNet 标记。
+可选的更新检查只向 GitHub Releases API（受限时自动回退 releases.atom）查询版本信息。发现新版本时，是否下载、是否安装完全由你主动点击决定：点「下载并安装」后，APK 只写入应用私有缓存、通过 FileProvider 临时授权给系统安装器，由你在系统弹窗中确认安装；不会在后台自动下载或静默安装，也不需要存储权限。也可以只打开下载页或复制链接，完全跳过下载。检查可手动触发，自动检查有间隔限制且可在设置里关闭，更新源地址可自行修改。GitHub 属于专有网络服务，因此本应用带 NonFreeNet 标记。
 
 开源
 

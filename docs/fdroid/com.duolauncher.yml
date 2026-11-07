@@ -5,7 +5,7 @@
 # 跑 fdroid lint / fdroid build 后在 GitLab 提 Merge Request。
 #
 # ⚠️ 提交前必须做两处替换：
-#   1. Builds[0].commit 改成 v1.5.2 tag 对应的完整 40 位 commit hash（不能用 tag 名）
+#   1. Builds[0].commit 改成 v1.5.5 tag 对应的完整 40 位 commit hash（不能用 tag 名）
 #   2. versionName / versionCode 与实际发版一致
 # 详细步骤见 ../DISTRIBUTION.md
 
@@ -23,14 +23,14 @@ AutoName: DuoLauncher
 # 可选功能依赖专有网络服务，主动申报，避免审核时被追问
 AntiFeatures:
   NonFreeNet:
-    en-US: The optional "Check for updates" feature queries the GitHub Releases API (or releases.atom). GitHub is a proprietary service. This feature is off by default, can be disabled in Settings, and is not required for the launcher to function. It never downloads or installs APKs.
+    en-US: The optional "Check for updates" feature queries the GitHub Releases API (or releases.atom), and can download an APK only when the user explicitly taps "Download and install". GitHub is a proprietary service. The check is off by default, can be disabled in Settings, and is not required for the launcher to function. Nothing is downloaded or installed in the background.
 
 RepoType: git
 Repo: https://github.com/d3ja7u/DuoLauncher.git
 
 Builds:
-  - versionName: '1.5.2'
-    versionCode: 139
+  - versionName: '1.5.5'
+    versionCode: 142
     commit: 0000000000000000000000000000000000000000
     subdir: app
     gradle:
@@ -43,5 +43,5 @@ Builds:
 
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags
-CurrentVersion: '1.5.2'
-CurrentVersionCode: 139
+CurrentVersion: '1.5.5'
+CurrentVersionCode: 142

@@ -41,10 +41,13 @@ import com.duolauncher.util.Lang
 import com.duolauncher.data.*
 import com.duolauncher.data.IconPacks
 import com.duolauncher.service.DuoNotificationListener
+import com.duolauncher.util.ApkUpdater
 import com.duolauncher.util.BackupManager
 import com.duolauncher.util.ScreenOff
 import com.duolauncher.util.SearchEngines
 import com.duolauncher.util.UpdateChecker
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
@@ -106,6 +109,11 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     /** 待确认的备份：先弹摘要让用户核对，避免误选文件直接覆盖当前配置 */
     var pendingImport by remember { mutableStateOf<BackupManager.Info?>(null) }
 
+    /** 在线更新：下载状态、当前任务、等待安装授权时暂存的 Release */
+    var dlState by remember { mutableStateOf<ApkUpdater.State>(ApkUpdater.State.Idle) }
+    var dlJob by remember { mutableStateOf<Job?>(null) }
+    var pendingRelease by remember { mutableStateOf<UpdateChecker.ReleaseInfo?>(null) }
+
     // 备份走系统文件选择器（SAF），不需要任何存储权限，文件由用户自己决定放哪
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(BackupManager.MIME)
@@ -135,18 +143,60 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                 DuoState.lastUpdateCheck = System.currentTimeMillis()
                 DuoState.save()
                 if (!silent) {
+                    dlState = ApkUpdater.State.Idle
                     updateInfo = info
                     updateError = null
                     showUpdateResult = true
                 }
             }.onFailure { e ->
                 if (!silent) {
+                    dlState = ApkUpdater.State.Idle
                     updateInfo = null
                     updateError = e.message ?: Lang.s(R.string.update_check_failed)
                     showUpdateResult = true
                 }
             }
         }
+    }
+
+    /** 开始下载；若还没拿到「安装未知来源应用」授权，先跳系统设置，回来自动继续 */
+    fun startDownload(rel: UpdateChecker.ReleaseInfo) {
+        if (rel.apkUrl.isBlank()) {
+            UpdateChecker.openInBrowser(ctx, rel.pageUrl.ifBlank { UpdateChecker.DEFAULT_URL })
+            return
+        }
+        if (!ApkUpdater.canInstall(ctx)) {
+            pendingRelease = rel
+            runCatching { ctx.startActivity(ApkUpdater.permissionIntent(ctx)) }
+                .onFailure {
+                    dlState = ApkUpdater.State.Failed(Lang.s(R.string.err_install_permission))
+                }
+            return
+        }
+        pendingRelease = null
+        dlJob?.cancel()
+        dlState = ApkUpdater.State.Downloading(0L, rel.apkSize)
+        dlJob = scope.launch {
+            val r = ApkUpdater.download(ctx, rel.apkUrl, rel.apkName, rel.apkSize) { done, total ->
+                dlState = ApkUpdater.State.Downloading(done, total)
+            }
+            r.onSuccess { file ->
+                dlState = ApkUpdater.State.Idle
+                if (ApkUpdater.install(ctx, file)) showUpdateResult = false
+                else dlState = ApkUpdater.State.Failed(Lang.s(R.string.err_install_start))
+            }.onFailure { e ->
+                if (e is CancellationException) return@launch
+                dlState = ApkUpdater.State.Failed(
+                    e.message ?: Lang.s(R.string.update_download_failed)
+                )
+            }
+        }
+    }
+
+    fun cancelDownload() {
+        dlJob?.cancel()
+        dlJob = null
+        dlState = ApkUpdater.State.Idle
     }
 
     // 进设置页时静默检查一次，12 小时节流，不弹窗
@@ -167,6 +217,13 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 accReady = ScreenOff.isEnabled(ctx)
                 badgeAccess = DuoNotificationListener.hasAccess(ctx)
+                // 从「安装未知来源应用」设置页返回：授权通过就接着下载
+                val waiting = pendingRelease
+                if (waiting != null) {
+                    pendingRelease = null
+                    if (ApkUpdater.canInstall(ctx)) startDownload(waiting)
+                    else dlState = ApkUpdater.State.Failed(Lang.s(R.string.err_install_permission))
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -670,8 +727,16 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             localVersion = ver,
             info = updateInfo,
             error = updateError,
-            onDismiss = { showUpdateResult = false },
-            onRetry = { showUpdateResult = false; doCheck(silent = false) }
+            dlState = dlState,
+            onDismiss = { cancelDownload(); showUpdateResult = false },
+            onRetry = { showUpdateResult = false; doCheck(silent = false) },
+            onDownload = {
+                updateInfo?.let { rel ->
+                    dlState = ApkUpdater.State.Idle
+                    startDownload(rel)
+                }
+            },
+            onCancelDownload = { cancelDownload() }
         )
     }
 
@@ -750,8 +815,11 @@ private fun UpdateResultDialog(
     localVersion: String,
     info: UpdateChecker.ReleaseInfo?,
     error: String?,
+    dlState: ApkUpdater.State,
     onDismiss: () -> Unit,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onDownload: () -> Unit,
+    onCancelDownload: () -> Unit
 ) {
     val ctx = LocalContext.current
     val hasNew = info != null && UpdateChecker.isNewer(info.version, localVersion)
@@ -798,7 +866,54 @@ private fun UpdateResultDialog(
                     Text(notes, fontSize = 12.sp, lineHeight = 17.sp, color = glassTextColor(dark))
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            val openPage = {
+                val target = rel.pageUrl.ifBlank { rel.apkUrl }
+                if (!UpdateChecker.openInBrowser(ctx, target)) {
+                    UpdateChecker.copy(ctx, Lang.s(R.string.clip_page_link), target)
+                }
+                onDismiss()
+            }
+
+            Spacer(Modifier.height(14.dp))
+            val st = dlState
+            when (st) {
+                is ApkUpdater.State.Downloading -> {
+                    Text(
+                        Lang.s(R.string.update_downloading),
+                        fontSize = 12.sp, color = glassTextColor(dark)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp))
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (st.total > 0) Lang.s(
+                            R.string.update_download_progress,
+                            "%.1f".format(st.downloaded / 1024f / 1024f),
+                            "%.1f".format(st.total / 1024f / 1024f),
+                            "${(st.fraction * 100).toInt()}%"
+                        ) else Lang.s(
+                            R.string.update_download_unknown,
+                            "%.1f".format(st.downloaded / 1024f / 1024f)
+                        ),
+                        fontSize = 11.sp, color = glassSubTextColor(dark)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                is ApkUpdater.State.Failed -> {
+                    Text(st.reason, fontSize = 12.sp, color = Color(0xFFD65A5A))
+                    Spacer(Modifier.height(8.dp))
+                }
+                else -> {
+                    if (hasNew && rel.apkUrl.isNotBlank()) {
+                        Text(
+                            Lang.s(R.string.update_install_hint),
+                            fontSize = 11.sp, color = glassSubTextColor(dark)
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (rel.apkUrl.isNotBlank()) {
                     TextButton(onClick = { UpdateChecker.copy(ctx, Lang.s(R.string.clip_apk_link), rel.apkUrl) }) {
@@ -806,13 +921,25 @@ private fun UpdateResultDialog(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                GlassPrimaryButton(Lang.s(R.string.open_download_page), dark, onClick = {
-                    val target = rel.pageUrl.ifBlank { rel.apkUrl }
-                    if (!UpdateChecker.openInBrowser(ctx, target)) {
-                        UpdateChecker.copy(ctx, Lang.s(R.string.clip_page_link), target)
+                if (st is ApkUpdater.State.Downloading) {
+                    TextButton(onClick = onCancelDownload) {
+                        Text(Lang.s(R.string.update_download_cancel), fontSize = 12.sp, color = glassSubTextColor(dark))
                     }
-                    onDismiss()
-                })
+                } else {
+                    val canDownload = hasNew && rel.apkUrl.isNotBlank()
+                    if (canDownload) {
+                        TextButton(onClick = openPage) {
+                            Text(Lang.s(R.string.open_download_page), fontSize = 12.sp, color = glassSubTextColor(dark))
+                        }
+                        GlassPrimaryButton(
+                            if (st is ApkUpdater.State.Failed) Lang.s(R.string.retry)
+                            else Lang.s(R.string.update_download_install),
+                            dark, onDownload
+                        )
+                    } else {
+                        GlassPrimaryButton(Lang.s(R.string.open_download_page), dark, onClick = openPage)
+                    }
+                }
             }
         }
     }

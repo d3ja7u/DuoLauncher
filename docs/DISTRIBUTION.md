@@ -98,7 +98,7 @@ Release builds are not debuggable, R8-minified, and do not contain a DEPENDENCY_
 
 ### Anti-Features to declare
 
-* NonFreeNet: the optional "Check for updates" feature queries the GitHub Releases API (or releases.atom as fallback). GitHub is a proprietary service. The feature only reads version information, never downloads or installs APKs, is disabled by default and can be turned off in Settings. The launcher works fully offline.
+* NonFreeNet: the optional "Check for updates" feature queries the GitHub Releases API (or releases.atom as fallback) for version information, and downloads an APK only when the user explicitly taps "Download and install". GitHub is a proprietary service. The check is disabled by default and can be turned off in Settings; nothing is fetched or installed in the background. The launcher works fully offline.
 
 ### Sensitive permissions (all justified, see PRIVACY.md)
 
@@ -108,6 +108,7 @@ Release builds are not debuggable, R8-minified, and do not contain a DEPENDENCY_
 * EXPAND_STATUS_BAR - down-swipe gestures for the notification shade / quick settings.
 * CAMERA / FLASHLIGHT - optional flashlight toggle (CameraManager.setTorchMode); never takes photos.
 * BIND_DEVICE_ADMIN - optional fallback screen-off on a few ROMs; never auto-activated, can be disabled in system settings.
+* REQUEST_INSTALL_PACKAGES - optional in-place updates: opens the system installer after a user-initiated download; the install still needs user confirmation and can be revoked in system settings.
 * VIBRATE, ACCESS_WIFI_STATE, ACCESS_NETWORK_STATE, REQUEST_DELETE_PACKAGES, BIND_APPWIDGET - haptics, status-bar indicators, uninstall shortcut, widgets.
 
 No ads, no analytics, no crash reporting, no tracking SDK, no Google Play Services, no Firebase, no proprietary libraries. Dependencies are AndroidX / Jetpack Compose / Kotlin (Apache-2.0) only.
