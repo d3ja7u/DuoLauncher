@@ -301,11 +301,7 @@ GitHub 匿名 API 每个 IP 每小时只有 60 次，校园网 / 运营商共享
 
 ### 匿名使用统计
 
-设置 → **隐私与统计**：开关、本机匿名 ID、上报地址、查看统计数据。
-
-只上报一个随机匿名 ID、版本号、界面语言和 Android API 等级，不含任何设备标识或个人内容；首次启动先询问，随时可关闭（关闭即删除本机 ID）。数字是「开启统计的设备数」，不等于真实安装量。
-
-默认接收端已接入 WorkBuddy 云数据库，也可在设置里改指向自建的 `tools/stats-server`（需 HTTPS），客户端无需升级。[汇总页](https://duolauncher-stats.app.workbuddy.host/?sharecode=AKJCYWSUYS) 可看设备数、活跃度与版本分布。细节见 [PRIVACY.md](PRIVACY.md)。
+只上报随机匿名 ID、版本号、界面语言和 Android API 等级，不含任何设备标识或个人内容；可在「设置 → 隐私与统计」随时关闭（关闭即删除本机 ID）。数字是「开启统计的设备数」，不等于真实安装量。细节见 [PRIVACY.md](PRIVACY.md)。
 
 ---
 
