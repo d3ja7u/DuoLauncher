@@ -301,7 +301,7 @@ Versions are compared segment by segment, so `1.3.10` is correctly newer than `1
 
 ### Anonymous usage statistics
 
-Only a random anonymous ID, app version, UI language and Android API level are sent — no device identifiers or personal content. Turn it off any time in Settings → Privacy and statistics (which immediately deletes the local ID). The number means "devices with statistics enabled", not true installs. See [PRIVACY.md](PRIVACY.md) for details.
+Only a random anonymous ID, app version, UI language and Android API level are sent — no device identifiers or personal content. Turn it off any time in Settings → Privacy and statistics (which immediately deletes the local ID). See [PRIVACY.md](PRIVACY.md) for details.
 
 ---
 
