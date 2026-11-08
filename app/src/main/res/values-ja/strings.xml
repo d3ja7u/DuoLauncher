@@ -15,6 +15,8 @@
     <string name="back">戻る</string>
     <string name="folder">フォルダ</string>
     <string name="app">アプリ</string>
+    <string name="pause">一時停止</string>
+    <string name="open_media_failed">再生中の音楽アプリが見つかりません</string>
     <string name="all_apps">すべてのアプリ</string>
     <string name="recent">最近使用</string>
     <string name="no_match_apps">該当するアプリがありません</string>
@@ -111,10 +113,24 @@
     <string name="sidebar_pos_right">右</string>
     <string name="left_short">左</string>
     <string name="right_short">右</string>
+    <string name="sidebar_align">垂直位置</string>
+    <string name="sidebar_align_center">画面中央</string>
+    <string name="sidebar_align_bottom">下寄せ中央</string>
     <string name="sidebar_edit_desc">アプリや操作を追加して並べ替え</string>
     <string name="cutout_padding">カメラ穴の上余白</string>
     <string name="home_icon_size">ホームアイコンのサイズ</string>
     <string name="sidebar_icon_size">サイドバーアイコンのサイズ</string>
+    <string name="sec_home">ホーム画面</string>
+    <string name="home_columns">ホームの列数</string>
+    <string name="home_columns_desc">スマホは4–5列、タブレットは6–7列が目安</string>
+    <string name="home_rows">ホームの行数</string>
+    <string name="home_rows_desc">スマホは5–6行、タブレットはさらに多め</string>
+    <string name="sidebar_glass">サイドバーのガラス濃度</string>
+    <string name="sec_now_playing">ミュージックカプセル</string>
+    <string name="now_playing_switch">再生中にカプセルを表示</string>
+    <string name="now_playing_desc">音楽再生中に右上へ操作カプセルを表示、タップでプレーヤーを開き、長押しで一時停止／再開</string>
+    <string name="now_playing_note">カプセルは「通知へのアクセス」権限が必要です。表示されない場合はシステム設定で本アプリに許可を与えてください。</string>
+    <string name="unknown_title">不明な曲</string>
     <string name="sec_status_bar">iOS 風ステータスバー</string>
     <string name="status_time_signal">時刻と円弧シグナルを表示</string>
     <string name="status_time_signal_desc">09:41 + 円弧 Wi-Fi/電波ドット。Android のステータスバーを置き換えます</string>
@@ -290,6 +306,7 @@
     <string name="no_browser">利用できるブラウザがありません</string>
     <string name="open_contact_failed">連絡先を開けませんでした</string>
     <string name="call_contact">発信</string>
+    <string name="open_contact">連絡先を開く</string>
     <!-- サイドバーの表示 -->
     <string name="show_sidebar">サイドバーを表示</string>
     <string name="show_sidebar_desc">オフにするとホーム画面のアイコンが横幅いっぱいに並びます</string>

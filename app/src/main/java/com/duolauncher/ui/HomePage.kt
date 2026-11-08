@@ -3,6 +3,14 @@ package com.duolauncher.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,15 +38,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -58,7 +71,9 @@ import com.duolauncher.data.DuoActions
 import com.duolauncher.data.DuoState
 import com.duolauncher.data.FolderItem
 import com.duolauncher.data.IconPacks
+import com.duolauncher.data.NowPlaying
 import com.duolauncher.data.SidebarItem
+import com.duolauncher.service.DuoNotificationListener
 import com.duolauncher.util.ScreenOff
 
 @Composable
@@ -85,7 +100,14 @@ fun HomePage(
 
     val iconScale = DuoState.iconScale
     val homeIconSize = (54 * iconScale).dp          // 主屏图标：比侧栏大
-    val sidebarIconSize = (54 * DuoState.sidebarIconScale).dp
+    // 侧栏图标自动收敛尺寸：数量多或用户把图标放大时，保证整条侧栏不超 430dp、
+    // 图标之间不重合（否则被裁切/挤压后会叠在一起）
+    val sidebarItemN = DuoState.sidebar.size.coerceAtMost(9)
+    val sidebarBaseSize = 54f * DuoState.sidebarIconScale
+    val sbGapF = if (sidebarItemN >= 8) 5f else 9f
+    val sbAvail = 430f - 14f - (sidebarItemN - 1).coerceAtLeast(0) * sbGapF
+    val sbMaxByH = if (sidebarItemN > 0) sbAvail / sidebarItemN else sidebarBaseSize
+    val sidebarIconSize = minOf(sidebarBaseSize, sbMaxByH).dp
     val cellWidth = homeIconSize + 14.dp
     val sidebarWidth = sidebarIconSize + 24.dp
     val sidebarGap = 10.dp
@@ -100,6 +122,8 @@ fun HomePage(
     var pageOrigin by remember { mutableStateOf(Offset.Zero) }      // 本页在根坐标系的原点
     val statusTopPad = if (DuoState.statusRight) DuoState.statusTop
     else maxOf(DuoState.statusTop, 64)
+    // 时间 + 电量三合一再往上提一点（只挪绘制位置，网格的 topGap 仍用 statusTopPad，不动图标行距）
+    val statusDrawTop = (statusTopPad - 12f).coerceAtLeast(2f)
     val statusScale = DuoState.statusScale.coerceIn(0.55f, 1.8f)
     // 状态块真实高度：时间(≈1.35×字号) + 6dp 间距 + 徽标 50dp
     val statusHeight = (18f * 1.35f + 6f + 50f) * statusScale
@@ -107,25 +131,21 @@ fun HomePage(
         maxOf(DuoState.cutoutPadding.coerceAtLeast(64) + 64f, statusTopPad + statusHeight + 10f).dp
     else (DuoState.cutoutPadding.coerceAtLeast(64) + 24f).dp
     val leftSide = DuoState.sidebarLeft
-    // 侧栏顶部：左右完全同一套算法（与网格顶部对齐），切换左右时不会上下跳动；
-    // 状态块同侧时 topGap 已含 statusTopPad + statusHeight，这里再上提 8dp ——
-    // 让玻璃框紧贴徽标下方（此前离徽标太远，视觉上整条侧栏偏下）。
-    // 侧栏与状态块同侧时贴着状态块下方；不同侧（默认左栏＋右上状态）则整体再上提 30dp，
-    // 让 8 个图标的侧栏底部离底部搜索键更远，同时不越过挖孔避让高度
-    val sidebarSameSideAsStatus =
-        (DuoState.sidebarLeft && !DuoState.statusRight) || (!DuoState.sidebarLeft && DuoState.statusRight)
-    val sidebarTopPad = if (DuoState.showDuoStatus) {
-        if (sidebarSameSideAsStatus) (topGap.value - 12f).coerceAtLeast(DuoState.cutoutPadding + 12f)
-        else (topGap.value - 30f).coerceAtLeast(DuoState.cutoutPadding + 12f)
-    } else 10f
+    // 侧栏改为垂直居中（见下方 GlassCard 的 align）：框始终在屏幕竖直中线，
+    // 应用数量少时整条偏短、居中；数量多时对称变长，不再贴顶或贴底。
     val sidebarMaxHeight = 430.dp
-    // 图标多（8 个以上）时收紧纵向间距，否则整条侧栏会顶到右下角搜索键上
-    val sidebarItemCount = DuoState.sidebar.size.coerceAtMost(9)
-    val sidebarItemGap = if (sidebarItemCount >= 8) 5.dp else 9.dp
+    // 纵向间距：图标多（8 个以上）时收紧，否则下方搜索键会顶到侧栏
+    val sidebarItemGap = if (sidebarItemN >= 8) 5.dp else 9.dp
     // 侧边栏隐藏后，主屏网格不再为那条玻璃通道留白，左右都回到常规边距
     val showSidebar = DuoState.showSidebar
     val gridStart = if (!showSidebar) 14.dp else if (leftSide) lane else 14.dp
     val gridEnd = if (!showSidebar) 14.dp else if (leftSide) 14.dp else lane
+
+    // 胶囊与侧栏共用同一条纵向通道：用实测高度判断两者是否撞上，
+    // 撞上时把侧栏整体往下推（offset 只改摆放位置，不影响再次测量，不会死循环）
+    var sbBoxHPx by remember { mutableStateOf(0) }
+    var sbCardHPx by remember { mutableStateOf(0) }
+    val density = LocalDensity.current
 
     // 主屏条目：按 DuoState.homeTokens() 的统一顺序（应用与文件夹可混排，支持拖拽排序）
     val entries: List<HomeEntry> = DuoState.homeTokens().mapNotNull { token ->
@@ -229,10 +249,14 @@ fun HomePage(
                 }
             }
     ) {
-        // ── 主屏：顶部状态指示让位 + 图标网格（5 行 × 4 列，不滚动，左右翻页）──
-        val pageStart = homePageIndex * 20
-        val pageEntries = entries.drop(pageStart).take(20)
-        val pageRows = pageEntries.chunked(4)
+        // ── 主屏：顶部状态指示让位 + 图标网格（N 行 × M 列，不滚动，左右翻页）──
+        // 行数 / 列数均由「主屏图标列数 / 行数」设置决定，单页容量 = 列数 × 行数
+        val homeCols = DuoState.homeColumns
+        val homeRows = DuoState.homeRows
+        val perPage = homeCols * homeRows
+        val pageStart = homePageIndex * perPage
+        val pageEntries = entries.drop(pageStart).take(perPage)
+        val pageRows = pageEntries.chunked(homeCols)
         // 只在当前这页的成员变化时重建，避免残留上一轮（排序前）的旧矩形导致落点错位
         val cellRects = remember(pageEntries) { mutableStateMapOf<Int, Rect>() }
         Column(
@@ -242,8 +266,8 @@ fun HomePage(
         ) {
             Column(
                 Modifier.fillMaxWidth().fillMaxHeight(),
-                // 满 5 行时均分铺满（顶部到底部）；不满页则从顶部顺排，避免图标被拉开
-                verticalArrangement = if (pageRows.size >= 5) Arrangement.SpaceEvenly
+                // 满整页行数时均分铺满（顶部到底部）；不满页则从顶部顺排，避免图标被拉开
+                verticalArrangement = if (pageRows.size >= homeRows) Arrangement.SpaceEvenly
                 else Arrangement.spacedBy(16.dp * iconScale)
             ) {
                 pageRows.forEachIndexed { rowIdx, row ->
@@ -253,7 +277,7 @@ fun HomePage(
                         verticalAlignment = Alignment.Top
                     ) {
                         row.forEachIndexed { colIdx, entry ->
-                            val idx = rowIdx * 4 + colIdx            // 页内下标
+                            val idx = rowIdx * homeCols + colIdx            // 页内下标
                             val gIdx = pageStart + idx               // 全局下标
                             Box(
                                 Modifier
@@ -389,7 +413,7 @@ fun HomePage(
                                 }
                             }
                         }
-                        repeat(4 - row.size) { Spacer(Modifier.width(cellWidth)) }
+                        repeat(homeCols - row.size) { Spacer(Modifier.width(cellWidth)) }
                     }
                 }
             }
@@ -432,16 +456,43 @@ fun HomePage(
         // ── 玻璃侧边栏：与状态栏同处一条纵向通道，顶部与网格对齐 ──
         // 设置里可以整体隐藏；隐藏后状态指示器仍保留，但不再为侧栏留白
         if (showSidebar) {
+        // 「靠下居中」= 在状态指示器下方、直到屏幕底部这条区域里垂直居中：
+        // 用一个撑满该区域的 Box 居中卡片，卡片中心 = 区域中心（因此落在屏幕中线偏下）。
+        // 「屏幕居中」= 区域从屏幕顶端算起，也就是整屏居中。
+        // 注意：不能写成对称 padding + align(Center)，那样卡片中心仍回到屏幕中线。
+        val sbRegionTop = if (DuoState.sidebarAlign == "bottom")
+            (statusTopPad + statusHeight + 14).dp else 0.dp
+        // 音乐胶囊和侧栏在同一条通道上：胶囊可见时算出它的下沿，
+        // 若侧栏卡片会压到胶囊（左侧配置的状态块因为避挖孔而下移，最容易撞上），
+        // 就把卡片整体往下推，两者之间始终留 8dp
+        val npVisible = DuoState.showNowPlaying && DuoState.nowPlaying != null
+        val sbShiftPx = if (npVisible && sbBoxHPx > 0 && sbCardHPx > 0) {
+            val npBottomPx = with(density) { (statusDrawTop + statusHeight + 8).dp.toPx() } +
+                with(density) { NpCapsuleHeight.toPx() }
+            val cardTopPx = with(density) { sbRegionTop.toPx() } + (sbBoxHPx - sbCardHPx) / 2f
+            (npBottomPx + with(density) { 8.dp.toPx() } - cardTopPx).coerceAtLeast(0f)
+        } else 0f
+        val sbShift by animateFloatAsState(sbShiftPx, tween(220), label = "sbAvoidCapsule")
+        Box(
+            Modifier
+                .align(if (leftSide) Alignment.CenterStart else Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(
+                    start = if (leftSide) sidebarGap else 0.dp,
+                    end = if (leftSide) 0.dp else sidebarGap,
+                    top = sbRegionTop
+                )
+                .onSizeChanged { sbBoxHPx = it.height },
+            contentAlignment = Alignment.Center
+        ) {
         GlassCard(
             modifier = Modifier
-                .align(if (leftSide) Alignment.TopStart else Alignment.TopEnd)
-                .then(
-                    if (leftSide) Modifier.padding(start = sidebarGap, top = sidebarTopPad.dp)
-                    else Modifier.padding(end = sidebarGap, top = sidebarTopPad.dp)
-                )
-                .width(sidebarWidth),
+                .width(sidebarWidth)
+                .onSizeChanged { sbCardHPx = it.height }
+                .offset { IntOffset(0, sbShift.roundToInt()) },
             radius = 32.dp,
             level = DuoState.glassLevel,
+            fill = DuoState.sidebarGlass,
             dark = dark
         ) {
             Column(
@@ -501,6 +552,7 @@ fun HomePage(
             }
         }
         }
+        }
 
         // ── iOS 风格状态指示：与侧边栏共用同一条纵向通道，水平完全居中对齐 ──
         if (DuoState.showDuoStatus) {
@@ -509,12 +561,35 @@ fun HomePage(
                 modifier = Modifier
                     .align(if (DuoState.statusRight) Alignment.TopEnd else Alignment.TopStart)
                     .padding(
-                        top = statusTopPad.dp,
+                        top = statusDrawTop.dp,
                         start = sidebarGap,
                         end = sidebarGap
                     )
                     .width(sidebarWidth)
             )
+        }
+
+        // ── 正在播放胶囊：与「时间 + 电量」「侧边栏」共用同一条纵向通道：
+        //    同宽度（sidebarWidth）、同边距（sidebarGap）、同左右侧，竖直方向落在状态块正下方，
+        //    视觉上形成「状态 → 胶囊 → 侧栏」一列，不再偏到通道左边悬在壁纸上。──
+        if (DuoState.showNowPlaying) {
+            DuoState.nowPlaying?.let { np ->
+                NowPlayingCapsule(
+                    np = np,
+                    dark = dark,
+                    modifier = Modifier
+                        .zIndex(6f)
+                        .align(if (leftSide) Alignment.TopStart else Alignment.TopEnd)
+                        .padding(
+                            start = if (leftSide) sidebarGap else 0.dp,
+                            end = if (leftSide) 0.dp else sidebarGap,
+                            top = (statusDrawTop + statusHeight + 8).dp
+                        )
+                        .width(sidebarWidth),
+                    onOpen = { DuoNotificationListener.openMediaApp(ctx) },
+                    onToggle = { DuoNotificationListener.togglePlayPause() }
+                )
+            }
         }
 
         // ── 底部：页面指示点 + 编辑入口 + 搜索 ──
@@ -646,6 +721,97 @@ fun HomePage(
 private sealed class HomeEntry {
     data class App(val app: AppInfo) : HomeEntry()
     data class Folder(val folder: FolderItem) : HomeEntry()
+}
+
+/** 音乐胶囊高度：顶部定位与「侧栏避让胶囊」共用这一个值，改一处两处同步 */
+private val NpCapsuleHeight = 34.dp
+
+/**
+ * 右上角「正在播放」胶囊（紧凑版，对齐参考图）：
+ * 左侧圆形专辑封面 + 右侧 iOS 风格频谱（5 条、中间高两端低、随律动起伏）。
+ * 单击打开播放器；长按暂停 / 继续——胶囊很小，不拆热区，避免点不中或误触暂停把胶囊弄没。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun NowPlayingCapsule(
+    np: NowPlaying,
+    dark: Boolean,
+    modifier: Modifier,
+    onOpen: () -> Unit,
+    onToggle: () -> Unit
+) {
+    GlassCard(
+        modifier = modifier
+            .height(NpCapsuleHeight)
+            .combinedClickable(onClick = onOpen, onLongClick = onToggle),
+        radius = NpCapsuleHeight / 2,          // = 高度一半：iOS 胶囊那种全圆端头（连续曲率观感）
+        level = DuoState.glassLevel,
+        fill = 0.9f,
+        dark = dark
+    ) {
+        Row(
+            Modifier
+                .fillMaxSize()
+                .padding(start = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // 圆形专辑封面
+            Box(
+                Modifier.size(26.dp).clip(CircleShape)
+                    .background(glassTextColor(dark).copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (np.art != null) {
+                    Image(
+                        bitmap = np.art.asImageBitmap(), contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(Icons.Filled.MusicNote, null, tint = glassSubTextColor(dark), modifier = Modifier.size(15.dp))
+                }
+            }
+            // iOS 风格频谱：中间最高、两端渐低，播放时随律动起伏；暂停定格变暗
+            MusicSpectrum(playing = np.playing, color = glassTextColor(dark))
+        }
+    }
+}
+
+/**
+ * 胶囊右侧的迷你频谱（对齐 iOS 灵动岛那种「中间高、两边低」的 5 条）。
+ * 系统媒体会话拿不到音频采样，这里用不同相位/周期的起伏模拟律动，
+ * 播放时持续跳动，暂停时定格成一个低矮的静态形状。
+ */
+@Composable
+private fun MusicSpectrum(playing: Boolean, color: Color) {
+    val base = listOf(5f, 10f, 15f, 10f, 5f)          // 各条满格高度（dp）
+    val transition = rememberInfiniteTransition()
+    val ratios = base.indices.map { i ->
+        transition.animateFloat(
+            initialValue = 0.30f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(420 + i * 75, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
+                initialStartOffset = StartOffset(i * 95)
+            )
+        )
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp)
+    ) {
+        base.forEachIndexed { i, full ->
+            val k = if (playing) ratios[i].value else 0.45f
+            Box(
+                Modifier
+                    .width(2.5.dp)
+                    .height((full * k).coerceAtLeast(2f).dp)
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(color.copy(alpha = if (playing) 0.92f else 0.32f))
+            )
+        }
+    }
 }
 
 /** 点击文件夹后展开的「窗口」：网格展示应用，底部支持重命名 / 解散 */

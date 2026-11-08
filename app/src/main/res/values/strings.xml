@@ -15,6 +15,8 @@
     <string name="back">返回</string>
     <string name="folder">文件夹</string>
     <string name="app">应用</string>
+    <string name="pause">暂停</string>
+    <string name="open_media_failed">没有找到正在播放的音乐应用</string>
     <string name="all_apps">全部应用</string>
     <string name="recent">最近常用</string>
     <string name="no_match_apps">没有找到匹配的应用</string>
@@ -111,10 +113,24 @@
     <string name="sidebar_pos_right">右侧</string>
     <string name="left_short">左</string>
     <string name="right_short">右</string>
+    <string name="sidebar_align">垂直对齐</string>
+    <string name="sidebar_align_center">屏幕居中</string>
+    <string name="sidebar_align_bottom">靠下居中</string>
     <string name="sidebar_edit_desc">添加常用应用或操作按键，调整顺序</string>
     <string name="cutout_padding">挖孔避让高度</string>
     <string name="home_icon_size">主屏图标大小</string>
     <string name="sidebar_icon_size">侧栏图标大小</string>
+    <string name="sec_home">主屏幕</string>
+    <string name="home_columns">主屏图标列数</string>
+    <string name="home_columns_desc">手机建议 4–5 列，平板可设 6–7 列</string>
+    <string name="home_rows">主屏图标行数</string>
+    <string name="home_rows_desc">手机建议 5–6 行，平板可设更多</string>
+    <string name="sidebar_glass">侧边栏玻璃浓度</string>
+    <string name="sec_now_playing">音乐胶囊</string>
+    <string name="now_playing_switch">播放时显示胶囊</string>
+    <string name="now_playing_desc">音乐播放时在右上角显示控制胶囊，点击打开播放器，长按暂停/继续</string>
+    <string name="now_playing_note">胶囊依赖「通知使用权」：开启后若看不到，请到系统设置授予本应用通知访问权限。</string>
+    <string name="unknown_title">未知曲目</string>
     <string name="sec_status_bar">iOS 风格状态栏</string>
     <string name="status_time_signal">显示时间与弧形信号</string>
     <string name="status_time_signal_desc">09:41 + 圆弧 WiFi / 信号点，替代安卓原生状态栏</string>
@@ -290,6 +306,7 @@
     <string name="no_browser">没有可用的浏览器</string>
     <string name="open_contact_failed">无法打开联系人</string>
     <string name="call_contact">拨号</string>
+    <string name="open_contact">打开联系人</string>
     <!-- 侧边栏显隐 -->
     <string name="show_sidebar">显示侧边栏</string>
     <string name="show_sidebar_desc">关闭后主屏幕图标将占满整行</string>

@@ -378,6 +378,19 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .onSizeChanged { rootWidth = it.width.toFloat() }
                 ) {
+                    // 资源库页虚化背景：放在 pager 之外的根层级渲染（pager 内大图在某些情况下不绘制，
+                    // 会导致清晰壁纸透出）。仅停在资源库页时显示，滑动时按偏移淡入淡出，不影响主屏清晰壁纸。
+                    val off = pagerState.currentPageOffsetFraction
+                    val libAlpha = when {
+                        pagerState.currentPage == libraryPage -> (1f - off).coerceIn(0f, 1f)
+                        pagerState.currentPage == libraryPage - 1 -> off.coerceIn(0f, 1f)
+                        else -> 0f
+                    }
+                    if (libAlpha > 0.01f) {
+                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = libAlpha }) {
+                            GlassBackdrop(wallpaper, DuoState.glassLevel, dark)
+                        }
+                    }
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier
@@ -402,6 +415,15 @@ class MainActivity : ComponentActivity() {
                                 libraryPage = libraryPage,
                                 allowSwipeRight = page == 0
                             )
+                        }
+                    }
+
+                    // 搜索页背景：与 App 资源库同一套根层级虚化壁纸（放在 pager 与平移层之外，
+                    // 避免「pager 内大图不绘制」导致清晰壁纸透出、再被色调层压成一片暗蒙版）。
+                    // 随 reveal 淡入淡出，观感与资源库完全一致。
+                    if (searchMounted) {
+                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = reveal }) {
+                            GlassBackdrop(wallpaper, DuoState.glassLevel, dark)
                         }
                     }
 

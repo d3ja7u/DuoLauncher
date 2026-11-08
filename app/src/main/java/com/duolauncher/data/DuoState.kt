@@ -1,7 +1,9 @@
 package com.duolauncher.data
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -13,6 +15,20 @@ import com.duolauncher.util.Lang
 import com.duolauncher.util.UpdateChecker
 import org.json.JSONArray
 import org.json.JSONObject
+
+/**
+ * 正在播放的媒体信息（由 [com.duolauncher.service.DuoNotificationListener] 维护）。
+ * 只要媒体会话还在（哪怕处于暂停）就非空，胶囊据此常驻；播放器退出后台、会话消失才清空。
+ */
+data class NowPlaying(
+    val title: String,
+    val artist: String,
+    val art: Bitmap?,
+    val packageName: String,
+    val sessionActivity: PendingIntent?,
+    /** 当前是否在播放；暂停时为 false，胶囊仍在（长按可恢复） */
+    val playing: Boolean = false
+)
 
 /**
  * 全局状态 + 轻量持久化。所有改动即时写盘，Compose 直接观察这些 State。
@@ -108,6 +124,18 @@ object DuoState {
     var gestureSearch by mutableStateOf(true)       // 桌面最左页右滑打开搜索
     var iconScale by mutableStateOf(1.0f)            // 主屏图标大小
     var sidebarIconScale by mutableStateOf(0.82f)   // 侧边栏图标相对主屏更小（参考 iPhone Duo）
+    /** 主屏图标每行列数：手机 4–5、平板 6–7 */
+    var homeColumns by mutableStateOf(4)
+    /** 主屏图标每页行数：手机 5–6、平板可更多；每页容量 = 列数 × 行数 */
+    var homeRows by mutableStateOf(5)
+    /** 侧边栏玻璃浓度（底色倍率）；值越大越实、越小越透（壁纸透出更多） */
+    var sidebarGlass by mutableStateOf(1.2f)
+    /** 侧边栏垂直对齐：center = 屏幕居中，bottom = 靠下居中（避开顶部状态与底部按钮） */
+    var sidebarAlign by mutableStateOf("center")
+    /** 是否显示右上角「正在播放」音乐胶囊 */
+    var showNowPlaying by mutableStateOf(true)
+    /** 当前正在播放的媒体（非播放态为 null） */
+    var nowPlaying by mutableStateOf<NowPlaying?>(null)
     var iconPack by mutableStateOf("")              // 选中的图标包包名，空=系统默认
     var notes by mutableStateOf("")
     var appLoadDone by mutableStateOf(false)
@@ -193,6 +221,11 @@ object DuoState {
             gesturePanels = o.optBoolean("gsPanels", true)
             gestureSearch = o.optBoolean("gsSearch", true)
             iconScale = o.optDouble("iconScale", 1.0).toFloat()
+            homeColumns = o.optInt("homeCols", 4).let { n -> if (n in 3..7) n else 4 }
+            homeRows = o.optInt("homeRows", 5).let { n -> if (n in 4..7) n else 5 }
+            sidebarGlass = o.optDouble("sbGlass", 1.2).toFloat().coerceIn(0.4f, 2.4f)
+            sidebarAlign = o.optString("sbAlign", "center").let { if (it == "bottom") "bottom" else "center" }
+            showNowPlaying = o.optBoolean("npOn", true)
             notes = o.optString("notes", "")
             sidebarVer = o.optInt("sbVer", 0)
             // 有存档 = 早就初始化过主屏了；缺省 true，避免"清空后被重新填满"
@@ -258,6 +291,11 @@ object DuoState {
             o.put("gsPanels", gesturePanels)
             o.put("gsSearch", gestureSearch)
             o.put("iconScale", iconScale.toDouble())
+            o.put("homeCols", homeColumns)
+            o.put("homeRows", homeRows)
+            o.put("sbGlass", sidebarGlass.toDouble())
+            o.put("sbAlign", sidebarAlign)
+            o.put("npOn", showNowPlaying)
             o.put("notes", notes)
             o.put("sbVer", sidebarVer)
             o.put("homeSeeded", homeSeeded)

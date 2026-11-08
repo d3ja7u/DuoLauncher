@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -280,8 +281,83 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         0.7f..1.4f, dark) { DuoState.iconScale = it; DuoState.save() }
                     SettingSliderRow(Lang.s(R.string.sidebar_icon_size), "${"%.1f".format(DuoState.sidebarIconScale)}×", DuoState.sidebarIconScale,
                         0.6f..1.1f, dark) { DuoState.sidebarIconScale = it; DuoState.save() }
+                    SettingSliderRow(Lang.s(R.string.sidebar_glass), "${"%.1f".format(DuoState.sidebarGlass)}×", DuoState.sidebarGlass,
+                        0.4f..2.4f, dark) { DuoState.sidebarGlass = it; DuoState.save() }
+                    SettingRow(Lang.s(R.string.sidebar_align), Lang.s(R.string.sidebar_align), dark)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        SegmentedChips(
+                            options = listOf(
+                                "center" to Lang.s(R.string.sidebar_align_center),
+                                "bottom" to Lang.s(R.string.sidebar_align_bottom)
+                            ),
+                            selected = DuoState.sidebarAlign,
+                            dark = dark
+                        ) { DuoState.sidebarAlign = it; DuoState.save() }
+                    }
                 }
             }
+        }
+        item {
+            SectionTitle(Lang.s(R.string.sec_home), dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    SettingRow(Lang.s(R.string.home_columns), Lang.s(R.string.home_columns_desc), dark)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        SegmentedChips(
+                            options = listOf(3, 4, 5, 6, 7).map { it.toString() to it.toString() },
+                            selected = DuoState.homeColumns.toString(),
+                            dark = dark
+                        ) { DuoState.homeColumns = it.toInt(); DuoState.save() }
+                    }
+                    SettingRow(Lang.s(R.string.home_rows), Lang.s(R.string.home_rows_desc), dark)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                            .horizontalScroll(rememberScrollState())
+                    ) {
+                        SegmentedChips(
+                            options = listOf(4, 5, 6, 7).map { it.toString() to it.toString() },
+                            selected = DuoState.homeRows.toString(),
+                            dark = dark
+                        ) { DuoState.homeRows = it.toInt(); DuoState.save() }
+                    }
+                }
+            }
+        }
+        item {
+            SectionTitle(Lang.s(R.string.sec_now_playing), dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    SettingToggle(
+                        Lang.s(R.string.now_playing_switch),
+                        Lang.s(R.string.now_playing_desc),
+                        DuoState.showNowPlaying, dark
+                    ) { on ->
+                        DuoState.showNowPlaying = on; DuoState.save()
+                        if (on && !badgeAccess) DuoNotificationListener.openSettings(ctx)
+                    }
+                    if (DuoState.showNowPlaying && !badgeAccess) {
+                        SettingRow(
+                            Lang.s(R.string.notif_access),
+                            Lang.s(R.string.notif_access_off),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { DuoNotificationListener.openSettings(ctx) }
+                        )
+                    }
+                }
+            }
+            Text(
+                Lang.s(R.string.now_playing_note),
+                fontSize = 11.sp,
+                color = glassSubTextColor(dark),
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+            )
         }
         item {
             SectionTitle(Lang.s(R.string.sec_search), dark)

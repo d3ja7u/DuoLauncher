@@ -32,8 +32,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -82,6 +85,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
     var searchFocused by remember { mutableStateOf(false) }
+    val searchFr = remember { FocusRequester() }
     var openCat by remember { mutableStateOf<Pair<String, List<AppInfo>>?>(null) }
     var indexActive by remember { mutableStateOf<Char?>(null) }
     // false = 文件夹视图，true = 字母列表视图。两者互斥，列表视图里不会有文件夹卡
@@ -116,52 +120,67 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
     val pullThreshold = with(LocalDensity.current) { 58.dp.toPx() }
 
     Box(Modifier.fillMaxSize()) {
-        GlassBackdrop(wallpaper, DuoState.glassLevel, dark, extraDim = 0.10f)
-
+        // 虚化背景改由 MainActivity 根层级（pager 之外）统一渲染，这里不再画，
+        // 因为 HorizontalPager 内部的大图在某些情况下不绘制，会导致清晰壁纸透出
         Column(Modifier.fillMaxSize()) {
             Spacer(Modifier.height(DuoState.cutoutPadding.coerceAtLeast(52).dp))
 
-            // ── 顶部：搜索胶囊 + 分类管理 ──
+            // ── 顶部：透明搜索行 + 分类管理（去掉白底胶囊，浮在模糊壁纸上）──
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GlassCard(
-                    modifier = Modifier.weight(1f).height(46.dp),
-                    radius = 23.dp, level = 1f, dark = dark
-                ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        // 未输入且未聚焦时显示居中的「App 资源库」占位
-                        if (query.isEmpty() && !searchFocused) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Filled.Search, null, tint = textColor,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(7.dp))
-                                Text(
-                                    Lang.s(R.string.app_library), fontSize = 15.sp,
-                                    fontWeight = FontWeight.SemiBold, color = textColor
-                                )
+                // 搜索框：磨砂玻璃条（细边框 + 半透明底），与搜索页一致；浮在虚化壁纸上
+                Box(Modifier.weight(1f)) {
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        radius = 23.dp,
+                        level = 0.55f,
+                        dark = dark,
+                        fill = 0.35f
+                    ) {
+                        Box(Modifier.fillMaxSize()) {
+                            // 真正的输入框（始终存在，便于占位被点击后聚焦）
+                            Row(
+                                Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Search, null, tint = textColor, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Box(Modifier.weight(1f)) {
+                                    BasicTextField(
+                                        value = query,
+                                        onValueChange = { query = it },
+                                        singleLine = true,
+                                        textStyle = TextStyle(fontSize = 15.sp, color = textColor),
+                                        cursorBrush = SolidColor(glassBlue),
+                                        modifier = Modifier.fillMaxWidth()
+                                            .focusRequester(searchFr)
+                                            .onFocusChanged { searchFocused = it.isFocused }
+                                    )
+                                }
+                                if (query.isNotEmpty()) {
+                                    Icon(
+                                        Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
+                                        modifier = Modifier.size(17.dp).clickable { query = "" }
+                                    )
+                                }
                             }
-                        }
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
-                            BasicTextField(
-                                value = query,
-                                onValueChange = { query = it },
-                                singleLine = true,
-                                textStyle = TextStyle(fontSize = 15.sp, color = textColor),
-                                cursorBrush = SolidColor(glassBlue),
-                                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp)
-                                    .onFocusChanged { searchFocused = it.isFocused }
-                            )
-                        }
-                        if (query.isNotEmpty()) {
-                            Box(Modifier.fillMaxSize().padding(end = 14.dp), contentAlignment = Alignment.CenterEnd) {
-                                Icon(
-                                    Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
-                                    modifier = Modifier.size(17.dp).clickable { query = "" }
-                                )
+                            // 空且未聚焦：放大镜 + “App 资源库”整体居中，点一下聚焦输入框
+                            if (query.isEmpty() && !searchFocused) {
+                                Row(
+                                    Modifier.align(Alignment.Center)
+                                        .clickable { searchFr.requestFocus() }
+                                        .padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Filled.Search, null, tint = textColor, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        Lang.s(R.string.app_library), fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold, color = textColor
+                                    )
+                                }
                             }
                         }
                     }
@@ -373,6 +392,8 @@ private fun CategoryTile(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
+            // 壁纸偏亮 / 偏花时，分类名仍要能看清：加一层很轻的暗色投影兜底（iOS 靠背景压暗，这里双保险）
+            style = TextStyle(shadow = Shadow(color = Color.Black.copy(alpha = if (dark) 0.55f else 0.45f), blurRadius = 2.5f)),
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -514,21 +535,25 @@ private fun buildLetterSections(apps: List<AppInfo>): List<Pair<Char, List<AppIn
     return if (hashGroup != null) out + ('#' to hashGroup.toList()) else out
 }
 
-/** 分组标题：吸顶时盖住下方滚过的内容，所以带一层与底板同色的实底 */
+/** 分组标题：去掉实色横条，字母直接浮在模糊壁纸上；加轻投影保证任意壁纸上可读 */
 @Composable
 private fun LetterHeader(ch: Char, dark: Boolean) {
-    val bg = if (dark) Color(0xFF10131C) else Color(0xFFF4F7FF)
     Box(
         Modifier
             .fillMaxWidth()
-            .background(bg.copy(alpha = 0.97f))
             .padding(start = 20.dp, top = 12.dp, bottom = 5.dp)
     ) {
         Text(
             ch.toString(),
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
-            color = glassTextColor(dark)
+            color = glassTextColor(dark),
+            style = TextStyle(
+                shadow = Shadow(
+                    color = Color.Black.copy(alpha = if (dark) 0.6f else 0.5f),
+                    blurRadius = 3f
+                )
+            )
         )
     }
 }

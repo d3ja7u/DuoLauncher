@@ -15,6 +15,8 @@
     <string name="back">Back</string>
     <string name="folder">Folder</string>
     <string name="app">App</string>
+    <string name="pause">Pause</string>
+    <string name="open_media_failed">No music app found for the current session</string>
     <string name="all_apps">All Apps</string>
     <string name="recent">Recent</string>
     <string name="no_match_apps">No matching apps</string>
@@ -111,10 +113,24 @@
     <string name="sidebar_pos_right">Right</string>
     <string name="left_short">Left</string>
     <string name="right_short">Right</string>
+    <string name="sidebar_align">Vertical alignment</string>
+    <string name="sidebar_align_center">Screen center</string>
+    <string name="sidebar_align_bottom">Bottom center</string>
     <string name="sidebar_edit_desc">Add apps or actions and reorder them</string>
     <string name="cutout_padding">Cutout top padding</string>
     <string name="home_icon_size">Home icon size</string>
     <string name="sidebar_icon_size">Sidebar icon size</string>
+    <string name="sec_home">Home Screen</string>
+    <string name="home_columns">Home grid columns</string>
+    <string name="home_columns_desc">4–5 columns for phones, 6–7 for tablets</string>
+    <string name="home_rows">Home grid rows</string>
+    <string name="home_rows_desc">5–6 rows for phones, more for tablets</string>
+    <string name="sidebar_glass">Sidebar glass opacity</string>
+    <string name="sec_now_playing">Music Capsule</string>
+    <string name="now_playing_switch">Show capsule while playing</string>
+    <string name="now_playing_desc">Show a control capsule at top-right while music plays; tap to open the player, long-press to pause/resume</string>
+    <string name="now_playing_note">The capsule needs Notification Access: if it does not appear, grant DuoLauncher access in system settings.</string>
+    <string name="unknown_title">Unknown track</string>
     <string name="sec_status_bar">iOS-style Status Bar</string>
     <string name="status_time_signal">Show time and arc signal</string>
     <string name="status_time_signal_desc">09:41 + arc Wi-Fi/signal dots, replaces the Android status bar</string>
@@ -290,6 +306,7 @@
     <string name="no_browser">No browser available</string>
     <string name="open_contact_failed">Could not open contact</string>
     <string name="call_contact">Call</string>
+    <string name="open_contact">Open contact</string>
     <!-- Sidebar visibility -->
     <string name="show_sidebar">Show sidebar</string>
     <string name="show_sidebar_desc">When off, home screen icons use the full width</string>

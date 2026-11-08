@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -83,7 +82,19 @@ fun rememberAppIcon(app: AppInfo): Drawable {
     }
 }
 
-/** 全屏毛玻璃背景：模糊壁纸 + 半透明色调层 */
+/** 把壁纸缩到很小再放大显示，天然得到柔和虚化（不依赖 RenderEffect 模糊半径上限，全机型稳定） */
+@Composable
+fun rememberBlurredWallpaper(src: Bitmap?): Bitmap? {
+    return remember(src) {
+        src?.let { b ->
+            val w = 140
+            val h = ((b.height * w.toFloat() / b.width).toInt()).coerceAtLeast(1)
+            runCatching { Bitmap.createScaledBitmap(b, w, h, true) }.getOrNull()
+        }
+    }
+}
+
+/** 全屏毛玻璃背景：先缩再放得到虚化壁纸 + 一层极淡的玻璃色调，呈现 iOS 磨砂质感 */
 @Composable
 fun GlassBackdrop(
     wallpaper: Bitmap?,
@@ -93,32 +104,35 @@ fun GlassBackdrop(
     extraDim: Float = 0f
 ) {
     Box(modifier.fillMaxSize()) {
-        if (wallpaper != null) {
+        val small = rememberBlurredWallpaper(wallpaper)
+        if (small != null) {
             Image(
-                bitmap = wallpaper.asImageBitmap(),
+                bitmap = small.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur((6 + 26 * level).dp)
+                modifier = Modifier.fillMaxSize()
             )
         }
-        val tint = if (dark) Color(0xFF10131C) else Color(0xFFF4F7FF)
+        // 极淡色调层：轻微统一明暗、增强磨砂感；浅色不冲成白板，深色略压保证可读
+        val baseAlpha = if (dark) (0.22f + 0.12f * level) else (0.10f + 0.08f * level)
+        val tint = if (dark) Color(0xFF0E111A) else Color(0xFFEEF2FB)
         Box(
             Modifier
                 .fillMaxSize()
-                .background(tint.copy(alpha = (0.40f + 0.30f * level + extraDim).coerceIn(0f, 0.96f)))
+                .background(tint.copy(alpha = (baseAlpha + extraDim).coerceIn(0f, 0.95f)))
         )
     }
 }
 
-/** 玻璃面板（卡片 / 胶囊 / 对话框） */
+/** 玻璃面板（卡片 / 胶囊 / 对话框）。
+ *  [fill] 底色强度倍率：传小值（如 0.3）即得到「细边框 + 半透明」的轮廓底，而非实心白板 */
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
     radius: Dp = 28.dp,
     level: Float = 0.55f,
     dark: Boolean = false,
+    fill: Float = 1f,
     content: @Composable BoxScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(radius)
@@ -129,8 +143,8 @@ fun GlassCard(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        base.copy(alpha = 0.30f + 0.18f * level),
-                        base.copy(alpha = 0.16f + 0.16f * level)
+                        base.copy(alpha = (0.30f + 0.18f * level) * fill),
+                        base.copy(alpha = (0.16f + 0.16f * level) * fill)
                     )
                 )
             )

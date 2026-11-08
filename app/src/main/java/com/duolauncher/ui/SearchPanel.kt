@@ -195,7 +195,8 @@ fun SearchPanel(
                 }
             }
     ) {
-        GlassBackdrop(wallpaper, DuoState.glassLevel, dark, extraDim = 0.18f)
+        // 背景虚化壁纸改由 MainActivity 根层级统一渲染（与 App 资源库同一套），
+        // 这里不再自带背景——否则会再叠一层色调，把整页压成灰暗蒙版。
 
         Column(
             Modifier
@@ -204,13 +205,7 @@ fun SearchPanel(
         ) {
             Spacer(Modifier.height((DuoState.cutoutPadding.coerceAtLeast(56) + 12).dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    Lang.s(R.string.search),
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor,
-                    modifier = Modifier.weight(1f)
-                )
+                Spacer(Modifier.weight(1f))
                 // 右上角设置：最近常用数量 / 搜索引擎 / 联系人开关
                 GlassCard(modifier = Modifier.size(36.dp), radius = 18.dp, level = 0.9f, dark = dark) {
                     Box(
@@ -235,17 +230,23 @@ fun SearchPanel(
             }
             Spacer(Modifier.height(14.dp))
 
+            // 搜索框：磨砂玻璃条（细边框 + 半透明底），浮在虚化壁纸上——有「轮廓底」但不实心白板
+            // 圆角与 App 资源库顶部搜索框保持一致（高 46dp → 半径 23dp，两端全圆）
             GlassCard(
                 modifier = Modifier.fillMaxWidth().height(46.dp),
-                radius = 16.dp,
-                level = 0.9f,
-                dark = dark
+                radius = 23.dp,
+                level = 0.55f,
+                dark = dark,
+                fill = 0.35f
             ) {
-                Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(Icons.Filled.Search, null, tint = subColor, modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text(Lang.s(R.string.search), fontSize = 14.sp, color = subColor)
+                        if (query.isEmpty()) Text(Lang.s(R.string.search), fontSize = 15.sp, color = subColor)
                         BasicTextField(
                             value = query,
                             onValueChange = { query = it },
@@ -270,23 +271,34 @@ fun SearchPanel(
 
             if (query.isBlank()) {
                 Text(Lang.s(R.string.widget_recents), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = subColor,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 14.dp))
-                // 每排 5 个，数量由设置决定（5 / 10 / 15 / 20）
-                recents.chunked(5).forEach { row ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        row.forEach { app ->
-                            AppIconCell(
-                                app = app,
-                                size = iconSize,
-                                dark = dark,
-                                showLabel = true,
-                                onClick = { close(); AppRepository.launch(ctx, app.id) },
-                                onLongClick = { nav.showAppMenu(app, "search") }
-                            )
+                    modifier = Modifier.padding(start = 4.dp, bottom = 12.dp))
+                // 常用应用包进一张磨砂玻璃面板（细边框 + 半透明底）：有「轮廓底」而非实心白板
+                val recentRows = recents.chunked(5)
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    radius = 24.dp,
+                    level = 0.55f,
+                    dark = dark,
+                    fill = 0.30f
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                        recentRows.forEachIndexed { i, row ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                row.forEach { app ->
+                                    AppIconCell(
+                                        app = app,
+                                        size = iconSize,
+                                        dark = dark,
+                                        showLabel = true,
+                                        onClick = { close(); AppRepository.launch(ctx, app.id) },
+                                        onLongClick = { nav.showAppMenu(app, "search") }
+                                    )
+                                }
+                                repeat(5 - row.size) { Spacer(Modifier.width(iconSize + 14.dp)) }
+                            }
+                            if (i < recentRows.lastIndex) Spacer(Modifier.height(14.dp))
                         }
-                        repeat(5 - row.size) { Spacer(Modifier.width(iconSize + 14.dp)) }
                     }
-                    Spacer(Modifier.height(14.dp))
                 }
             } else {
                 val total = results.size + contactHits.size
@@ -429,37 +441,52 @@ private fun ContactResultRow(
     onClick: () -> Unit,
     onDial: () -> Unit
 ) {
-    val c = glassTextColor(dark)
-    val sub = glassSubTextColor(dark)
+    // 图3 风格：深蓝半透明磨砂胶囊卡 + 圆形磨砂头像 + 右侧信息 / 电话两枚圆钮
+    val cardBg = if (dark) Color(0xFF16283A) else Color(0xFF33567C)
+    val btnBg = if (dark) Color(0xFF1E3448) else Color(0xFF4A6B92)
+    val avatarBg = if (dark) Color(0xFF4A3D55) else Color(0xFF6B5A78)
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(c.copy(alpha = 0.08f))
+            .clip(RoundedCornerShape(30.dp))
+            .background(cardBg.copy(alpha = 0.55f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(36.dp).clip(CircleShape).background(glassBlue.copy(alpha = 0.38f)),
+            Modifier.size(40.dp).clip(CircleShape).background(avatarBg.copy(alpha = 0.75f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Person, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.Person, null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(hit.name, fontSize = 15.sp, color = c, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(hit.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (hit.number.isNotBlank()) {
-                Text(hit.number, fontSize = 12.sp, color = sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(hit.number, fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.72f),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        Spacer(Modifier.width(8.dp))
+        // 信息按钮：打开联系人
+        Box(
+            Modifier.size(38.dp).clip(CircleShape).background(btnBg.copy(alpha = 0.9f))
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Email, Lang.s(R.string.open_contact), tint = Color.White, modifier = Modifier.size(19.dp))
+        }
         if (hit.number.isNotBlank()) {
+            Spacer(Modifier.width(10.dp))
+            // 电话按钮：直接拨号
             Box(
-                Modifier.size(36.dp).clip(CircleShape).clickable(onClick = onDial),
+                Modifier.size(38.dp).clip(CircleShape).background(btnBg.copy(alpha = 0.9f))
+                    .clickable(onClick = onDial),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Call, Lang.s(R.string.call_contact), tint = glassBlue,
-                    modifier = Modifier.size(19.dp))
+                Icon(Icons.Filled.Call, Lang.s(R.string.call_contact), tint = Color.White, modifier = Modifier.size(19.dp))
             }
         }
     }
@@ -472,28 +499,28 @@ private fun WebSearchRow(
     dark: Boolean,
     onClick: () -> Unit
 ) {
-    val c = glassTextColor(dark)
-    val sub = glassSubTextColor(dark)
+    // 与联系人卡片统一成深蓝半透明磨砂胶囊
+    val cardBg = if (dark) Color(0xFF16283A) else Color(0xFF33567C)
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(c.copy(alpha = 0.08f))
+            .clip(RoundedCornerShape(30.dp))
+            .background(cardBg.copy(alpha = 0.55f))
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(36.dp).clip(CircleShape).background(glassBlue.copy(alpha = 0.38f)),
+            Modifier.size(40.dp).clip(CircleShape).background(glassBlue.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Public, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.Public, null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(Lang.s(R.string.web_search_with, engineLabel), fontSize = 15.sp, color = c)
-            Text("「$query」", fontSize = 12.sp, color = sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(Lang.s(R.string.web_search_with, engineLabel), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("「$query」", fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.72f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Icon(Icons.Filled.ChevronRight, null, tint = sub, modifier = Modifier.size(18.dp))
+        Icon(Icons.Filled.ChevronRight, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
     }
 }

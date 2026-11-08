@@ -1,17 +1,27 @@
 package com.duolauncher.service
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.media.MediaMetadata
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
 import android.os.UserManager
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.NotificationListenerService.RankingMap
 import android.service.notification.StatusBarNotification
+import com.duolauncher.R
 import com.duolauncher.data.DuoState
+import com.duolauncher.data.NowPlaying
 import java.util.Collections
 
 /**
@@ -40,6 +50,20 @@ class DuoNotificationListener : NotificationListenerService() {
     /** 已读通知：key -> 标记已读时的计数。持久化，跨服务重连 / 进程重启有效 */
     private val readKeys = HashMap<String, Int>()
 
+    // ── 音乐胶囊：监听系统媒体会话 ──
+    private var mediaSessionManager: MediaSessionManager? = null
+    private var mediaRegistered = false
+    private var lastControllers: List<MediaController> = emptyList()
+    private var activeController: MediaController? = null
+    private val mediaListener = MediaSessionManager.OnActiveSessionsChangedListener { list ->
+        lastControllers = list ?: emptyList()
+        handleMedia(lastControllers)
+    }
+    private val controllerCb = object : MediaController.Callback() {
+        override fun onMetadataChanged(metadata: MediaMetadata?) = refreshCurrent()
+        override fun onPlaybackStateChanged(state: PlaybackState?) = refreshCurrent()
+    }
+
     override fun onCreate() {
         super.onCreate()
         DuoState.init(applicationContext)
@@ -49,6 +73,9 @@ class DuoNotificationListener : NotificationListenerService() {
     override fun onListenerConnected() {
         instance = this
         resync()
+        // 音乐胶囊：连上后开始监听系统媒体会话
+        initMedia()
+        refreshMedia()
         // 服务未绑定期间用户点开过的应用，连上之后补做「已读」
         val pending = pendingDismiss.toList()
         pendingDismiss.clear()
@@ -57,9 +84,23 @@ class DuoNotificationListener : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         if (instance === this) instance = null
+        // 音乐胶囊：断开时清掉活跃会话监听，避免泄漏
+        activeController?.unregisterCallback(controllerCb)
+        activeController = null
+        mediaSessionManager?.let {
+            runCatching { it.removeOnActiveSessionsChangedListener(mediaListener) }
+        }
+        mediaRegistered = false
+        DuoState.nowPlaying = null
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        val n = sbn.notification
+        // 音乐胶囊兜底：媒体播放类通知出现、但当前还没拿到活跃会话时，
+        // 主动重拉一次（部分 ROM 的 onActiveSessionsChanged 收不到，仅靠回调会漏掉）
+        if (n?.category == Notification.CATEGORY_TRANSPORT && DuoState.nowPlaying == null) {
+            refreshMedia()
+        }
         val key = keyOf(sbn)
         if (!isCountable(sbn)) {
             // 普通通知变成常驻通知（例如开始播放音乐）：不再计入角标
@@ -147,6 +188,103 @@ class DuoNotificationListener : NotificationListenerService() {
         entries.clear()
         saveReadKeys()
         publish()
+    }
+
+    // ── 音乐胶囊：媒体会话处理 ──
+
+    private fun initMedia() {
+        if (mediaRegistered) return
+        runCatching {
+            val msm = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
+            mediaSessionManager = msm
+            msm.addOnActiveSessionsChangedListener(
+                mediaListener,
+                ComponentName(this, DuoNotificationListener::class.java),
+                Handler(Looper.getMainLooper())
+            )
+            mediaRegistered = true
+        }
+    }
+
+    /** 主动拉一次当前活跃会话（注册瞬间不一定会回调 onActiveSessionsChanged） */
+    private fun refreshMedia() {
+        val msm = mediaSessionManager ?: return
+        runCatching {
+            lastControllers = msm.getActiveSessions(
+                ComponentName(this, DuoNotificationListener::class.java)
+            )
+            handleMedia(lastControllers)
+        }
+    }
+
+    private fun refreshCurrent() = handleMedia(lastControllers)
+
+    /** 仅在真正播放时展示胶囊；暂停 / 停止则清空。
+     * 活跃判定放宽：除 STATE_PLAYING 外，BUFFERING / 快进快退 / 切歌等过渡态也算活跃；
+     * 部分播放器（如网易云）在播放中上报的 state 不是标准的 PLAYING，或干脆为 null，
+     * 这两种情况只要元数据里有曲名就当作正在播放，保证胶囊能稳定出现。 */
+    private fun isActiveState(state: Int?): Boolean {
+        if (state == null) return true
+        return when (state) {
+            PlaybackState.STATE_PLAYING,
+            PlaybackState.STATE_BUFFERING,
+            PlaybackState.STATE_CONNECTING,
+            PlaybackState.STATE_FAST_FORWARDING,
+            PlaybackState.STATE_REWINDING,
+            PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
+            PlaybackState.STATE_SKIPPING_TO_NEXT -> true
+            else -> false
+        }
+    }
+
+    /**
+     * 胶囊的存活判定：**只要媒体会话还在就保留**，暂停不清空（长按可恢复播放）。
+     * 会话从 activeSessions 里消失（播放器被杀 / 退出后台 / 系统回收）才清空。
+     *
+     * 选会话的优先级：正在播或处于过渡态 → 当前已选且仍有曲目 → 任意有曲目的会话。
+     * `playing` 用来驱动胶囊的视觉状态（暂停时竖条变暗）。
+     */
+    private fun handleMedia(controllers: List<MediaController>) {
+        fun hasMeta(c: MediaController) =
+            c.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)?.isNotBlank() == true
+
+        fun isBusy(c: MediaController): Boolean {
+            val s = c.playbackState?.state ?: return hasMeta(c)   // 报不出 state 的老播放器
+            return isActiveState(s)
+        }
+
+        val chosen = controllers.firstOrNull { isBusy(it) }
+            ?: controllers.firstOrNull { hasMeta(it) && it.sessionToken == activeController?.sessionToken }
+            ?: controllers.firstOrNull { hasMeta(it) }
+
+        if (chosen == null) {
+            // 会话彻底消失（应用不在后台了）才收起胶囊
+            activeController?.unregisterCallback(controllerCb)
+            activeController = null
+            DuoState.nowPlaying = null
+            return
+        }
+        if (activeController == null || activeController?.sessionToken != chosen.sessionToken) {
+            activeController?.unregisterCallback(controllerCb)
+            activeController = chosen
+            runCatching { chosen.registerCallback(controllerCb) }
+        }
+        val meta = chosen.metadata
+        val title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
+        val artist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+        val art: Bitmap? = meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+        val pkg = chosen.packageName ?: ""
+        val act: PendingIntent? = chosen.sessionActivity
+        val state = chosen.playbackState?.state
+        val playing = when (state) {
+            PlaybackState.STATE_PAUSED,
+            PlaybackState.STATE_STOPPED,
+            PlaybackState.STATE_NONE,
+            PlaybackState.STATE_ERROR -> false
+            else -> true
+        }
+        DuoState.nowPlaying = NowPlaying(title, artist, art, pkg, act, playing)
     }
 
     private fun publish() {
@@ -290,6 +428,56 @@ class DuoNotificationListener : NotificationListenerService() {
             val cur = instance
             if (cur != null) cur.clearAll()
             else DuoState.setNotifCounts(emptyMap())
+        }
+
+        /** 音乐胶囊：暂停 / 继续当前播放（暂停后胶囊仍保留，再长按恢复） */
+        fun togglePlayPause() {
+            val c = instance?.activeController ?: return
+            val np = DuoState.nowPlaying
+            val playing = np?.playing ?: (c.playbackState?.state == PlaybackState.STATE_PLAYING)
+            runCatching {
+                if (playing) c.transportControls.pause() else c.transportControls.play()
+            }
+            // 乐观更新：回调慢 / 不回调的播放器也能立刻看到状态翻转，胶囊不会闪没
+            if (np != null) DuoState.nowPlaying = np.copy(playing = !playing)
+        }
+
+        /**
+         * 音乐胶囊：点击打开对应播放器。
+         * 顺序改为「先拉主界面、再回落 sessionActivity」——原来先发 PendingIntent，
+         * 部分播放器的 PendingIntent 已失效却不会抛异常，runCatching 静默吞掉后直接 return，
+         * 结果点了没反应。
+         */
+        fun openMediaApp(ctx: Context) {
+            val np = DuoState.nowPlaying
+            val pkg = np?.packageName
+            if (!pkg.isNullOrBlank()) {
+                val launched = runCatching {
+                    val intent = ctx.packageManager.getLaunchIntentForPackage(pkg)
+                    if (intent == null) {
+                        false
+                    } else {
+                        intent.addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                        )
+                        // 桌面本身常驻前台：先把自己收起，避免播放器被压在新任务下面
+                        ctx.startActivity(intent)
+                        true
+                    }
+                }.getOrDefault(false)
+                if (launched) return
+            }
+            val act = np?.sessionActivity
+            if (act != null) {
+                val ok = runCatching { act.send(ctx, 0, null); true }.getOrDefault(false)
+                if (ok) return
+            }
+            runCatching {
+                android.widget.Toast.makeText(
+                    ctx, R.string.open_media_failed, android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 }
