@@ -10,20 +10,14 @@
 [![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
 
 <p align="center">
-  <img src="screenshots/01-home.png" width="23%">
-  <img src="screenshots/02-library-categories.png" width="23%">
-  <img src="screenshots/03-library-list.png" width="23%">
-  <img src="screenshots/04-search.png" width="23%">
+  <img src="screenshots/01-home.jpg" width="18%">
+  <img src="screenshots/02-sidebar-music.jpg" width="18%">
+  <img src="screenshots/03-library-categories.jpg" width="18%">
+  <img src="screenshots/04-library-list.jpg" width="18%">
+  <img src="screenshots/05-settings.jpg" width="18%">
 </p>
 
-<p align="center">
-  <img src="screenshots/06-settings-gestures.png" width="23%">
-  <img src="screenshots/07-settings-badges.png" width="23%">
-  <img src="screenshots/05-settings-sidebar.png" width="23%">
-  <img src="screenshots/08-home-menu.png" width="23%">
-</p>
-
-> 截图均为 Unihertz Titan 2 Elite 实机运行截图（v1.3.8），展示的是中文界面；界面语言会跟随设备，也可在「设置 → 系统 → 语言」里手动切换。
+> 截图均为 Unihertz Titan 2 Elite 实机运行截图（v1.5.10），展示的是中文界面；界面语言会跟随设备，也可在「设置 → 系统 → 语言」里手动切换。
 
 ---
 
@@ -34,6 +28,7 @@
 | 玻璃拟态外观 | 侧边栏、搜索胶囊、设置卡片都用实时模糊玻璃，模糊强度与深浅可调 |
 | iOS 风格状态栏 | 时间 + 弧形信号 + Wi-Fi 点阵，替代安卓原生状态栏；可左右切换、可 24 小时制 |
 | 侧边栏 Dock | 屏幕右侧（或左侧）竖排常用应用，可编辑、可排序、图标尺寸单独缩放 |
+| 音乐胶囊 | 侧栏上方显示正在播放的音乐：圆形封面 + 律动频谱。点一下回到播放器，长按暂停 / 继续，暂停后仍保留 |
 | App 资源库 | 分类卡视图 + iOS 风格 A–Z 字母列表，右侧字母索引条可点可拖 |
 | 全局搜索 | 应用 + 通讯录联系人 + 网页搜索三合一；回车直达首个结果，网页用系统默认浏览器打开 |
 | 通知角标 | 图标右上角未读数字，苹果风格描边气泡，8 种颜色可选 |

@@ -10,20 +10,14 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 [![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
 
 <p align="center">
-  <img src="screenshots/01-home.png" width="23%">
-  <img src="screenshots/02-library-categories.png" width="23%">
-  <img src="screenshots/03-library-list.png" width="23%">
-  <img src="screenshots/04-search.png" width="23%">
+  <img src="screenshots/01-home.jpg" width="18%">
+  <img src="screenshots/02-sidebar-music.jpg" width="18%">
+  <img src="screenshots/03-library-categories.jpg" width="18%">
+  <img src="screenshots/04-library-list.jpg" width="18%">
+  <img src="screenshots/05-settings.jpg" width="18%">
 </p>
 
-<p align="center">
-  <img src="screenshots/06-settings-gestures.png" width="23%">
-  <img src="screenshots/07-settings-badges.png" width="23%">
-  <img src="screenshots/05-settings-sidebar.png" width="23%">
-  <img src="screenshots/08-home-menu.png" width="23%">
-</p>
-
-> All screenshots were taken on a Unihertz Titan 2 Elite (v1.3.8) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
+> All screenshots were taken on a Unihertz Titan 2 Elite (v1.5.10) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
 
 ---
 
@@ -34,6 +28,7 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 | Glassmorphism | Live-blurred glass for the sidebar, search pill and settings cards; adjustable blur intensity and light/dark glass |
 | iOS-style status bar | Time + arc signal + Wi-Fi dots replaces the Android status bar; switchable side, 12/24-hour clock |
 | Sidebar dock | A vertical column of favorite apps on the right (or left); fully editable, reorderable, with its own icon scale |
+| Music capsule | Shows what is playing above the dock: round cover art + animated spectrum. Tap to reopen the player, long-press to pause / resume; it stays while paused |
 | App Library | Category cards plus an iOS-style A–Z list; the right-hand index bar supports tap and drag |
 | Unified search | Apps + phone contacts + web search in one place; Enter opens the first result, web search opens in the default browser |
 | Notification badges | Unread counts on icons, Apple-style outlined bubbles, 8 colors |
