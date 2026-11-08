@@ -1,13 +1,17 @@
 package com.duolauncher.ui
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
+import android.telephony.TelephonyManager
 import android.text.format.DateFormat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
@@ -77,6 +81,39 @@ data class DuoStatus(
     val charging: Boolean
 )
 
+/**
+ * WiFi 信号格（1..4）：RSSI → 5 档后裁掉 0 档（已连上至少算 1 格）。
+ * 读不到（老系统限制 / 权限受限抛异常）时回退 3 格，避免连上却显示成没信号。
+ */
+private fun readWifiLevel(app: Context): Int {
+    var lvl: Int? = null
+    runCatching {
+        val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val rssi = wm.connectionInfo?.rssi
+        if (rssi != null && rssi < 0) lvl = WifiManager.calculateSignalLevel(rssi, 5)
+    }
+    return (lvl ?: 3).coerceIn(1, 4)
+}
+
+/**
+ * 蜂窝信号格（0..4）。
+ *
+ * 需要 READ_PHONE_STATE：清单已声明，首次启动由 MainActivity 申请一次；用户拒绝时
+ * 这里返回 4（四根条全亮，与旧版外观一致），不会每 30 秒抛一次 SecurityException。
+ */
+private fun readCellularLevel(app: Context): Int {
+    if (Build.VERSION.SDK_INT < 28) return 4
+    val granted = app.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+    if (!granted) return 4
+    var lvl: Int? = null
+    runCatching {
+        val tm = app.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        lvl = tm.signalStrength?.level
+    }
+    return (lvl ?: 4).coerceIn(0, 4)
+}
+
 private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
     val app = ctx.applicationContext
     val time = DateFormat
@@ -92,14 +129,12 @@ private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
         if (caps != null) {
             wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
             cellular = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
-            val online = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            if (online) {
-                level = if (wifi) {
-                    val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                    val rssi = runCatching { wm.connectionInfo?.rssi ?: -100 }.getOrDefault(-100)
-                    runCatching { WifiManager.calculateSignalLevel(rssi, 5) }
-                        .getOrDefault(2).coerceIn(1, 4)
-                } else if (cellular) 3 else 2
+            // 注意：这里不再要求 NET_CAPABILITY_VALIDATED。连上 AP 但没外网时也该有格子，
+            // 之前用 online 做门槛，会让「连了 WiFi 但没验证通过」的情况下 level 恒为 0。
+            level = when {
+                wifi -> readWifiLevel(app)
+                cellular -> readCellularLevel(app)
+                else -> 0
             }
         }
     }
@@ -266,11 +301,11 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
 
             // ── 6. 中心：WiFi 双弧（已连）/ 蜂窝信号条（未连，垂直居中）──
             if (status.wifi) drawWifiGlyph(cx, cy, k, inkColor, shade, off)
-            else drawCellularGlyph(cx, cy, k, inkColor, shade, off)
+            else drawCellularGlyph(cx, cy, k, inkColor, shade, off, status.level)
 
-            // ── 7. 底部：已连 WiFi→沿弧排列的 4 点；未连→放大的 5G ──
+            // ── 7. 底部：已连 WiFi→沿弧排列的 4 点（按信号强度点亮）；未连→放大的 5G ──
             if (status.wifi) {
-                drawSignalDots(cx, cy, k, inkColor, shade, off)
+                drawSignalDots(cx, cy, k, inkColor, shade, off, status.level)
             } else {
                 val g5Style = TextStyle(
                     color = inkColor,
@@ -337,9 +372,12 @@ private fun DrawScope.drawWifiGlyph(
 /**
  * 蜂窝：4 根递增圆角竖条，底边 y=+8.3、整体垂直居中于圆心（素材信号条即居中），
  * 条宽 3.7 / 间距 2.8（步距 6.5）/ 高 9.4·11.5·13.5·15.6。
+ *
+ * [level] 为真实信号格 0..4：前 level 根用实心白，其余降到 26% 白当作「未点亮」，
+ * 这样 5G 状态下中间这几根条会随手机信号变化，而不是永远四根全亮。
  */
 private fun DrawScope.drawCellularGlyph(
-    cx: Float, cy: Float, k: Float, color: Color, shade: Color, off: Float
+    cx: Float, cy: Float, k: Float, color: Color, shade: Color, off: Float, level: Int
 ) {
     val barW = 3.7f * k
     val pitch = 6.5f * k
@@ -351,25 +389,36 @@ private fun DrawScope.drawCellularGlyph(
         val x = startX + i * pitch
         val y = baseY - bh
         val rad = androidx.compose.ui.geometry.CornerRadius(barW * 0.45f)
-        drawRoundRect(shade, topLeft = Offset(x, y + off), size = Size(barW, bh), cornerRadius = rad)
-        drawRoundRect(color, topLeft = Offset(x, y), size = Size(barW, bh), cornerRadius = rad)
+        val on = i < level.coerceIn(0, 4)
+        if (on) drawRoundRect(shade, topLeft = Offset(x, y + off), size = Size(barW, bh), cornerRadius = rad)
+        drawRoundRect(
+            if (on) color else color.copy(alpha = 0.26f),
+            topLeft = Offset(x, y), size = Size(barW, bh), cornerRadius = rad
+        )
     }
 }
 
 /**
  * 已连 WiFi：沿 R=28.4 圆弧排列的 4 个等大信号点（126/102/78.5/54.5°，半径 3.5）。
  * 素材实测：4 点同在一条以圆心为心的弧上，点径一致，故不再做由大到小的渐隐。
+ *
+ * [level] 为 WiFi 信号格 1..4：从左（126°）往右依次点亮 level 个，其余 26% 白。
  */
 private fun DrawScope.drawSignalDots(
-    cx: Float, cy: Float, k: Float, color: Color, shade: Color, off: Float
+    cx: Float, cy: Float, k: Float, color: Color, shade: Color, off: Float, level: Int
 ) {
     val dots = listOf(126f, 102f, 78.5f, 54.5f)
-    dots.forEach { deg ->
+    val lit = level.coerceIn(0, 4)
+    dots.forEachIndexed { i, deg ->
         val a = Math.toRadians(deg.toDouble())
         val x = cx + 28.4f * k * cos(a).toFloat()
         val y = cy + 28.4f * k * sin(a).toFloat()
-        drawCircle(shade, radius = 3.5f * k, center = Offset(x, y + off))
-        drawCircle(color, radius = 3.5f * k, center = Offset(x, y))
+        val on = i < lit
+        if (on) drawCircle(shade, radius = 3.5f * k, center = Offset(x, y + off))
+        drawCircle(
+            if (on) color else color.copy(alpha = 0.26f),
+            radius = 3.5f * k, center = Offset(x, y)
+        )
     }
 }
 

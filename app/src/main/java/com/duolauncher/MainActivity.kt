@@ -34,12 +34,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.duolauncher.data.*
 import com.duolauncher.ui.*
+import kotlinx.coroutines.delay
 import com.duolauncher.util.InstallStats
 import com.duolauncher.util.Lang
 import kotlinx.coroutines.Job
@@ -51,6 +54,10 @@ class MainActivity : ComponentActivity() {
     /** Home 键回到主屏的信号 */
     private var homeSignal by mutableStateOf(0)
     private var packageReceiver: BroadcastReceiver? = null
+
+    /** 蜂窝信号强度权限：只申请一次，拒绝就永久回退（不再反复弹） */
+    private val phonePermLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 拒绝也不影响功能 */ }
 
     /** 手动指定的语言在 attachBaseContext 阶段就要生效，否则首帧仍是旧语言 */
     override fun attachBaseContext(newBase: Context) {
@@ -83,6 +90,23 @@ class MainActivity : ComponentActivity() {
         runCatching { packageReceiver?.let { registerReceiver(it, filter) } }
 
         setContent { DuoRoot() }
+
+        // 状态徽标的蜂窝信号格需要 READ_PHONE_STATE：只在第一次启动问一次，
+        // 拒绝后写标记，永远不再打扰（功能自动回退成满格）
+        maybeAskPhonePermission()
+    }
+
+    /** 首次启动申请一次「电话状态」权限，用于显示真实蜂窝信号格 */
+    private fun maybeAskPhonePermission() {
+        if (Build.VERSION.SDK_INT < 28) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.READ_PHONE_STATE
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) return
+        val sp = getSharedPreferences("duo_flags", MODE_PRIVATE)
+        if (sp.getBoolean("phone_perm_asked", false)) return
+        sp.edit().putBoolean("phone_perm_asked", true).apply()
+        runCatching { phonePermLauncher.launch(android.Manifest.permission.READ_PHONE_STATE) }
     }
 
     override fun onResume() {
@@ -155,6 +179,10 @@ class MainActivity : ComponentActivity() {
         var revealJob by remember { mutableStateOf<Job?>(null) }
         var searchMounted by remember { mutableStateOf(false) }
         var searchFocused by remember { mutableStateOf(false) }
+        // 已决定关闭搜索页：一置 true，SearchPanel 立刻把 BasicTextField 从组合里摘掉，
+        // 输入法失去可依附的编辑器 → 会话结束 → 桌面底部那条「输入状态」工具栏不会留下。
+        // 这是 App 资源库实测有效的那条路径，比反复调 hide()/清焦点可靠。
+        var searchClosing by remember { mutableStateOf(false) }
         var rootWidth by remember { mutableFloatStateOf(0f) }
         // 只有搜索页真正停稳才申请输入焦点，否则手势刚起手 IME 就弹出来了
         LaunchedEffect(Unit) {
@@ -261,13 +289,17 @@ class MainActivity : ComponentActivity() {
             reveal = 0f
             searchMounted = false
             searchFocused = false
+            searchClosing = false
         }
 
         /** 关闭搜索：先滑出去，动画结束后再摘掉面板，避免「硬切」 */
         fun dismissSearchAnimated() {
+            // 先置 closing：输入框立刻摘掉（输入法会话随之结束），再让面板滑出
+            searchClosing = true
             animateReveal(0f) {
                 searchMounted = false
                 searchFocused = false
+                searchClosing = false
             }
         }
 
@@ -281,20 +313,24 @@ class MainActivity : ComponentActivity() {
             Nav(
                 openSearch = {
                     // 点右下角搜索键 / 动作触发：同样走滑入，不再硬切
+                    searchClosing = false
                     animateReveal(1f)
                 },
                 searchDrag = { p ->
                     revealJob?.cancel()
                     searchMounted = true
+                    searchClosing = false
                     reveal = p
                 },
                 searchRelease = { commit ->
                     // 跟 pager 一样：过半就翻过去，否则弹回；快速短滑也算翻过去
                     val finish = reveal >= 0.45f || (commit && reveal >= 0.12f)
+                    if (!finish) searchClosing = true
                     animateReveal(if (finish) 1f else 0f) {
                         if (!finish) {
                             searchMounted = false
                             searchFocused = false
+                            searchClosing = false
                         }
                     }
                 },
@@ -306,10 +342,12 @@ class MainActivity : ComponentActivity() {
                 searchCloseRelease = { commit ->
                     // 过半或快速短滑 → 关回桌面；否则弹回搜索页，两边都走 spring
                     val close = commit || reveal < 0.55f
+                    if (close) searchClosing = true
                     animateReveal(if (close) 0f else 1f) {
                         if (close) {
                             searchMounted = false
                             searchFocused = false
+                            searchClosing = false
                         }
                     }
                 },
@@ -347,6 +385,7 @@ class MainActivity : ComponentActivity() {
                 settingsSub = null
                 searchMounted = false
                 searchFocused = false
+                searchClosing = false
                 revealJob?.cancel()
                 reveal = 0f
                 runCatching { pagerState.animateScrollToPage(toPagerPage(0)) }
@@ -357,14 +396,26 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 搜索面板关掉后兜底收一次软键盘：只摘掉面板时，接实体键盘的 IME
-        // 那条「输入状态」快捷栏偶尔会留在桌面底部
-        LaunchedEffect(overlay, searchMounted) {
-            if (overlay == null && !searchMounted) {
+        // 搜索面板关掉后的兜底：正常情况下什么都不做。
+        //
+        // 收键盘只有一条路径：SearchPanel 在关闭那一刻松开焦点 → 输入法自己收起 →
+        // 面板卸载、输入框销毁 → 输入连接关闭 → 会话结束。这里再补一刀就会让收起
+        // 动画播第二遍（看着就是「跳两下」），所以改成**先看输入法还在不在**：
+        // 只有极少数输入法赖着不走时，才补一次 hide。
+        var searchEverOpened by remember { mutableStateOf(false) }
+        LaunchedEffect(searchMounted) {
+            if (searchMounted) {
+                searchEverOpened = true
+                return@LaunchedEffect
+            }
+            if (!searchEverOpened) return@LaunchedEffect
+            // 等面板真正摘掉、输入法自然收起的那一小段动画走完再判断
+            delay(280)
+            val root = window.decorView
+            val insets = ViewCompat.getRootWindowInsets(root) ?: return@LaunchedEffect
+            if (insets.isVisible(WindowInsetsCompat.Type.ime())) {
                 runCatching {
-                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE)
-                        as? android.view.inputmethod.InputMethodManager
-                    imm?.hideSoftInputFromWindow(window.decorView.windowToken, 0)
+                    WindowInsetsControllerCompat(window, root).hide(WindowInsetsCompat.Type.ime())
                 }
             }
         }
@@ -404,7 +455,13 @@ class MainActivity : ComponentActivity() {
                     ) { page ->
                         val actual = if (DuoState.reversePages) totalPages - 1 - page else page
                         when {
-                            actual == totalPages - 1 -> LibraryPage(nav, dark, wallpaper)
+                            actual == totalPages - 1 -> LibraryPage(
+                                nav = nav, dark = dark, wallpaper = wallpaper,
+                                // 只有真正停在这一页（且没有搜索页 / 浮层在盖着）才算激活；
+                                // 滑走时页面不会销毁，必须靠这个信号交出输入焦点
+                                isActive = pagerState.currentPage == page &&
+                                    !searchMounted && overlay == null
+                            )
                             else -> HomePage(
                                 nav = nav,
                                 dark = dark,
@@ -442,6 +499,7 @@ class MainActivity : ComponentActivity() {
                                 dark = dark,
                                 wallpaper = wallpaper,
                                 focusEnabled = searchFocused,
+                                closing = searchClosing,
                                 onClose = { dismissSearchAnimated() }
                             )
                         }

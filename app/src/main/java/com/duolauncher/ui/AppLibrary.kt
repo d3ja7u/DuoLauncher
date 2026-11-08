@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -79,13 +80,21 @@ import kotlinx.coroutines.launch
  *
  * 点击分类卡第 4 格（或卡片空白处）→ 弹出「窗口」（FolderWindow）展示该分类全部应用。
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
+fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean = true) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
-    var searchFocused by remember { mutableStateOf(false) }
-    val searchFr = remember { FocusRequester() }
+    // 是否「进入输入态」。折叠态（false）时输入框根本不参与组合——
+    // 屏幕上没有可输入的控件，输入法就没什么可依附的，那条「双拼 / 麦克风」工具栏才不会常驻。
+    var wantInput by remember { mutableStateOf(false) }
+    // 真实 EditText 的控制器：结束输入要靠它走 IMM，Compose 的 BasicTextField 做不到
+    val fieldCtl = remember { DuoFieldController() }
+    // 键盘「弹起过又自己收掉了」（用户按了输入法自带的收起键）时，输入框还攥着焦点，
+    // 输入法会话不死 → 底部那条工具栏就留在资源库里。这里盯住 IME 可见度的变化：
+    // 只在「可见 → 不可见」这个下降沿动手，不会把正要弹出的键盘误判掉。
+    val imeVisible = WindowInsets.isImeVisible
+    var imeWasVisible by remember { mutableStateOf(false) }
     var openCat by remember { mutableStateOf<Pair<String, List<AppInfo>>?>(null) }
     var indexActive by remember { mutableStateOf<Char?>(null) }
     // false = 文件夹视图，true = 字母列表视图。两者互斥，列表视图里不会有文件夹卡
@@ -109,6 +118,27 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
     val scope = rememberCoroutineScope()
     // 切换到任一视图都回到顶部
     LaunchedEffect(listMode) { listState.scrollToItem(0) }
+    // 滑离资源库页（回到主屏 / 进别的页）时立刻结束输入：
+    // pager 里的页面不会销毁，只靠 Compose 清焦点的话，输入法会话会一直活着，
+    // 那条「输入状态」工具栏就跟着回到桌面。这里必须走真实 EditText + IMM 才收得干净。
+    LaunchedEffect(isActive) {
+        if (!isActive) {
+            fieldCtl.dismissInput()
+            wantInput = false
+        }
+    }
+    LaunchedEffect(imeVisible) {
+        if (imeVisible) {
+            imeWasVisible = true
+        } else if (imeWasVisible) {
+            imeWasVisible = false
+            // 键盘被收走且输入框已空 → 退回折叠态，顺手把输入法会话结束掉
+            if (wantInput && query.isEmpty()) {
+                fieldCtl.dismissInput()
+                wantInput = false
+            }
+        }
+    }
     // 各字母分组标题的 item 索引：列表视图里只有分组区，从 0 开始
     val headerIndex = remember(sections) {
         val map = HashMap<Char, Int>()
@@ -140,46 +170,68 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?) {
                         fill = 0.35f
                     ) {
                         Box(Modifier.fillMaxSize()) {
-                            // 真正的输入框（始终存在，便于占位被点击后聚焦）
-                            Row(
-                                Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Filled.Search, null, tint = textColor, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Box(Modifier.weight(1f)) {
-                                    BasicTextField(
-                                        value = query,
-                                        onValueChange = { query = it },
-                                        singleLine = true,
-                                        textStyle = TextStyle(fontSize = 15.sp, color = textColor),
-                                        cursorBrush = SolidColor(glassBlue),
-                                        modifier = Modifier.fillMaxWidth()
-                                            .focusRequester(searchFr)
-                                            .onFocusChanged { searchFocused = it.isFocused }
-                                    )
-                                }
-                                if (query.isNotEmpty()) {
-                                    Icon(
-                                        Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
-                                        modifier = Modifier.size(17.dp).clickable { query = "" }
-                                    )
-                                }
-                            }
-                            // 空且未聚焦：放大镜 + “App 资源库”整体居中，点一下聚焦输入框
-                            if (query.isEmpty() && !searchFocused) {
+                            // 折叠态（空且未聚焦）**完全不合成输入框**：屏幕上没有可输入控件，
+                            // 输入法就没有可依附的编辑器，那条工具栏才不会常驻在屏幕底部。
+                            val showField = wantInput || query.isNotEmpty()
+                            if (showField) {
                                 Row(
-                                    Modifier.align(Alignment.Center)
-                                        .clickable { searchFr.requestFocus() }
-                                        .padding(horizontal = 16.dp),
+                                    Modifier.fillMaxSize().padding(horizontal = 16.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(Icons.Filled.Search, null, tint = textColor, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(
-                                        Lang.s(R.string.app_library), fontSize = 15.sp,
-                                        fontWeight = FontWeight.SemiBold, color = textColor
-                                    )
+                                    Box(Modifier.weight(1f)) {
+                                        // 真实 EditText：失焦时框架自己会收键盘、结束输入法会话
+                                        DuoSearchField(
+                                            controller = fieldCtl,
+                                            value = query,
+                                            textColor = textColor,
+                                            hintColor = subColor,
+                                            cursorColor = glassBlue,
+                                            hint = Lang.s(R.string.app_library),
+                                            autoFocus = true,
+                                            onValueChange = { query = it },
+                                            onFocusChange = { focused ->
+                                                // 失焦且没内容 → 退回折叠态，把输入框从组合里摘掉
+                                                if (!focused && query.isEmpty()) {
+                                                    fieldCtl.dismissInput()
+                                                    wantInput = false
+                                                }
+                                            },
+                                            onSubmit = {}
+                                        )
+                                    }
+                                    if (query.isNotEmpty()) {
+                                        Icon(
+                                            Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
+                                            modifier = Modifier.size(17.dp).clickable {
+                                                query = ""
+                                                fieldCtl.requestInput()
+                                            }
+                                        )
+                                    }
+                                }
+                            } else {
+                                // 空且未聚焦：放大镜 + “App 资源库”整体居中；
+                                // 整条搜索框都可点（热区从文字扩到 46dp 全宽），点一下进入输入态
+                                Box(
+                                    Modifier.fillMaxSize().clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null
+                                    ) { wantInput = true },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        Modifier.padding(horizontal = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Filled.Search, null, tint = textColor, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            Lang.s(R.string.app_library), fontSize = 15.sp,
+                                            fontWeight = FontWeight.SemiBold, color = textColor
+                                        )
+                                    }
                                 }
                             }
                         }

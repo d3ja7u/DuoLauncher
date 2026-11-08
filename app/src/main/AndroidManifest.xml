@@ -14,6 +14,9 @@
     <uses-permission android:name="android.permission.BIND_APPWIDGET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- 状态徽标里的蜂窝信号格：读取真实信号强度（首次启动会弹一次系统授权框，
+         拒绝也不影响任何功能，只是信号条回退为满格） -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- 展开通知栏 / 快捷开关（下滑手势）。多数 ROM 上是 normal 权限，安装即授予 -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 

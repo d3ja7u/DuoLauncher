@@ -3,7 +3,6 @@ package com.duolauncher.ui
 import android.Manifest
 import android.content.Context
 import android.graphics.Bitmap
-import android.view.inputmethod.InputMethodManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,11 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +42,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.duolauncher.R
 import com.duolauncher.util.Lang
 import com.duolauncher.util.Contacts
@@ -58,12 +61,31 @@ fun SearchPanel(
     wallpaper: Bitmap?,
     /** 滑入动画停稳后才申请焦点：否则右滑刚起手 IME 就弹出来了 */
     focusEnabled: Boolean = true,
+    /**
+     * 已经决定关闭（MainActivity 在开始滑出前就置 true）。
+     * 一旦为 true，搜索框里的 BasicTextField **立刻从组合里摘掉**——
+     * 输入法找不到可依附的编辑器，会话只能结束，那条「输入状态」工具栏也就没了。
+     * 这是 App 资源库上已经实测有效的唯一一条路径（页面还在、输入框先没），
+     * 比反复调 hide()/清焦点可靠得多。
+     */
+    closing: Boolean = false,
     onClose: () -> Unit
 ) {
     val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
-    val focus = remember { FocusRequester() }
-    val focusManager = LocalFocusManager.current
+    // 真实 EditText 的控制器 —— 只有走真实控件的 IMM 才能把输入法会话真正结束掉，
+    // 桌面底部那条「双拼 / 麦克风」工具栏才不会残留（Compose 的 BasicTextField 做不到）
+    val fieldCtl = remember { DuoFieldController() }
+    // 输入框是否已从组合里摘掉（关闭流程第二步）
+    var fieldGone by remember { mutableStateOf(false) }
+    // 一次关闭只收一次键盘，绝不多播一遍收起动画（「跳两下」就是这么来的）
+    var inputDismissed by remember { mutableStateOf(false) }
+    fun dismissInputOnce() {
+        if (inputDismissed) return
+        inputDismissed = true
+        fieldCtl.dismissInput()
+    }
+    // 兜底收键盘要用 View 的 windowToken
     val view = LocalView.current
     val textColor = glassTextColor(dark)
     val subColor = glassSubTextColor(dark)
@@ -100,21 +122,16 @@ fun SearchPanel(
     }
 
     /**
-     * 关闭前必须显式收键盘：只把面板从组合里摘掉，IME 窗口（尤其是接实体键盘时
-     * 底部那条「输入状态 / 候选」快捷栏）有时会赖着不走，回到桌面还挂在下面。
+     * 只在「页面还留着、但要把键盘收掉」的场景用（打开右上角设置弹窗）。
+     * 关闭搜索页走 [dismissInputOnce]，同一个门闩保证整个关闭流程只收一次。
      */
-    fun hideKeyboard() {
-        runCatching {
-            val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.hideSoftInputFromWindow(view.windowToken, 0)
-        }
+    fun hideInput() {
+        dismissInputOnce()
     }
 
-    val close = {
-        hideKeyboard()
-        runCatching { focusManager.clearFocus(force = true) }
-        onClose()
-    }
+    // 关闭搜索页：这里什么都不碰，只通知上层。上层会把 closing 置 true，
+    // 输入框随即从组合里消失（见下方搜索框），输入法会话自然结束。
+    val close = { onClose() }
 
     fun openWeb() {
         close()
@@ -139,19 +156,40 @@ fun SearchPanel(
         }
     }
 
-    // 兜底：面板销毁时再收一次
+    // closing 落地：先让真实编辑框失焦（框架据此收键盘、结束输入法会话，只收这一次），
+    // 下一帧再把它从组合里摘掉——双保险，且不会多播一遍收起动画。
+    LaunchedEffect(closing) {
+        if (!closing) return@LaunchedEffect
+        dismissInputOnce()
+        withFrameNanos { }
+        fieldGone = true
+    }
+
+    // 最后一道保险：面板真要销毁时，先看输入法还挂着没（insets 里 ime 是否可见）。
+    // 还挂着才补一次 IMM.hide —— 正常情况这里是空操作，不会多播一遍收起动画。
     DisposableEffect(Unit) {
         onDispose {
             runCatching {
-                val imm = ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                imm?.hideSoftInputFromWindow(view.windowToken, 0)
+                val insets = ViewCompat.getRootWindowInsets(view)
+                if (insets?.isVisible(WindowInsetsCompat.Type.ime()) == true) {
+                    val imm = view.context
+                        .getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.hideSoftInputFromWindow(view.windowToken, 0)
+                }
             }
         }
     }
 
     BackHandler(onBack = { close() })
+    // 滑入停稳才申请焦点；一旦开始滑出（reveal 掉到 0.98 以下）立刻结束输入——
+    // 焦点在手时 IME 会被系统一直保持，这是「滑回桌面后键盘还赖着」的根源。
     LaunchedEffect(focusEnabled) {
-        if (focusEnabled) runCatching { focus.requestFocus() }
+        if (focusEnabled) {
+            inputDismissed = false
+            fieldCtl.requestInput()
+        } else {
+            dismissInputOnce()
+        }
     }
 
     Box(
@@ -180,10 +218,6 @@ fun SearchPanel(
                     },
                     onDragEnd = {
                         val commit = dx <= -trigger
-                        if (commit) {
-                            hideKeyboard()
-                            runCatching { focusManager.clearFocus(force = true) }
-                        }
                         nav.searchCloseRelease(commit)
                     }
                 ) { change, dragAmount ->
@@ -213,8 +247,7 @@ fun SearchPanel(
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             indication = null
                         ) {
-                            hideKeyboard()
-                            runCatching { focusManager.clearFocus(force = true) }
+                            hideInput()
                             showSettings = true
                         },
                         contentAlignment = Alignment.Center
@@ -246,22 +279,30 @@ fun SearchPanel(
                     Icon(Icons.Filled.Search, null, tint = subColor, modifier = Modifier.size(19.dp))
                     Spacer(Modifier.width(10.dp))
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text(Lang.s(R.string.search), fontSize = 15.sp, color = subColor)
-                        BasicTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            singleLine = true,
-                            textStyle = TextStyle(fontSize = 15.sp, color = textColor),
-                            cursorBrush = SolidColor(glassBlue),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(
-                                onSearch = { openFirstResult() },
-                                onDone = { openFirstResult() }
-                            ),
-                            modifier = Modifier.fillMaxWidth().focusRequester(focus)
-                        )
+                        if (query.isEmpty() && fieldGone) Text(Lang.s(R.string.search), fontSize = 15.sp, color = subColor)
+                        // 关键：closing 一旦为 true 就不再合成输入框。
+                        // 输入框消失 → 输入法失去可依附的编辑器 → 会话结束 → 那条工具栏才会走。
+                        // 此时把已输入的内容画成静态文字，滑出过程中视觉不变。
+                        if (!fieldGone) {
+                            // 真实 EditText：Compose 的 BasicTextField 收不掉输入法会话，
+                            // 这条「输入状态工具栏」残留的根因就在这里
+                            DuoSearchField(
+                                controller = fieldCtl,
+                                value = query,
+                                textColor = textColor,
+                                hintColor = subColor,
+                                cursorColor = glassBlue,
+                                hint = Lang.s(R.string.search),
+                                autoFocus = focusEnabled,
+                                onValueChange = { query = it },
+                                onFocusChange = { if (it) inputDismissed = false },
+                                onSubmit = { openFirstResult() }
+                            )
+                        } else if (query.isNotEmpty()) {
+                            Text(query, fontSize = 15.sp, color = textColor, maxLines = 1)
+                        }
                     }
-                    if (query.isNotEmpty()) {
+                    if (query.isNotEmpty() && !closing) {
                         Icon(Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
                             modifier = Modifier.size(18.dp).clickable { query = "" })
                     }
