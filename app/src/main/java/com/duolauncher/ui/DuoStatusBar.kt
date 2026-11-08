@@ -11,6 +11,8 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
+import android.telephony.SignalStrength
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.text.format.DateFormat
 import androidx.compose.foundation.Canvas
@@ -22,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -43,9 +46,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.duolauncher.data.DuoState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.min
@@ -96,22 +101,76 @@ private fun readWifiLevel(app: Context): Int {
 }
 
 /**
+ * dBm → 0..4 格。AOSP 的 `SignalStrength.getLevel()` 很保守（LTE 要 RSRP ≥ -98dBm
+ * 才算满格），而国产 ROM 的状态栏普遍宽松得多，直接用它会「系统四格全满、徽标只有一两格」。
+ * 这里按厂商常见的宽松档位再算一遍，和 getLevel() 取较大值；信号真差时照样掉格。
+ */
+private fun levelFromDbm(dbm: Int): Int = when {
+    dbm >= -110 -> 4
+    dbm >= -118 -> 3
+    dbm >= -126 -> 2
+    dbm >= -135 -> 1
+    else -> 0
+}
+
+/**
  * 蜂窝信号格（0..4）。
  *
  * 需要 READ_PHONE_STATE：清单已声明，首次启动由 MainActivity 申请一次；用户拒绝时
  * 这里返回 4（四根条全亮，与旧版外观一致），不会每 30 秒抛一次 SecurityException。
+ *
+ * 三路取最大值，避免「系统满格、徽标一格」：
+ *  ① 默认 TelephonyManager 的聚合 level；
+ *  ② 每一条 CellSignalStrength 的 level + dBm 换算（5G NSA 下 LTE 锚点弱、NR 强时必要）；
+ *  ③ 双卡时逐张活跃 SIM 再取一遍，外加 NetworkCapabilities 里的 dBm 兜底。
  */
 private fun readCellularLevel(app: Context): Int {
     if (Build.VERSION.SDK_INT < 28) return 4
     val granted = app.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) ==
             PackageManager.PERMISSION_GRANTED
     if (!granted) return 4
-    var lvl: Int? = null
+
+    var best = 0
+    var readAny = false
+    fun take(ss: SignalStrength?) {
+        ss ?: return
+        readAny = true
+        best = maxOf(best, ss.level)
+        if (Build.VERSION.SDK_INT >= 30) {
+            runCatching {
+                ss.cellSignalStrengths.forEach { c ->
+                    best = maxOf(best, c.level, levelFromDbm(c.dbm))
+                }
+            }
+        }
+    }
+
     runCatching {
         val tm = app.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
-        lvl = tm.signalStrength?.level
+        take(tm.signalStrength)
     }
-    return (lvl ?: 4).coerceIn(0, 4)
+    // 双卡：默认 TelephonyManager 未必是状态栏显示的那张卡
+    runCatching {
+        val sm = app.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+        sm.activeSubscriptionInfoList?.forEach { info ->
+            runCatching {
+                val subTm = (app.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager)
+                    .createForSubscriptionId(info.subscriptionId)
+                take(subTm.signalStrength)
+            }
+        }
+    }
+    if (best < 4 && Build.VERSION.SDK_INT >= 29) {
+        runCatching {
+            val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val dbm = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }?.signalStrength
+            if (dbm != null && dbm != Int.MIN_VALUE && dbm < 0) {
+                best = maxOf(best, levelFromDbm(dbm))
+            }
+        }
+    }
+    // 一次都没读到（机型限制）时保持满格，别把「读不到」显示成「没信号」
+    return if (!readAny) 4 else best.coerceIn(0, 4)
 }
 
 private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
@@ -159,11 +218,20 @@ private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
 @Composable
 fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
     val ctx = LocalContext.current
-    return produceState(initialValue = readStatus(ctx, use24h), ctx, use24h) {
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context?, i: Intent?) {
-                value = readStatus(ctx, use24h)
+    // 组合（主线程）只算一次首帧值。后续所有刷新都走 IO 线程：
+    // readStatus 里的 telephony / WiFi 查询是跨进程 binder 调用（172 为了对齐系统
+    // 信号格还加了逐 SIM、逐小区遍历），而 RSSI_CHANGED_ACTION 这类广播每秒都会来，
+    // 放在主线程执行就是持续掉帧。广播接收器只负责「发起一次后台刷新」。
+    val initial = remember(ctx, use24h) { readStatus(ctx, use24h) }
+    return produceState(initialValue = initial, ctx, use24h) {
+        fun refresh() {
+            launch(Dispatchers.IO) {
+                val s = runCatching { readStatus(ctx, use24h) }.getOrNull() ?: return@launch
+                value = s
             }
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) { refresh() }
         }
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
@@ -181,9 +249,10 @@ fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
             )
         }
         try {
+            refresh()
             while (isActive) {
                 delay(30_000L)
-                value = readStatus(ctx, use24h)
+                refresh()
             }
             awaitCancellation()
         } finally {

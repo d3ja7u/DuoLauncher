@@ -115,7 +115,7 @@ object DuoState {
     var sidebarLeft by mutableStateOf(false)
     var cutoutPadding by mutableStateOf(88)
     var glassLevel by mutableStateOf(0.55f)
-    var darkGlass by mutableStateOf(false)
+    var darkGlass by mutableStateOf(true)   // 新装默认深色玻璃；已有配置仍按用户保存的值
     var hideStatusBar by mutableStateOf(true)
     var showPageDots by mutableStateOf(true)
     var reversePages by mutableStateOf(false)
@@ -128,6 +128,12 @@ object DuoState {
     var homeColumns by mutableStateOf(4)
     /** 主屏图标每页行数：手机 5–6、平板可更多；每页容量 = 列数 × 行数 */
     var homeRows by mutableStateOf(5)
+    /**
+     * 新安装的应用是否自动放到主屏幕。
+     * 默认关闭 = 桌面只放用户自己挑的应用；打开后仅对「本次运行期间新装的应用」生效，
+     * 不会把已经装好的应用补进桌面，也不会撤销用户手动移除的图标。
+     */
+    var autoAddNewApps by mutableStateOf(false)
     /** 侧边栏玻璃浓度（底色倍率）；值越大越实、越小越透（壁纸透出更多） */
     var sidebarGlass by mutableStateOf(1.2f)
     /** 侧边栏垂直对齐：center = 屏幕居中，bottom = 靠下居中（避开顶部状态与底部按钮） */
@@ -213,7 +219,7 @@ object DuoState {
             sidebarLeft = o.optBoolean("left", false)
             cutoutPadding = o.optInt("cutout", 88)
             glassLevel = o.optDouble("glass", 0.55).toFloat()
-            darkGlass = o.optBoolean("dark", false)
+            darkGlass = o.optBoolean("dark", true)
             hideStatusBar = o.optBoolean("hideStatus", true)
             showPageDots = o.optBoolean("dots", true)
             reversePages = o.optBoolean("reverse", false)
@@ -223,6 +229,7 @@ object DuoState {
             iconScale = o.optDouble("iconScale", 1.0).toFloat()
             homeColumns = o.optInt("homeCols", 4).let { n -> if (n in 3..7) n else 4 }
             homeRows = o.optInt("homeRows", 5).let { n -> if (n in 4..7) n else 5 }
+            autoAddNewApps = o.optBoolean("autoNew", false)
             sidebarGlass = o.optDouble("sbGlass", 1.2).toFloat().coerceIn(0.4f, 2.4f)
             sidebarAlign = o.optString("sbAlign", "center").let { if (it == "bottom") "bottom" else "center" }
             showNowPlaying = o.optBoolean("npOn", true)
@@ -293,6 +300,7 @@ object DuoState {
             o.put("iconScale", iconScale.toDouble())
             o.put("homeCols", homeColumns)
             o.put("homeRows", homeRows)
+            o.put("autoNew", autoAddNewApps)
             o.put("sbGlass", sidebarGlass.toDouble())
             o.put("sbAlign", sidebarAlign)
             o.put("npOn", showNowPlaying)
@@ -490,6 +498,41 @@ object DuoState {
         // 重新加回主屏时放到末尾（不要让 homeOrder 里的老位置把它"拽"回中间）
         val token = "app:$pkg"
         if (homeOrder.contains(token)) { homeOrder.remove(token); homeOrder.add(token) }
+        homeSeeded = true
+        save()
+    }
+
+    /** 设置页「批量添加」专用：一次改完再写盘，避免逐个 addHome 反复序列化整份配置 */
+    fun addHomeBatch(pkgs: Collection<String>) {
+        var changed = false
+        pkgs.forEach { pkg ->
+            if (appOf(pkg) == null || hidden.contains(pkg)) return@forEach
+            if (!homeApps.contains(pkg)) {
+                homeApps.add(pkg)
+                changed = true
+                // 新加入的一律排到末尾（曾被移出主屏的老位置不要把它拽回中间）；
+                // 已经在桌面的应用保持原位，自动添加时才不会打乱用户排好的布局。
+                val token = "app:$pkg"
+                homeOrder.remove(token)
+                homeOrder.add(token)
+            }
+        }
+        if (!changed) return
+        homeSeeded = true
+        save()
+    }
+
+    /**
+     * 设置页「批量清除」专用：一次移除多个桌面应用图标。
+     * 同时删掉 homeOrder 里对应的 token，避免存档里堆越来越多失效条目；
+     * 文件夹、其余图标及其顺序都不动。只移除图标，不卸载应用。
+     */
+    fun removeHomeBatch(pkgs: Collection<String>) {
+        val targets = pkgs.filter { homeApps.contains(it) }.toSet()
+        if (targets.isEmpty()) return
+        homeApps.removeAll(targets)
+        val tokens = targets.map { "app:$it" }.toSet()
+        homeOrder.removeAll { tokens.contains(it) }
         homeSeeded = true
         save()
     }

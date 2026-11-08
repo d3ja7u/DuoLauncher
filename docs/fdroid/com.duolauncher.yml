@@ -5,7 +5,7 @@
 # 跑 fdroid lint / fdroid build 后在 GitLab 提 Merge Request。
 #
 # ⚠️ 提交前必须做两处替换：
-#   1. Builds[0].commit 改成 v1.5.10 tag 对应的完整 40 位 commit hash（不能用 tag 名）
+#   1. Builds[0].commit 改成 v1.5.11 tag 对应的完整 40 位 commit hash（不能用 tag 名）
 #   2. versionName / versionCode 与实际发版一致
 # 详细步骤见 ../DISTRIBUTION.md
 
@@ -31,8 +31,8 @@ RepoType: git
 Repo: https://github.com/d3ja7u/DuoLauncher.git
 
 Builds:
-  - versionName: '1.5.10'
-    versionCode: 171
+  - versionName: '1.5.11'
+    versionCode: 178
     commit: efbcb0b550966fce799e3f77fdb43062033eb211
     subdir: app
     gradle:
@@ -45,5 +45,5 @@ Builds:
 
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags
-CurrentVersion: '1.5.10'
-CurrentVersionCode: 171
+CurrentVersion: '1.5.11'
+CurrentVersionCode: 178

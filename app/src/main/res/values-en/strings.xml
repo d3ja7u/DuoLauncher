@@ -362,4 +362,25 @@
     <string name="stats_consent_body">To understand how many devices use DuoLauncher, the app sends a random anonymous ID, its version, the UI language and the Android version to a statistics service on first launch, after an upgrade, and once a day.\n\nNo device identifiers, IP address, location, contacts, installed app list, or any of your content is collected.\n\nYou can turn this off at any time in Settings - Privacy and statistics. Turning it off immediately deletes the local anonymous ID and stops all further reports. Declining does not affect any launcher feature.</string>
     <string name="stats_keep_on">Keep on</string>
     <string name="stats_disable">Turn off</string>
+    <string name="batch_add_apps">Batch add apps</string>
+    <string name="batch_add_apps_desc">Pick installed apps and add them to the home screen at once</string>
+    <string name="batch_add_title">Batch add to home</string>
+    <string name="batch_add_selected">%1$d selected</string>
+    <string name="batch_add_select_all">Select all</string>
+    <string name="batch_add_invert">Invert</string>
+    <string name="batch_add_empty">All visible apps are already on the home screen</string>
+    <string name="batch_add_confirm">Add %1$d apps</string>
+    <string name="batch_add_done">Added %1$d apps</string>
+    <string name="batch_remove_apps">Batch remove home icons</string>
+    <string name="batch_remove_apps_desc">Pick home icons and remove them at once (apps are not uninstalled)</string>
+    <string name="batch_remove_title">Batch remove home icons</string>
+    <string name="batch_remove_empty">No app icons on the home screen yet</string>
+    <string name="batch_remove_note">Only the selected app icons are removed. Folders and the remaining layout stay as they are; the apps are still available in the App Library.</string>
+    <string name="batch_remove_confirm">Remove %1$d icons</string>
+    <string name="batch_remove_done">Removed %1$d icons</string>
+    <string name="batch_remove_dialog_title">Confirm removal</string>
+    <string name="batch_remove_dialog_body">The %1$d selected icons will be removed from the home screen. Apps are not uninstalled and remain in the App Library, so you can add them back any time.</string>
+    <string name="batch_remove_ok">Remove</string>
+    <string name="auto_add_new_apps">Add new apps to home</string>
+    <string name="auto_add_new_apps_desc">When on, newly installed apps are added to the home screen automatically; when off they only appear in the App Library</string>
 </resources>

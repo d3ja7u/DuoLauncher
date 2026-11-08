@@ -362,4 +362,25 @@
     <string name="stats_consent_body">DuoLauncher の利用台数を把握するため、初回起動時・バージョン更新時・1 日 1 回、ランダムな匿名 ID・バージョン・表示言語・Android バージョンを統計サーバーに送信します。\n\n端末識別子・IP アドレス・位置情報・連絡先・インストール済みアプリ一覧や、利用内容は一切収集しません。\n\n「設定 → プライバシーと統計」からいつでもオフにできます。オフにすると端末内の匿名 ID をただちに削除し、以降は送信しません。オフにしてもランチャーの機能は変わりません。</string>
     <string name="stats_keep_on">オンのまま</string>
     <string name="stats_disable">オフにする</string>
+    <string name="batch_add_apps">アプリを一括追加</string>
+    <string name="batch_add_apps_desc">インストール済みアプリを選んでホームに一括追加</string>
+    <string name="batch_add_title">ホームに一括追加</string>
+    <string name="batch_add_selected">%1$d 件選択中</string>
+    <string name="batch_add_select_all">すべて選択</string>
+    <string name="batch_add_invert">選択を反転</string>
+    <string name="batch_add_empty">表示可能なアプリはすべてホームに追加済みです</string>
+    <string name="batch_add_confirm">%1$d 件を追加</string>
+    <string name="batch_add_done">%1$d 件を追加しました</string>
+    <string name="batch_remove_apps">ホームアイコンを一括削除</string>
+    <string name="batch_remove_apps_desc">ホームのアイコンを選んで一括削除（アプリはアンインストールされません）</string>
+    <string name="batch_remove_title">ホームアイコンを一括削除</string>
+    <string name="batch_remove_empty">ホームにアプリアイコンがありません</string>
+    <string name="batch_remove_note">選択したアプリアイコンのみを削除します。フォルダと他のアイコンの配置は変わりません。アプリは App ライブラリから引き続き起動できます。</string>
+    <string name="batch_remove_confirm">%1$d 件を削除</string>
+    <string name="batch_remove_done">%1$d 件を削除しました</string>
+    <string name="batch_remove_dialog_title">削除の確認</string>
+    <string name="batch_remove_dialog_body">選択した %1$d 件のアイコンをホーム画面から削除します。アプリはアンインストールされず、App ライブラリに残るため、いつでも追加し直せます。</string>
+    <string name="batch_remove_ok">削除する</string>
+    <string name="auto_add_new_apps">新規アプリをホームに自動追加</string>
+    <string name="auto_add_new_apps_desc">オンにすると、インストールした新しいアプリのアイコンをホームに自動追加します。オフの場合は App ライブラリのみに表示されます</string>
 </resources>

@@ -8,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -59,12 +58,11 @@ fun SearchPanel(
     nav: Nav,
     dark: Boolean,
     wallpaper: Bitmap?,
-    /** 滑入动画停稳后才申请焦点：否则右滑刚起手 IME 就弹出来了 */
+    /** pager 停稳在搜索页时才挂输入框 / 申请焦点：否则刚起手翻页 IME 就弹出来了 */
     focusEnabled: Boolean = true,
     /**
-     * 已经决定关闭（MainActivity 在开始滑出前就置 true）。
-     * 一旦为 true，搜索框里的 BasicTextField **立刻从组合里摘掉**——
-     * 输入法找不到可依附的编辑器，会话只能结束，那条「输入状态」工具栏也就没了。
+     * 不在搜索页停稳（即 !focusEnabled）。一旦为 true，搜索框里的输入框 **立刻从组合里
+     * 摘掉** —— 输入法找不到可依附的编辑器，会话只能结束，那条「输入状态」工具栏也就没了。
      * 这是 App 资源库上已经实测有效的唯一一条路径（页面还在、输入框先没），
      * 比反复调 hide()/清焦点可靠得多。
      */
@@ -180,11 +178,16 @@ fun SearchPanel(
         }
     }
 
-    BackHandler(onBack = { close() })
-    // 滑入停稳才申请焦点；一旦开始滑出（reveal 掉到 0.98 以下）立刻结束输入——
-    // 焦点在手时 IME 会被系统一直保持，这是「滑回桌面后键盘还赖着」的根源。
+    // pager 可能把相邻页留在组合里，只有真正停稳在搜索页才接管返回键，
+    // 否则在主屏按返回会误触发「关搜索」。
+    BackHandler(enabled = focusEnabled, onBack = { close() })
+    // 停稳才进输入态；一旦开始滑走立刻收输入。
+    // focusEnabled 由 false→true 时把输入框重新挂回来（二次进入 / 小幅滑动又弹回）：
+    // 输入框是重新组合的，DuoSearchField 的 autoFocus 会在本次挂载里只生效一次，
+    // 键盘自然弹出，不会把焦点反复抢回来。
     LaunchedEffect(focusEnabled) {
         if (focusEnabled) {
+            fieldGone = false
             inputDismissed = false
             fieldCtl.requestInput()
         } else {
@@ -203,31 +206,7 @@ fun SearchPanel(
                     onDragCancel = { acc = 0f }
                 ) { change, dy -> if (dy < 0) { acc += dy; change.consume() } }
             }
-            // 左滑关闭：与「右滑进来」完全对称，拖动时逐帧跟手滑出，松手后补齐 / 回弹
-            .pointerInput(Unit) {
-                val trigger = 80.dp.toPx()
-                val startSlop = 12f
-                val fullPx = size.width * 0.5f
-                var dx = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = { dx = 0f },
-                    onDragCancel = {
-                        dx = 0f
-                        nav.searchCloseDrag(1f)
-                        nav.searchCloseRelease(false)
-                    },
-                    onDragEnd = {
-                        val commit = dx <= -trigger
-                        nav.searchCloseRelease(commit)
-                    }
-                ) { change, dragAmount ->
-                    dx += dragAmount
-                    if (dx < -startSlop) {
-                        change.consume()
-                        nav.searchCloseDrag((1f - ((-dx) - startSlop) / fullPx).coerceIn(0f, 1f))
-                    }
-                }
-            }
+            // 左滑回主屏已由 pager 接管，这里不再装自定义横向手势（否则会抢走翻页事件）
     ) {
         // 背景虚化壁纸改由 MainActivity 根层级统一渲染（与 App 资源库同一套），
         // 这里不再自带背景——否则会再叠一层色调，把整页压成灰暗蒙版。

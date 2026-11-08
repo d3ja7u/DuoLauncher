@@ -362,4 +362,25 @@
     <string name="stats_consent_body">为了了解有多少设备在使用 DuoLauncher，应用会在首次启动、版本升级以及每天首次使用时，向统计服务发送一个随机匿名 ID、版本号、界面语言和 Android 版本。\n\n不含设备标识、IP、位置、通讯录、已安装应用列表，也不会记录你的任何使用内容。\n\n你可以在「设置 → 隐私与统计」随时关闭；关闭后本机匿名 ID 会立即删除，之后不再发送任何数据。不上报也完全不影响启动器功能。</string>
     <string name="stats_keep_on">保持开启</string>
     <string name="stats_disable">关闭统计</string>
+    <string name="batch_add_apps">批量添加应用</string>
+    <string name="batch_add_apps_desc">从已安装应用里勾选，一次添加到桌面</string>
+    <string name="batch_add_title">批量添加到桌面</string>
+    <string name="batch_add_selected">已选 %1$d 个</string>
+    <string name="batch_add_select_all">全选</string>
+    <string name="batch_add_invert">反选</string>
+    <string name="batch_add_empty">所有可见应用都已在桌面</string>
+    <string name="batch_add_confirm">添加 %1$d 个应用</string>
+    <string name="batch_add_done">已添加 %1$d 个应用</string>
+    <string name="batch_remove_apps">批量清除桌面图标</string>
+    <string name="batch_remove_apps_desc">勾选桌面图标，一次从主屏幕移除（不会卸载应用）</string>
+    <string name="batch_remove_title">批量清除桌面图标</string>
+    <string name="batch_remove_empty">桌面上还没有应用图标</string>
+    <string name="batch_remove_note">仅移除勾选的应用图标，文件夹和其余图标位置保持不变；应用仍可在 App 资源库中打开。</string>
+    <string name="batch_remove_confirm">移除 %1$d 个图标</string>
+    <string name="batch_remove_done">已移除 %1$d 个图标</string>
+    <string name="batch_remove_dialog_title">确认移除</string>
+    <string name="batch_remove_dialog_body">将从主屏幕移除选中的 %1$d 个图标。应用不会被卸载，仍可在 App 资源库中找到，随时可以再添加回来。</string>
+    <string name="batch_remove_ok">确认移除</string>
+    <string name="auto_add_new_apps">新装应用自动加到桌面</string>
+    <string name="auto_add_new_apps_desc">开启后，安装新应用时自动把图标放到主屏幕；关闭则只出现在 App 资源库</string>
 </resources>

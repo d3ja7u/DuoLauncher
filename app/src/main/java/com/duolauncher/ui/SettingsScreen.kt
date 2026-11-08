@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -70,6 +71,8 @@ fun SettingsScreen(
             "sidebar" -> SidebarEditorScreen(dark, onBack = { sub = null })
             "cats" -> CategoryEditorScreen(dark, onBack = { sub = null })
             "hidden" -> HiddenEditorScreen(dark, onBack = { sub = null })
+            "batch_add" -> BatchEditScreen(BatchMode.ADD, nav, dark, onBack = { sub = null })
+            "batch_remove" -> BatchEditScreen(BatchMode.REMOVE, nav, dark, onBack = { sub = null })
             else -> MainSettings(nav, dark, onClose) { sub = it }
         }
     }
@@ -326,6 +329,23 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             dark = dark
                         ) { DuoState.homeRows = it.toInt(); DuoState.save() }
                     }
+                    SettingRow(
+                        Lang.s(R.string.batch_add_apps),
+                        Lang.s(R.string.batch_add_apps_desc),
+                        dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                    ) { open("batch_add") }
+                    SettingRow(
+                        Lang.s(R.string.batch_remove_apps),
+                        Lang.s(R.string.batch_remove_apps_desc),
+                        dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                    ) { open("batch_remove") }
+                    SettingToggle(
+                        Lang.s(R.string.auto_add_new_apps),
+                        Lang.s(R.string.auto_add_new_apps_desc),
+                        DuoState.autoAddNewApps, dark
+                    ) { DuoState.autoAddNewApps = it; DuoState.save() }
                 }
             }
         }
@@ -1372,6 +1392,171 @@ private fun HiddenEditorScreen(dark: Boolean, onBack: () -> Unit) {
     if (pickApp) {
         AppPickerDialog(Lang.s(R.string.hide_app), dark, query, { query = it }, { pickApp = false; query = "" }) { pkg ->
             DuoState.hideApp(pkg); pickApp = false; query = ""
+        }
+    }
+}
+
+/**
+ * 桌面图标批量编辑：添加与清除共用一套 UI，只差候选项、文案和落盘动作。
+ *
+ * 刻意**不放搜索输入框** —— 设置浮层里挂输入框会重新引入第三方输入法会话残留
+ * 的问题（搜索页 / 资源库那轮刚修好），这里靠「全选 / 反选 + 滚动列表」足够。
+ *
+ * 清除属于破坏性操作（虽然不卸载应用），比添加多一步确认弹窗。
+ */
+private enum class BatchMode { ADD, REMOVE }
+
+@Composable
+private fun BatchEditScreen(mode: BatchMode, nav: Nav, dark: Boolean, onBack: () -> Unit) {
+    val adding = mode == BatchMode.ADD
+    // 直接读 state list：应用列表异步加载完成、或主屏改动后会自动重组
+    val candidates = if (adding) {
+        DuoState.visibleApps()
+            .filter { !DuoState.homeApps.contains(it.id) }
+            .sortedBy { it.label.lowercase() }
+    } else {
+        DuoState.homeApps.mapNotNull { DuoState.appOf(it) }
+            .filter { !DuoState.hidden.contains(it.id) }
+            .sortedBy { it.label.lowercase() }
+    }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var askConfirm by remember { mutableStateOf(false) }
+    val allIds = candidates.map { it.id }.toSet()
+    // 候选列表变了（例如应用被卸载）时，把已失效的勾选项自动过滤掉
+    val active = selected.intersect(allIds)
+
+    SubPageFrame(
+        Lang.s(if (adding) R.string.batch_add_title else R.string.batch_remove_title),
+        dark, onBack
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                Lang.s(R.string.batch_add_selected, active.size),
+                fontSize = 13.sp, color = glassSubTextColor(dark),
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                Lang.s(R.string.batch_add_select_all), fontSize = 13.sp, color = glassBlue,
+                modifier = Modifier.clickable { selected = allIds }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+            Text(
+                Lang.s(R.string.batch_add_invert), fontSize = 13.sp, color = glassBlue,
+                modifier = Modifier.clickable { selected = allIds - active }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
+        }
+        if (!adding) {
+            Text(
+                Lang.s(R.string.batch_remove_note),
+                fontSize = 11.sp, color = glassSubTextColor(dark),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+            )
+        }
+        if (candidates.isEmpty()) {
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(
+                    Lang.s(if (adding) R.string.batch_add_empty else R.string.batch_remove_empty),
+                    fontSize = 14.sp, color = glassSubTextColor(dark)
+                )
+            }
+        } else {
+            LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(candidates, key = { it.id }) { app ->
+                    val checked = active.contains(app.id)
+                    GlassCard(
+                        Modifier.fillMaxWidth().height(60.dp),
+                        radius = 16.dp, level = 0.8f, dark = dark
+                    ) {
+                        Row(
+                            Modifier.fillMaxSize()
+                                .clickable {
+                                    selected = if (checked) active - app.id
+                                    else active + setOf(app.id)
+                                }
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Image(
+                                rememberDrawablePainter(rememberAppIcon(app)), null,
+                                Modifier.size(32.dp).clip(squircle(24))
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                app.label, fontSize = 14.sp, color = glassTextColor(dark),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { on ->
+                                    selected = if (on) active + setOf(app.id) else active - app.id
+                                },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = glassBlue,
+                                    uncheckedColor = glassSubTextColor(dark),
+                                    checkmarkColor = Color.White
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        GlassPrimaryButton(
+            Lang.s(
+                if (adding) R.string.batch_add_confirm else R.string.batch_remove_confirm,
+                active.size
+            ),
+            dark,
+            {
+                if (active.isEmpty()) return@GlassPrimaryButton
+                if (adding) {
+                    val n = active.size
+                    DuoState.addHomeBatch(active)
+                    nav.toast(Lang.s(R.string.batch_add_done, n))
+                    onBack()
+                } else {
+                    askConfirm = true
+                }
+            },
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .alpha(if (active.isEmpty()) 0.5f else 1f)
+        )
+    }
+
+    // 清除前确认一次：避免误触「全选 → 移除」把桌面清空
+    if (askConfirm) {
+        DuoDialog(
+            Lang.s(R.string.batch_remove_dialog_title), dark, opaque = true,
+            onDismiss = { askConfirm = false }
+        ) {
+            Text(
+                Lang.s(R.string.batch_remove_dialog_body, active.size),
+                fontSize = 13.sp, color = glassTextColor(dark)
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { askConfirm = false }) {
+                    Text(Lang.s(R.string.cancel), fontSize = 13.sp, color = glassSubTextColor(dark))
+                }
+                Spacer(Modifier.weight(1f))
+                GlassPrimaryButton(Lang.s(R.string.batch_remove_ok), dark, onClick = {
+                    val n = active.size
+                    DuoState.removeHomeBatch(active)
+                    askConfirm = false
+                    nav.toast(Lang.s(R.string.batch_remove_done, n))
+                    onBack()
+                })
+            }
         }
     }
 }

@@ -15,10 +15,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.AnimationState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateTo
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,7 +29,6 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
@@ -45,8 +40,6 @@ import com.duolauncher.ui.*
 import kotlinx.coroutines.delay
 import com.duolauncher.util.InstallStats
 import com.duolauncher.util.Lang
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -85,7 +78,15 @@ class MainActivity : ComponentActivity() {
             addDataScheme("package")
         }
         packageReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) { reloadApps() }
+            override fun onReceive(context: Context?, intent: Intent?) {
+                // 只有「真正新装」才考虑自动加桌面：应用更新带 EXTRA_REPLACING，
+                // 启动器自身升级更不算；卸载 / 启用状态变化只刷新列表。
+                val pkg = intent?.data?.schemeSpecificPart
+                val newlyInstalled = intent?.action == Intent.ACTION_PACKAGE_ADDED &&
+                        intent.getBooleanExtra(Intent.EXTRA_REPLACING, false).not() &&
+                        pkg != null && pkg != this@MainActivity.packageName
+                reloadApps(autoAddPkg = if (newlyInstalled) pkg else null)
+            }
         }
         runCatching { packageReceiver?.let { registerReceiver(it, filter) } }
 
@@ -131,12 +132,27 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun reloadApps() {
+    /**
+     * [autoAddPkg] 只在收到「新装应用」广播时传入该包名。
+     *
+     * 用广播带来的包名定位本次安装的应用，而不是比对新旧列表差集：onCreate / onResume /
+     * 包广播会并发触发本方法，差集在协程交错时可能恰好看不到新应用。按包名过滤则与执行
+     * 顺序无关，且不会把已经装好的其它应用补进桌面，也不会撤销用户手动移除的图标。
+     */
+    private fun reloadApps(autoAddPkg: String? = null) {
         lifecycleScope.launch {
             val list = AppRepository.loadApps(this@MainActivity)
             DuoState.apps.clear()
             DuoState.apps.addAll(list)
             DuoState.ensureDefaults()
+            if (autoAddPkg != null && DuoState.autoAddNewApps) {
+                val fresh = list.filter { app ->
+                    app.packageName == autoAddPkg &&
+                            !DuoState.homeApps.contains(app.id) &&
+                            !DuoState.hidden.contains(app.id)
+                }.map { it.id }
+                if (fresh.isNotEmpty()) DuoState.addHomeBatch(fresh)
+            }
             DuoState.appLoadDone = true
         }
     }
@@ -150,13 +166,27 @@ class MainActivity : ComponentActivity() {
         val dark = DuoState.darkGlass
         val wallpaper = rememberWallpaperBitmap()
 
-        // 主屏分页：5×4 = 每页 20 个（含文件夹）。整页序列 = 主屏N页 + 资源库
-        // 负一屏已下线（先去掉），最左边就是主屏第一页
-        val cellCount = DuoState.homeApps.count { !DuoState.hidden.contains(it) } + DuoState.folders.size
-        val homePageCount = ((cellCount + 19) / 20).coerceAtLeast(1)
-        val totalPages = homePageCount + 1
+        // 主屏分页：单页容量必须和 HomePage 完全一致（列数 × 行数）。
+        // 之前写死 20，用户把列数调到 5 以上时，这里算出的页数比实际能放的多，
+        // 第一屏明明还有空位却多出一个空白页。
+        //
+        // 搜索页**本身就是 pager 的一页**（贴在主屏第一页外侧），不再是盖在桌面上的
+        // reveal 覆盖层：跟手拖动、fling 惯性、spring 吸附全部交给 HorizontalPager，
+        // 与滑到 App 资源库完全是同一套物理和过渡，桌面整页平移也不会再露出图标/侧栏。
+        val perPage = (DuoState.homeColumns * DuoState.homeRows).coerceAtLeast(1)
+        val cellCount = DuoState.homeTokens().size
+        val homePageCount = ((cellCount + perPage - 1) / perPage).coerceAtLeast(1)
+        val totalPages = homePageCount + 2
+        /** 「真实页序号」沿用旧语义：主屏 0..homePageCount-1，资源库 homePageCount */
         val libraryPage = homePageCount
-        val pagerState = rememberPagerState(initialPage = 0) { totalPages }
+        /** 搜索页固定在 pager 一端，始终挨着主屏第一页（倒序时换到另一端） */
+        val searchPagerPage = if (DuoState.reversePages) totalPages - 1 else 0
+        fun toPagerPage(actual: Int): Int {
+            val a = actual.coerceIn(0, libraryPage)
+            return if (DuoState.reversePages) libraryPage - a else a + 1
+        }
+        val libraryPagerPage = toPagerPage(libraryPage)
+        val pagerState = rememberPagerState(initialPage = toPagerPage(0)) { totalPages }
 
         var overlay by remember {
             mutableStateOf(if (Lang.consumeReopenSettings(ctx)) "settings" else null)
@@ -167,29 +197,22 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(!DuoState.statsConsentShown && DuoState.statsEnabled)
         }
 
-        // 搜索页揭示进度：0 = 桌面，1 = 搜索页完全覆盖。
-        // 右滑手势逐帧直接写 reveal（跟手），松手 / 点击时由 spring 逐帧写回，
-        // 观感与 HorizontalPager 翻到资源库一致。
-        var reveal by remember { mutableFloatStateOf(0f) }
-        // 用固定时长的缓动曲线，不用 spring：spring 在这个位移量下 ~120ms 就收敛完，
-        // 非跟手的进入 / 关闭（点搜索键、上滑、返回键）会看起来像瞬移。
-        val revealSpec = remember {
-            tween<Float>(durationMillis = 280, easing = FastOutSlowInEasing)
-        }
-        var revealJob by remember { mutableStateOf<Job?>(null) }
-        var searchMounted by remember { mutableStateOf(false) }
-        var searchFocused by remember { mutableStateOf(false) }
-        // 已决定关闭搜索页：一置 true，SearchPanel 立刻把 BasicTextField 从组合里摘掉，
-        // 输入法失去可依附的编辑器 → 会话结束 → 桌面底部那条「输入状态」工具栏不会留下。
-        // 这是 App 资源库实测有效的那条路径，比反复调 hide()/清焦点可靠。
-        var searchClosing by remember { mutableStateOf(false) }
-        var rootWidth by remember { mutableFloatStateOf(0f) }
-        // 只有搜索页真正停稳才申请输入焦点，否则手势刚起手 IME 就弹出来了
-        LaunchedEffect(Unit) {
-            snapshotFlow { reveal >= 0.98f }
-                .distinctUntilChanged()
-                .collect { searchFocused = it }
-        }
+        /**
+         * 搜索页只有「真正停稳」才算激活：滑动一开始 focusEnabled 立刻变 false，
+         * SearchPanel 随即把真实 EditText 从组合里摘掉 → 输入法会话结束，
+         * 桌面底部那条「输入状态 / 双拼 / 麦克风」工具栏不会残留（171 版验证过的路径）。
+         * 直接由 pager 状态实时计算，不用异步收集，避免快速滑动时晚一帧。
+         */
+        val searchFocused = pagerState.currentPage == searchPagerPage &&
+                !pagerState.isScrollInProgress &&
+                kotlin.math.abs(pagerState.currentPageOffsetFraction) < 0.02f
+        // 视口中心离搜索页 / 资源库页各有多远（页为单位）：1 = 整页可见，0 = 完全离开。
+        // 根层级的虚化壁纸据此随翻页自然淡入淡出，两张页共用同一套做法；
+        // 不铺不透明纯色底（173 版曾把系统壁纸盖成纯黑）。
+        val pagerPos = pagerState.currentPage + pagerState.currentPageOffsetFraction
+        val searchVisibility = (1f - kotlin.math.abs(pagerPos - searchPagerPage)).coerceIn(0f, 1f)
+        val libraryVisibility = (1f - kotlin.math.abs(pagerPos - libraryPagerPage)).coerceIn(0f, 1f)
+
         var menuApp by remember { mutableStateOf<AppInfo?>(null) }
         var menuSource by remember { mutableStateOf("home") }
         var categoryTarget by remember { mutableStateOf<AppInfo?>(null) }
@@ -274,87 +297,23 @@ class MainActivity : ComponentActivity() {
         // 调 animateScrollToPage 会抛 IllegalStateException（点「添加应用到主屏幕」就崩）。
         val uiScope = rememberCoroutineScope()
 
-        /** 从当前进度弹性动画到目标值，逐帧写回 reveal；手势再次开始时取消上一段动画 */
-        fun animateReveal(target: Float, onEnd: () -> Unit = {}) {
-            revealJob?.cancel()
-            if (target > 0f) searchMounted = true
-            revealJob = uiScope.launch {
-                AnimationState(reveal).animateTo(target, revealSpec) { reveal = value }
-                onEnd()
+        /** 打开设置等浮层前，若正停在搜索页就先回主屏，避免关掉浮层后键盘又弹出来 */
+        fun leaveSearchIfNeeded() {
+            if (pagerState.currentPage == searchPagerPage) {
+                uiScope.launch { runCatching { pagerState.scrollToPage(toPagerPage(0)) } }
             }
         }
 
-        fun dismissSearchInstant() {
-            revealJob?.cancel()
-            reveal = 0f
-            searchMounted = false
-            searchFocused = false
-            searchClosing = false
-        }
-
-        /** 关闭搜索：先滑出去，动画结束后再摘掉面板，避免「硬切」 */
-        fun dismissSearchAnimated() {
-            // 先置 closing：输入框立刻摘掉（输入法会话随之结束），再让面板滑出
-            searchClosing = true
-            animateReveal(0f) {
-                searchMounted = false
-                searchFocused = false
-                searchClosing = false
-            }
-        }
-
-        // 真实页序号 ↔ pager 下标（开启"倒序翻页"时两者相反）
-        fun toPagerPage(actual: Int): Int {
-            val a = actual.coerceIn(0, totalPages - 1)
-            return if (DuoState.reversePages) totalPages - 1 - a else a
-        }
-
-        val nav = remember(totalPages, libraryPage) {
+        val nav = remember(totalPages, libraryPage, searchPagerPage) {
             Nav(
+                // 点右下角搜索键 / 侧栏动作：和 goLibrary 一样走 pager 的原生翻页动画
                 openSearch = {
-                    // 点右下角搜索键 / 动作触发：同样走滑入，不再硬切
-                    searchClosing = false
-                    animateReveal(1f)
+                    uiScope.launch { runCatching { pagerState.animateScrollToPage(searchPagerPage) } }
                 },
-                searchDrag = { p ->
-                    revealJob?.cancel()
-                    searchMounted = true
-                    searchClosing = false
-                    reveal = p
-                },
-                searchRelease = { commit ->
-                    // 跟 pager 一样：过半就翻过去，否则弹回；快速短滑也算翻过去
-                    val finish = reveal >= 0.45f || (commit && reveal >= 0.12f)
-                    if (!finish) searchClosing = true
-                    animateReveal(if (finish) 1f else 0f) {
-                        if (!finish) {
-                            searchMounted = false
-                            searchFocused = false
-                            searchClosing = false
-                        }
-                    }
-                },
-                searchCloseDrag = { p ->
-                    // 左滑时搜索页跟着手指往左退，桌面同步回位
-                    revealJob?.cancel()
-                    reveal = p
-                },
-                searchCloseRelease = { commit ->
-                    // 过半或快速短滑 → 关回桌面；否则弹回搜索页，两边都走 spring
-                    val close = commit || reveal < 0.55f
-                    if (close) searchClosing = true
-                    animateReveal(if (close) 0f else 1f) {
-                        if (close) {
-                            searchMounted = false
-                            searchFocused = false
-                            searchClosing = false
-                        }
-                    }
-                },
-                openSettings = { dismissSearchInstant(); settingsSub = null; overlay = "settings" },
-                openSidebarEditor = { dismissSearchInstant(); settingsSub = "sidebar"; overlay = "settings" },
-                openCategoryEditor = { dismissSearchInstant(); settingsSub = "cats"; overlay = "settings" },
-                openHiddenEditor = { dismissSearchInstant(); settingsSub = "hidden"; overlay = "settings" },
+                openSettings = { leaveSearchIfNeeded(); settingsSub = null; overlay = "settings" },
+                openSidebarEditor = { leaveSearchIfNeeded(); settingsSub = "sidebar"; overlay = "settings" },
+                openCategoryEditor = { leaveSearchIfNeeded(); settingsSub = "cats"; overlay = "settings" },
+                openHiddenEditor = { leaveSearchIfNeeded(); settingsSub = "hidden"; overlay = "settings" },
                 openWidgetPicker = { startPickWidget() },
                 showAppMenu = { app, src -> menuApp = app; menuSource = src },
                 showCategoryPicker = { app -> categoryTarget = app },
@@ -365,8 +324,7 @@ class MainActivity : ComponentActivity() {
                 },
                 goLibrary = {
                     overlay = null
-                    val target = toPagerPage(libraryPage)
-                    uiScope.launch { runCatching { pagerState.animateScrollToPage(target) } }
+                    uiScope.launch { runCatching { pagerState.animateScrollToPage(libraryPagerPage) } }
                 },
                 toast = { msg -> ctx.toast(msg) }
             )
@@ -383,11 +341,6 @@ class MainActivity : ComponentActivity() {
             if (homeSignal > 0) {
                 overlay = null
                 settingsSub = null
-                searchMounted = false
-                searchFocused = false
-                searchClosing = false
-                revealJob?.cancel()
-                reveal = 0f
                 runCatching { pagerState.animateScrollToPage(toPagerPage(0)) }
             }
             // 主屏页数变少（清空/删除应用）时，把越界的当前页拉回合法范围
@@ -396,20 +349,20 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 搜索面板关掉后的兜底：正常情况下什么都不做。
+        // 离开搜索页后的最后一道保险：正常情况下什么都不做。
         //
-        // 收键盘只有一条路径：SearchPanel 在关闭那一刻松开焦点 → 输入法自己收起 →
-        // 面板卸载、输入框销毁 → 输入连接关闭 → 会话结束。这里再补一刀就会让收起
-        // 动画播第二遍（看着就是「跳两下」），所以改成**先看输入法还在不在**：
-        // 只有极少数输入法赖着不走时，才补一次 hide。
+        // 收键盘只有一条路径：SearchPanel 在「不再停稳」那一刻松开焦点 → 输入法自己收起 →
+        // 输入框从组合摘掉 → 输入连接关闭 → 会话结束。这里再补一刀就会让收起动画播第二遍
+        // （看着就是「跳两下」），所以改成**先看输入法还在不在**：只有极少数输入法赖着
+        // 不走时，才补一次 hide。
         var searchEverOpened by remember { mutableStateOf(false) }
-        LaunchedEffect(searchMounted) {
-            if (searchMounted) {
+        LaunchedEffect(searchFocused) {
+            if (searchFocused) {
                 searchEverOpened = true
                 return@LaunchedEffect
             }
             if (!searchEverOpened) return@LaunchedEffect
-            // 等面板真正摘掉、输入法自然收起的那一小段动画走完再判断
+            // 等输入框摘掉、输入法自然收起的那一小段动画走完再判断
             delay(280)
             val root = window.decorView
             val insets = ViewCompat.getRootWindowInsets(root) ?: return@LaunchedEffect
@@ -424,84 +377,62 @@ class MainActivity : ComponentActivity() {
 
         MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
             CompositionLocalProvider(LocalWidgetBridge provides widgetBridge) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .onSizeChanged { rootWidth = it.width.toFloat() }
-                ) {
-                    // 资源库页虚化背景：放在 pager 之外的根层级渲染（pager 内大图在某些情况下不绘制，
-                    // 会导致清晰壁纸透出）。仅停在资源库页时显示，滑动时按偏移淡入淡出，不影响主屏清晰壁纸。
-                    val off = pagerState.currentPageOffsetFraction
-                    val libAlpha = when {
-                        pagerState.currentPage == libraryPage -> (1f - off).coerceIn(0f, 1f)
-                        pagerState.currentPage == libraryPage - 1 -> off.coerceIn(0f, 1f)
-                        else -> 0f
+                Box(Modifier.fillMaxSize()) {
+                    // 搜索页 / 资源库页共用根层级虚化壁纸：放在 pager 之外渲染
+                    // （pager 内大图在某些情况下不绘制，会导致清晰壁纸透出）。
+                    // 按「视口离该页的距离」淡入淡出，翻页时与页面位移完全同步。
+                    // 不铺不透明纯色底：窗口主题是 Theme.Wallpaper，壁纸由窗口本身透出，
+                    // 173 版加过深色兜底，结果把系统壁纸整个盖成纯黑（齐老师实测）。
+                    if (libraryVisibility > 0.01f) {
+                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = libraryVisibility }) {
+                            GlassBackdrop(wallpaper, DuoState.glassLevel, dark)
+                        }
                     }
-                    if (libAlpha > 0.01f) {
-                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = libAlpha }) {
+                    if (searchVisibility > 0.01f) {
+                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = searchVisibility }) {
                             GlassBackdrop(wallpaper, DuoState.glassLevel, dark)
                         }
                     }
                     HorizontalPager(
                         state = pagerState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                // 搜索页推进时桌面轻微右移 + 压暗，做出与翻页一致的层次
-                                translationX = rootWidth * 0.16f * reveal
-                                alpha = 1f - 0.10f * reveal
-                            },
-                        userScrollEnabled = overlay == null && !DuoState.dragging && !searchMounted
+                        modifier = Modifier.fillMaxSize(),
+                        userScrollEnabled = overlay == null && !DuoState.dragging
                     ) { page ->
-                        val actual = if (DuoState.reversePages) totalPages - 1 - page else page
                         when {
-                            actual == totalPages - 1 -> LibraryPage(
-                                nav = nav, dark = dark, wallpaper = wallpaper,
-                                // 只有真正停在这一页（且没有搜索页 / 浮层在盖着）才算激活；
-                                // 滑走时页面不会销毁，必须靠这个信号交出输入焦点
-                                isActive = pagerState.currentPage == page &&
-                                    !searchMounted && overlay == null
-                            )
-                            else -> HomePage(
+                            page == searchPagerPage -> SearchPanel(
                                 nav = nav,
                                 dark = dark,
                                 wallpaper = wallpaper,
-                                pageDots = DuoState.showPageDots,
-                                homePageIndex = actual,
-                                homePageCount = homePageCount,
-                                libraryPage = libraryPage,
-                                allowSwipeRight = page == 0
-                            )
-                        }
-                    }
-
-                    // 搜索页背景：与 App 资源库同一套根层级虚化壁纸（放在 pager 与平移层之外，
-                    // 避免「pager 内大图不绘制」导致清晰壁纸透出、再被色调层压成一片暗蒙版）。
-                    // 随 reveal 淡入淡出，观感与资源库完全一致。
-                    if (searchMounted) {
-                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = reveal }) {
-                            GlassBackdrop(wallpaper, DuoState.glassLevel, dark)
-                        }
-                    }
-
-                    // 搜索页：右滑时从左侧跟手滑入，方向与手指一致；
-                    // 位置完全由 reveal 驱动，松手后 spring 补齐，和 HorizontalPager 同一套观感。
-                    if (searchMounted) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    translationX = -rootWidth * (1f - reveal)
-                                }
-                        ) {
-                            SearchPanel(
-                                nav = nav,
-                                dark = dark,
-                                wallpaper = wallpaper,
+                                // 停稳才挂输入框 / 弹键盘；pager 一开始滑动就立刻摘掉
                                 focusEnabled = searchFocused,
-                                closing = searchClosing,
-                                onClose = { dismissSearchAnimated() }
+                                closing = !searchFocused,
+                                onClose = {
+                                    uiScope.launch {
+                                        runCatching { pagerState.animateScrollToPage(toPagerPage(0)) }
+                                    }
+                                }
                             )
+                            page == libraryPagerPage -> LibraryPage(
+                                nav = nav, dark = dark, wallpaper = wallpaper,
+                                // 只有真正停在这一页（且没有浮层盖着）才算激活；
+                                // 滑走时页面不会销毁，必须靠这个信号交出输入焦点
+                                isActive = pagerState.currentPage == page && overlay == null
+                            )
+                            else -> {
+                                // pager 下标 → 主屏真实序号（倒序时反过来）
+                                val actual = if (DuoState.reversePages) libraryPage - page else page - 1
+                                HomePage(
+                                    nav = nav,
+                                    dark = dark,
+                                    wallpaper = wallpaper,
+                                    pageDots = DuoState.showPageDots,
+                                    homePageIndex = actual,
+                                    homePageCount = homePageCount,
+                                    libraryPage = libraryPage,
+                                    // 只有紧挨搜索页的那一主屏页，才需要处理「关闭手势」的拦截
+                                    allowSwipeRight = actual == 0
+                                )
+                            }
                         }
                     }
 

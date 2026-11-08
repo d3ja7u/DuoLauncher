@@ -85,7 +85,7 @@ fun HomePage(
     homePageIndex: Int = 0,
     homePageCount: Int = 1,
     libraryPage: Int = 2,
-    /** 这是 pager 最左一页（再往右没有页可翻）→ 允许「右滑打开搜索」 */
+    /** 这是紧挨搜索页的主屏第一页（关闭「右滑进搜索」时，在这里拦住 pager） */
     allowSwipeRight: Boolean = false
 ) {
     val ctx = LocalContext.current
@@ -122,8 +122,9 @@ fun HomePage(
     var pageOrigin by remember { mutableStateOf(Offset.Zero) }      // 本页在根坐标系的原点
     val statusTopPad = if (DuoState.statusRight) DuoState.statusTop
     else maxOf(DuoState.statusTop, 64)
-    // 时间 + 电量三合一再往上提一点（只挪绘制位置，网格的 topGap 仍用 statusTopPad，不动图标行距）
-    val statusDrawTop = (statusTopPad - 12f).coerceAtLeast(2f)
+    // 时间 + 电量三合一再往上提：只挪绘制位置，网格 topGap 仍用 statusTopPad，不动图标行距。
+    // 侧栏「靠下居中」的基准也用这个真实下沿（见下方 sbRegionTop），两者始终对齐。
+    val statusDrawTop = (statusTopPad - 20f).coerceAtLeast(2f)
     val statusScale = DuoState.statusScale.coerceIn(0.55f, 1.8f)
     // 状态块真实高度：时间(≈1.35×字号) + 6dp 间距 + 徽标 50dp
     val statusHeight = (18f * 1.35f + 6f + 50f) * statusScale
@@ -217,14 +218,14 @@ fun HomePage(
                     }
                 }
             }
-            // 右滑打开搜索：跟手揭示搜索页（和横向翻到资源库一样有位移反馈），
-            // 松手后再弹性补齐 / 回弹。只在这一排的最左页生效（再往右本来也翻不动页）。
-            // 在 Initial pass 上判定并消费掉，pager 的横向拖动看到「已被消费」就会自己取消。
-            .pointerInput(DuoState.gestureSearch, allowSwipeRight) {
-                if (!DuoState.gestureSearch || !allowSwipeRight) return@pointerInput
+            // 「最左页右滑打开搜索」已经改由 HorizontalPager 原生翻页接管（搜索页本身就是
+            // pager 的一页），过渡与滑到 App 资源库完全一致。这里只剩一个开关兜底：
+            // 用户把该手势关掉时，在 Initial pass 消费掉「朝搜索页方向」的横向拖动，
+            // pager 看到事件被消费就不会翻过去；点搜索键 / 侧栏动作仍可程序式进入。
+            .pointerInput(DuoState.gestureSearch, DuoState.reversePages, allowSwipeRight) {
+                if (DuoState.gestureSearch || !allowSwipeRight) return@pointerInput
                 val startSlop = 14.dp.toPx()
-                val commitPx = 76.dp.toPx()
-                val fullPx = size.width * 0.5f
+                val towardSearch = if (DuoState.reversePages) -1f else 1f
                 awaitEachGesture {
                     val down = awaitFirstDown(
                         requireUnconsumed = false,
@@ -238,14 +239,13 @@ fun HomePage(
                         val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                         dx += ch.position.x - ch.previousPosition.x
                         dy += ch.position.y - ch.previousPosition.y
-                        if (!engaged && dx > startSlop && dx > kotlin.math.abs(dy) * 1.15f) engaged = true
-                        if (engaged) {
-                            ch.consume()
-                            nav.searchDrag(((dx - startSlop) / fullPx).coerceIn(0f, 1f))
+                        val towards = dx * towardSearch
+                        if (!engaged && towards > startSlop && towards > kotlin.math.abs(dy) * 1.15f) {
+                            engaged = true
                         }
+                        if (engaged) ch.consume()
                         if (!ch.pressed) break
                     }
-                    if (engaged) nav.searchRelease(dx >= commitPx)
                 }
             }
     ) {
@@ -456,16 +456,20 @@ fun HomePage(
         // ── 玻璃侧边栏：与状态栏同处一条纵向通道，顶部与网格对齐 ──
         // 设置里可以整体隐藏；隐藏后状态指示器仍保留，但不再为侧栏留白
         if (showSidebar) {
-        // 「靠下居中」= 在状态指示器下方、直到屏幕底部这条区域里垂直居中：
+        // 胶囊是否真的在屏幕上（不只是开关打开）
+        val npVisible = DuoState.showNowPlaying && DuoState.nowPlaying != null
+        // 「靠下居中」= 在状态块下方、直到屏幕底部这条区域里垂直居中：
         // 用一个撑满该区域的 Box 居中卡片，卡片中心 = 区域中心（因此落在屏幕中线偏下）。
         // 「屏幕居中」= 区域从屏幕顶端算起，也就是整屏居中。
         // 注意：不能写成对称 padding + align(Center)，那样卡片中心仍回到屏幕中线。
-        val sbRegionTop = if (DuoState.sidebarAlign == "bottom")
-            (statusTopPad + statusHeight + 14).dp else 0.dp
-        // 音乐胶囊和侧栏在同一条通道上：胶囊可见时算出它的下沿，
-        // 若侧栏卡片会压到胶囊（左侧配置的状态块因为避挖孔而下移，最容易撞上），
-        // 就把卡片整体往下推，两者之间始终留 8dp
-        val npVisible = DuoState.showNowPlaying && DuoState.nowPlaying != null
+        //
+        // 齐老师 2026-11-08：没开音乐胶囊时，区域上沿就取「三合一徽标真实下沿」；
+        // 开了胶囊则让到胶囊下方，两种情况都不再拿 statusTopPad 当基准（徽标上移后
+        // 那样会让侧栏看起来还挂在半空）。
+        val badgeBottom = statusDrawTop + statusHeight + 8f
+        val sbRegionTop = if (DuoState.sidebarAlign == "bottom") {
+            if (npVisible) (badgeBottom + NpCapsuleHeight.value + 8f).dp else badgeBottom.dp
+        } else 0.dp
         val sbShiftPx = if (npVisible && sbBoxHPx > 0 && sbCardHPx > 0) {
             val npBottomPx = with(density) { (statusDrawTop + statusHeight + 8).dp.toPx() } +
                 with(density) { NpCapsuleHeight.toPx() }
