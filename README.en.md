@@ -10,11 +10,10 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 [![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
 
 <p align="center">
-  <img src="screenshots/01-home.jpg" width="18%">
-  <img src="screenshots/02-sidebar-music.jpg" width="18%">
-  <img src="screenshots/03-library-categories.jpg" width="18%">
-  <img src="screenshots/04-library-list.jpg" width="18%">
-  <img src="screenshots/05-settings.jpg" width="18%">
+  <img src="screenshots/01-home.jpg" width="23%">
+  <img src="screenshots/02-sidebar-music.jpg" width="23%">
+  <img src="screenshots/03-library-categories.jpg" width="23%">
+  <img src="screenshots/04-library-list.jpg" width="23%">
 </p>
 
 > All screenshots were taken on a Unihertz Titan 2 Elite (v1.5.10) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.

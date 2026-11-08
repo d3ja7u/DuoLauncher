@@ -10,11 +10,10 @@
 [![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
 
 <p align="center">
-  <img src="screenshots/01-home.jpg" width="18%">
-  <img src="screenshots/02-sidebar-music.jpg" width="18%">
-  <img src="screenshots/03-library-categories.jpg" width="18%">
-  <img src="screenshots/04-library-list.jpg" width="18%">
-  <img src="screenshots/05-settings.jpg" width="18%">
+  <img src="screenshots/01-home.jpg" width="23%">
+  <img src="screenshots/02-sidebar-music.jpg" width="23%">
+  <img src="screenshots/03-library-categories.jpg" width="23%">
+  <img src="screenshots/04-library-list.jpg" width="23%">
 </p>
 
 > 截图均为 Unihertz Titan 2 Elite 实机运行截图（v1.5.10），展示的是中文界面；界面语言会跟随设备，也可在「设置 → 系统 → 语言」里手动切换。
