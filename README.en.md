@@ -316,3 +316,4 @@ Only a random anonymous ID, app version, UI language and Android API level are s
 ## 10. Notes
 
 A personal project that grew out of my own daily use. The code favors "easy to change" over broad device support or unit tests. Issues and ideas are welcome.
+
