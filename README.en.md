@@ -237,8 +237,16 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.5.11 | Search now uses native paging like the App Library; batch add / remove home icons (with confirmation) and an auto-add toggle for newly installed apps in Settings; fixed the blank second page with 5+ columns, 5G signal bars and bottom-center alignment |
+| 1.5.10 | Fixed the IME toolbar lingering / flickering after leaving Search or the App Library; search fields now use the native EditText; status-bar Wi-Fi dots and cellular bars follow real signal strength; fixed occasional input loss in the library search |
+| 1.5.9 | Now Playing capsule (album art + spectrum, tap to open player, long-press to pause) with a Settings toggle; home grid column / row counts, sidebar vertical alignment and glass intensity; frosted backdrop reworked with broad UI polish |
+| 1.5.8 | Fixed cloned / multi-user apps (e.g. a second WeChat) not showing up or being searchable |
 | 1.5.6 | Opt-out anonymous usage statistics: first-launch notice, Settings toggle / endpoint / View statistics, turning it off deletes the local ID; bundled zero-dependency stats server; privacy policy rewritten in three languages |
 | 1.5.5 | In-place updates: download progress, cancel, install-permission guidance, private cache + FileProvider, fallback to download page; Atom fallback now derives the APK link too |
+| 1.5.4 | Unified "screen off" wording across the app, docs and release notes (Chinese terminology cleanup) |
+| 1.5.3 | Long-press an empty home area opens Settings directly; the bottom-left Settings and bottom-right Search icons can be hidden (long-press / gestures still work) |
+| 1.5.2 | Search now covers contacts, the web and recent apps, with Enter opening the first result; iOS-style minus in home edit mode; fresh installs start with an empty home screen; JSON settings backup / restore |
+| 1.5.1 | Follow-the-finger search transition; notification badges fixed (persistent notifications excluded, read state persisted); switched to release builds, cutting the APK from 52 MB to ~2 MB |
 | 1.5.0 | Multilingual UI: Chinese / English / Japanese, follows the device language, manual override in Settings; this English README |
 | 1.4.1 | Solid background for the update-source dialog, long URLs wrap, whitespace stripped on save |
 | 1.4.0 | New Updates section: configurable GitHub Releases source, manual / silent auto check, fallback to the official Atom feed |

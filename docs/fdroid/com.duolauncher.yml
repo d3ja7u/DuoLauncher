@@ -4,10 +4,10 @@
 # metadata/com.duolauncher.yml ，从 master 建分支 com.duolauncher ，
 # 跑 fdroid lint / fdroid build 后在 GitLab 提 Merge Request。
 #
-# ⚠️ 提交前必须做两处替换：
-#   1. Builds[0].commit 改成 v1.5.11 tag 对应的完整 40 位 commit hash（不能用 tag 名）
-#   2. versionName / versionCode 与实际发版一致
-# 详细步骤见 ../DISTRIBUTION.md
+# 本模板已按当前基准版 v1.5.11 / versionCode 178 填好，
+# Builds[0].commit 已是 v1.5.11 tag 的完整 40 位 hash，提交前只需核对版本字段，
+# 不要用 tag 名或分支名替换 commit。每次发版同步更新版本字段与 commit。
+# 详细步骤与可直接粘贴的 MR 描述见 ../DISTRIBUTION.md
 
 Categories:
   - System
@@ -40,8 +40,8 @@ Builds:
     # gradle: yes -> assembleRelease（无 productFlavor）。
     # 该构建是 release 类型：debuggable=false、已开启 R8 与资源缩减。
     # signingConfig 指向 debug.keystore，fdroidserver 会用自己的密钥重新签名产物。
-    # 若构建机访问不了 settings.gradle.kts 里的阿里云镜像，
-    # 用 -Pduo.cnMirror 关闭镜像或按 DISTRIBUTION.md 中的 prebuild 说明处理。
+    # settings.gradle.kts 默认使用阿里云 Maven 镜像（仓库中没有 cnMirror 开关）。
+    # 若构建机访问不了，按维护者建议加 prebuild 把仓库换成 google() / mavenCentral()。
 
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags
