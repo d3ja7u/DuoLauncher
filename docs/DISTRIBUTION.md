@@ -63,7 +63,7 @@ v1.5.0 的 52.78 MB 几乎全是 dex，原因是 CI 构建的是 **debug 变体*
 
 | 项目 | 值 |
 |---|---|
-| tag / 源码提交 | `v1.5.11` → `805e7818dff5e8cf7e5dce038a8e4b276923d3a0` |
+| tag / 源码提交 | `v1.5.11` → `48df1801e61f4d58cda07b77763a90d106468653` |
 | Release 资产 | `DuoLauncher-1.5.11.apk`，2,491,968 B |
 | 构建 | 本地 JDK 17 `assembleRelease`（本次 CI 因构建机下载 Gradle 发行包超时失败，详见第八节） |
 | 校验 | `aapt dump badging` 无 `debuggable`；`apksigner` 指纹与上表一致；Release 资产 sha256 与本地包一致 |
@@ -222,7 +222,7 @@ cp /path/to/DuoLauncher/docs/fdroid/com.duolauncher.yml metadata/com.duolauncher
 
 # 3. 核对 commit：模板里已填好 v1.5.11 tag 的完整 40 位 hash，无需替换
 git -C /path/to/DuoLauncher rev-list -n 1 v1.5.11
-# → 805e7818dff5e8cf7e5dce038a8e4b276923d3a0
+# → 48df1801e61f4d58cda07b77763a90d106468653
 
 # 4. 本地校验（需 fdroidserver）
 fdroid lint com.duolauncher
@@ -261,7 +261,7 @@ git push origin com.duolauncher
 * [x] Only `metadata/com.duolauncher.yml` is added, valid YAML with LF endings. No summary, description, images or changelog files are duplicated here.
 * [x] Releases are tagged `vX.Y.Z`; `AutoUpdateMode: Version v%v` and `UpdateCheckMode: Tags` are enabled.
 * [x] Issue tracker, WebSite and AuthorName are present.
-* [x] `commit` is the full 40-character hash of tag `v1.5.11` (`805e7818dff5e8cf7e5dce038a8e4b276923d3a0`).
+* [x] `commit` is the full 40-character hash of tag `v1.5.11` (`48df1801e61f4d58cda07b77763a90d106468653`).
 * [x] Only the latest version is kept in the metadata; no disabled builds.
 
 ### Metadata

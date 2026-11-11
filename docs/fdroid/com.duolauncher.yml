@@ -33,7 +33,7 @@ Repo: https://github.com/d3ja7u/DuoLauncher.git
 Builds:
   - versionName: '1.5.11'
     versionCode: 178
-    commit: 805e7818dff5e8cf7e5dce038a8e4b276923d3a0
+    commit: 48df1801e61f4d58cda07b77763a90d106468653
     subdir: app
     gradle:
       - yes
