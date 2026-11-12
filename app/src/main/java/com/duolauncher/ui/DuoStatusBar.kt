@@ -83,7 +83,12 @@ data class DuoStatus(
     val cellular: Boolean,
     val level: Int,       // 0..4
     val battery: Int,     // 0..100
-    val charging: Boolean
+    val charging: Boolean,
+    /**
+     * 每张「已启用」SIM 卡各自的信号格，按卡槽顺序（卡1、卡2…）。
+     * size >= 2 时徽标改用双排信号点；单卡 / 读不到时留空，保持原来的单排样式。
+     */
+    val simLevels: List<Int> = emptyList()
 )
 
 /**
@@ -173,6 +178,39 @@ private fun readCellularLevel(app: Context): Int {
     return if (!readAny) 4 else best.coerceIn(0, 4)
 }
 
+/**
+ * 逐张已启用 SIM 卡读取信号格（0..4），按 simSlotIndex 排序。
+ *
+ * 只有「开关打开、能被 SubscriptionManager 列为 active」的卡才会返回；只插一张卡、
+ * 或用户关掉其中一张时，列表就只有 1 项 —— 徽标据此自动回到单排样式。
+ * 读不到（无权限 / ROM 限制）时留空，绝不凭空造出第二张卡。
+ */
+private fun readSimLevels(app: Context): List<Int> {
+    if (Build.VERSION.SDK_INT < 28) return emptyList()
+    val granted = app.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+    if (!granted) return emptyList()
+    return runCatching {
+        val sm = app.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
+        val infos = sm.activeSubscriptionInfoList
+            ?.sortedBy { it.simSlotIndex } ?: emptyList()
+        infos.map { info ->
+            runCatching {
+                val tm = (app.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager)
+                    .createForSubscriptionId(info.subscriptionId)
+                val ss = tm.signalStrength
+                var best = ss?.level ?: 0
+                if (Build.VERSION.SDK_INT >= 30) {
+                    ss?.cellSignalStrengths?.forEach { c ->
+                        best = maxOf(best, c.level, levelFromDbm(c.dbm))
+                    }
+                }
+                best.coerceIn(0, 4)
+            }.getOrDefault(4)   // 单卡读不到时不如显示满格，避免误报「无信号」
+        }
+    }.getOrDefault(emptyList())
+}
+
 private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
     val app = ctx.applicationContext
     val time = DateFormat
@@ -211,7 +249,7 @@ private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
                     status == BatteryManager.BATTERY_STATUS_FULL
         }
     }
-    return DuoStatus(time, wifi, cellular, level, battery, charging)
+    return DuoStatus(time, wifi, cellular, level, battery, charging, readSimLevels(app))
 }
 
 /** 每分钟刷新 + 监听时间/网络/电量变化广播 */
@@ -242,6 +280,9 @@ fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
             addAction(Intent.ACTION_POWER_DISCONNECTED)
             addAction(ConnectivityManager.CONNECTIVITY_ACTION)
             addAction(WifiManager.RSSI_CHANGED_ACTION)
+            // 插拔 / 启用停用 SIM、飞行模式切换时立即重算双卡信号，不必等 30 秒轮询
+            addAction("android.intent.action.SIM_STATE_CHANGED")
+            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
         }
         runCatching {
             ContextCompat.registerReceiver(
@@ -265,6 +306,7 @@ fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
 fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
     val status = rememberDuoStatus(DuoState.status24h).value
     val scale = DuoState.statusScale.coerceIn(0.55f, 1.8f)
+    val netLabel = DuoState.statusNetworkLabel
 
     val timeSize = (18 * scale).sp
     val iconSize = (50 * scale).dp
@@ -368,22 +410,35 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
                 )
             }
 
-            // ── 6. 中心：WiFi 双弧（已连）/ 蜂窝信号条（未连，垂直居中）──
-            if (status.wifi) drawWifiGlyph(cx, cy, k, inkColor, shade, off)
-            else drawCellularGlyph(cx, cy, k, inkColor, shade, off, status.level)
-
-            // ── 7. 底部：已连 WiFi→沿弧排列的 4 点（按信号强度点亮）；未连→放大的 5G ──
+            // ── 6 / 7. 中心 + 底部 ──
+            // 双卡（两张卡都处于启用状态）时信号区改成参考图的「双排 4 点」：
+            //   上排 = 卡1、下排 = 卡2，各按自己的真实信号格点亮。
+            //   连 WiFi → WiFi 双弧保留，双排点移到下半部的信号点位置；
+            //   仅蜂窝 → 双排点居中替代原来的 4 根竖条，底部仍是制式文字。
+            // 单卡、或读不到 SIM 列表时，一律走原来的画法，外观完全不变。
+            val dualSim = status.simLevels.size >= 2
             if (status.wifi) {
-                drawSignalDots(cx, cy, k, inkColor, shade, off, status.level)
+                drawWifiGlyph(cx, cy, k, inkColor, shade, off)
+                if (dualSim) {
+                    drawDualSimDots(cx, cy, k, inkColor, shade, off, status.simLevels, center = false)
+                } else {
+                    drawSignalDots(cx, cy, k, inkColor, shade, off, status.level)
+                }
             } else {
+                if (dualSim) {
+                    drawDualSimDots(cx, cy, k, inkColor, shade, off, status.simLevels, center = true)
+                } else {
+                    drawCellularGlyph(cx, cy, k, inkColor, shade, off, status.level)
+                }
                 val g5Style = TextStyle(
                     color = inkColor,
-                    fontSize = (17.5f * k).toSp(),
+                    // LTE 三个字符比 5G 宽，略收字号，免得顶到两侧电量弧
+                    fontSize = ((if (netLabel.length > 2) 15.5f else 17.5f) * k).toSp(),
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-0.4).sp,
                     shadow = Shadow(shade, Offset(0f, 0.8f * k), 1.8f * k)
                 )
-                val g5 = measurer.measure(AnnotatedString("5G"), g5Style)
+                val g5 = measurer.measure(AnnotatedString(netLabel), g5Style)
                 drawText(
                     textLayoutResult = g5,
                     topLeft = Offset(cx - g5.size.width / 2f, cy + 30f * k - g5.firstBaseline)
@@ -488,6 +543,39 @@ private fun DrawScope.drawSignalDots(
             if (on) color else color.copy(alpha = 0.26f),
             radius = 3.5f * k, center = Offset(x, y)
         )
+    }
+}
+
+/**
+ * 双卡信号点：两排各 4 个等大圆点，上排 = 卡1、下排 = 卡2，各按自己的信号格点亮
+ * （点亮 = 实心白，未点亮 = 26% 白），与单卡时 4 点的视觉语言保持一致。
+ *
+ * [center] = true  未连 WiFi：放在环内中央，替代原来的 4 根蜂窝竖条；
+ * [center] = false 已连 WiFi：放在下半部信号点区域，替代原来的沿弧 4 点，
+ *                  上方仍是 WiFi 双弧。
+ *
+ * 坐标按 80×80 视图网格：点距 8 / 点径 3 / 行距 8，整体落在底口 33°~147° 的
+ * 空白扇区内，不会压到电量弧，也不会和 WiFi 圆点（y=+8.3）或底部制式文字相撞。
+ */
+private fun DrawScope.drawDualSimDots(
+    cx: Float, cy: Float, k: Float, color: Color, shade: Color, off: Float,
+    levels: List<Int>, center: Boolean
+) {
+    val pitch = 8f * k
+    val rowGap = 8f * k
+    val radius = 3f * k
+    val baseY = if (center) cy - 1.5f * k else cy + 16.5f * k
+    listOf(baseY, baseY + rowGap).forEachIndexed { row, y ->
+        val lit = levels.getOrElse(row) { 0 }.coerceIn(0, 4)
+        for (i in 0 until 4) {
+            val x = cx + (i - 1.5f) * pitch
+            val on = i < lit
+            if (on) drawCircle(shade, radius, Offset(x, y + off))
+            drawCircle(
+                if (on) color else color.copy(alpha = 0.26f),
+                radius, Offset(x, y)
+            )
+        }
     }
 }
 

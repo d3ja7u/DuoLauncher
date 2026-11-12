@@ -138,8 +138,6 @@
     <string name="status_pos_left">左上（侧栏同侧时自动下移避让）</string>
     <string name="status_24h">24 小时制</string>
     <string name="status_24h_desc">关闭后按 12 小时制显示</string>
-    <string name="status_real_signal">信号点跟随真实强度</string>
-    <string name="status_real_signal_desc">关闭时 4 点常亮，与概念图一致</string>
     <string name="status_top_padding">距顶部高度</string>
     <string name="status_scale">状态栏大小</string>
     <string name="live_status">实时状态</string>
@@ -383,4 +381,7 @@
     <string name="batch_remove_ok">确认移除</string>
     <string name="auto_add_new_apps">新装应用自动加到桌面</string>
     <string name="auto_add_new_apps_desc">开启后，安装新应用时自动把图标放到主屏幕；关闭则只出现在 App 资源库</string>
+    <string name="status_network_label">网络制式显示</string>
+    <string name="status_network_label_desc">未连接 WiFi 时，徽标底部显示 5G 或 LTE（仅影响显示）</string>
+    <string name="status_dual_sim">双卡 %1$d / %2$d 格</string>
 </resources>

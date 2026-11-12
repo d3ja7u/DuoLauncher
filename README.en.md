@@ -237,6 +237,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.5.12 | Dual-SIM status badge now uses two rows of signal dots (upper row SIM 1, lower row SIM 2); single-SIM layout unchanged; added a 5G / LTE label switch in Settings; improved the accessibility authorization state for double-tap-to-sleep |
 | 1.5.11 | Search now uses native paging like the App Library; batch add / remove home icons (with confirmation) and an auto-add toggle for newly installed apps in Settings; fixed the blank second page with 5+ columns, 5G signal bars and bottom-center alignment |
 | 1.5.10 | Fixed the IME toolbar lingering / flickering after leaving Search or the App Library; search fields now use the native EditText; status-bar Wi-Fi dots and cellular bars follow real signal strength; fixed occasional input loss in the library search |
 | 1.5.9 | Now Playing capsule (album art + spectrum, tap to open player, long-press to pause) with a Settings toggle; home grid column / row counts, sidebar vertical alignment and glass intensity; frosted backdrop reworked with broad UI polish |

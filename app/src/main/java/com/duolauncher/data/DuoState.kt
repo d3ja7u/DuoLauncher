@@ -167,11 +167,16 @@ object DuoState {
     var showDuoStatus by mutableStateOf(true)      // 默认显示，替代安卓原生状态栏
     var statusRight by mutableStateOf(true)        // 默认右上，避开 Titan 2 Elite 左上挖孔
     var status24h by mutableStateOf(true)
-    var statusRealSignal by mutableStateOf(false)  // 默认 4 点常亮，与概念图一致
+    // 信号格一律按真实强度绘制，设置里不再提供开关
     var statusTop by mutableStateOf(26)            // 距顶部 dp（默认比旧版更靠上）
     /** 状态栏位置版本：<1 表示还是旧默认 40dp，升级时统一上提到 26dp */
     var statusTopVer by mutableStateOf(0)
     var statusScale by mutableStateOf(1.0f)
+    /**
+     * 未连 WiFi 时徽标底部显示的网络制式文字：5G / LTE。
+     * 只是显示选项，不读取真实注册网络；默认 5G 与旧版外观一致。
+     */
+    var statusNetworkLabel by mutableStateOf("5G")
 
     fun init(ctx: Context) {
         if (ready) return
@@ -241,10 +246,10 @@ object DuoState {
             showDuoStatus = o.optBoolean("duoStatus", true)
             statusRight = o.optBoolean("statusRight", true)
             status24h = o.optBoolean("status24h", true)
-            statusRealSignal = o.optBoolean("realSignal", false)
             statusTop = o.optInt("statusTop", 26)
             statusTopVer = o.optInt("statusTopVer", 0)
             statusScale = o.optDouble("statusScale", 1.0).toFloat()
+            statusNetworkLabel = o.optString("netLabel", "5G").let { if (it == "LTE") "LTE" else "5G" }
             showBadges = o.optBoolean("badgeOn", true)
             badgeColor = o.optInt("badgeColor", IOS_RED)
             recentCount = o.optInt("recentCnt", 10).let { n ->
@@ -311,10 +316,10 @@ object DuoState {
             o.put("duoStatus", showDuoStatus)
             o.put("statusRight", statusRight)
             o.put("status24h", status24h)
-            o.put("realSignal", statusRealSignal)
             o.put("statusTop", statusTop)
             o.put("statusTopVer", statusTopVer)
             o.put("statusScale", statusScale.toDouble())
+            o.put("netLabel", statusNetworkLabel)
             o.put("badgeOn", showBadges)
             o.put("badgeColor", badgeColor)
             o.put("recentCnt", recentCount)

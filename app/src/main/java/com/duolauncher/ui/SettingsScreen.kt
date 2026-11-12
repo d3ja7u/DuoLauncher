@@ -219,6 +219,23 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     var accReady by remember { mutableStateOf(ScreenOff.isEnabled(ctx)) }
     // 通知使用权状态，同样需要在从系统页返回时刷新
     var badgeAccess by remember { mutableStateOf(DuoNotificationListener.hasAccess(ctx)) }
+    // 有些 ROM 会在后台自行回收第三方无障碍服务，用户并没有再进过系统设置页，
+    // 只靠 ON_RESUME 采样会一直停在「已开启」。监听系统「已启用服务列表」的变化，
+    // 服务被关掉 / 重新连上时立刻刷新文案，避免出现「开过又变成没开」的错觉。
+    DisposableEffect(ctx) {
+        val uri = android.provider.Settings.Secure.getUriFor(
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        )
+        val obs = object : android.database.ContentObserver(
+            android.os.Handler(android.os.Looper.getMainLooper())
+        ) {
+            override fun onChange(selfChange: Boolean) {
+                accReady = ScreenOff.isEnabled(ctx)
+            }
+        }
+        runCatching { ctx.contentResolver.registerContentObserver(uri, false, obs) }
+        onDispose { runCatching { ctx.contentResolver.unregisterContentObserver(obs) } }
+    }
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -441,20 +458,43 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     SettingToggle(Lang.s(R.string.status_24h), Lang.s(R.string.status_24h_desc), DuoState.status24h, dark) {
                         DuoState.status24h = it; DuoState.save()
                     }
-                    SettingToggle(Lang.s(R.string.status_real_signal), Lang.s(R.string.status_real_signal_desc),
-                        DuoState.statusRealSignal, dark) { DuoState.statusRealSignal = it; DuoState.save() }
+                    // 未连 WiFi 时徽标底部的制式文字：只影响显示，不读取真实注册网络
+                    SettingRow(
+                        Lang.s(R.string.status_network_label),
+                        Lang.s(R.string.status_network_label_desc),
+                        dark,
+                        trailing = {
+                            Row {
+                                listOf("5G", "LTE").forEach { v ->
+                                    val on = DuoState.statusNetworkLabel == v
+                                    Text(
+                                        v,
+                                        fontSize = 13.sp,
+                                        color = if (on) Color.White else glassTextColor(dark),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
+                                            .clickable { DuoState.statusNetworkLabel = v; DuoState.save() }
+                                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                            }
+                        })
                     SettingSliderRow(Lang.s(R.string.status_top_padding), "${DuoState.statusTop} dp", DuoState.statusTop.toFloat(),
                         8f..140f, dark) { DuoState.statusTop = it.toInt(); DuoState.save() }
                     SettingSliderRow(Lang.s(R.string.status_scale), "${"%.1f".format(DuoState.statusScale)}×", DuoState.statusScale,
                         0.7f..1.6f, dark) { DuoState.statusScale = it; DuoState.save() }
                     val st = rememberDuoStatus(DuoState.status24h).value
+                    val simInfo = if (st.simLevels.size >= 2)
+                        " · " + Lang.s(R.string.status_dual_sim, st.simLevels[0], st.simLevels[1]) else ""
                     SettingRow(
                         Lang.s(R.string.live_status),
                         "${st.time} · " + when {
                             st.wifi -> Lang.s(R.string.status_wifi, st.level)
                             st.cellular -> Lang.s(R.string.status_cellular, st.level)
                             else -> Lang.s(R.string.status_no_network)
-                        } + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
+                        } + simInfo + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
                         dark
                     )
                 }

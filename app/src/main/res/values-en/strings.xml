@@ -138,8 +138,6 @@
     <string name="status_pos_left">Top left (shifts down when the sidebar is also on the left)</string>
     <string name="status_24h">24-hour clock</string>
     <string name="status_24h_desc">Off uses a 12-hour clock</string>
-    <string name="status_real_signal">Signal dots follow real strength</string>
-    <string name="status_real_signal_desc">Off keeps all 4 dots lit, matching the concept</string>
     <string name="status_top_padding">Top offset</string>
     <string name="status_scale">Status bar size</string>
     <string name="live_status">Live status</string>
@@ -383,4 +381,7 @@
     <string name="batch_remove_ok">Remove</string>
     <string name="auto_add_new_apps">Add new apps to home</string>
     <string name="auto_add_new_apps_desc">When on, newly installed apps are added to the home screen automatically; when off they only appear in the App Library</string>
+    <string name="status_network_label">Network label</string>
+    <string name="status_network_label_desc">Show 5G or LTE under the badge when Wi-Fi is off (display only)</string>
+    <string name="status_dual_sim">Dual SIM %1$d / %2$d bars</string>
 </resources>

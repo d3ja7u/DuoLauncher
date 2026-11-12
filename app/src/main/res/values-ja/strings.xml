@@ -138,8 +138,6 @@
     <string name="status_pos_left">左上（サイドバーが左の場合は自動で下げる）</string>
     <string name="status_24h">24 時間表示</string>
     <string name="status_24h_desc">オフの場合は 12 時間表示</string>
-    <string name="status_real_signal">電波ドットを実際の強度に連動</string>
-    <string name="status_real_signal_desc">オフでは 4 つ常時点灯（コンセプト画像と同じ）</string>
     <string name="status_top_padding">上端からの距離</string>
     <string name="status_scale">ステータスバーのサイズ</string>
     <string name="live_status">現在の状態</string>
@@ -383,4 +381,7 @@
     <string name="batch_remove_ok">削除する</string>
     <string name="auto_add_new_apps">新規アプリをホームに自動追加</string>
     <string name="auto_add_new_apps_desc">オンにすると、インストールした新しいアプリのアイコンをホームに自動追加します。オフの場合は App ライブラリのみに表示されます</string>
+    <string name="status_network_label">通信規格の表示</string>
+    <string name="status_network_label_desc">Wi-Fi 未接続時にバッジ下部へ 5G または LTE を表示します（表示のみ）</string>
+    <string name="status_dual_sim">デュアルSIM %1$d / %2$d 本</string>
 </resources>

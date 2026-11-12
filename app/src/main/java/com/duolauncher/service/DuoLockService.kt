@@ -4,7 +4,9 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.provider.Settings
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 
 /**
  * 纯「锁屏」用途的无障碍服务。
@@ -44,20 +46,43 @@ class DuoLockService : AccessibilityService() {
         /** 服务进程已连上（可直接调用全局操作） */
         fun isRunning(): Boolean = instance != null
 
-        /** 用户在系统设置里已开启本服务（重启进程后 instance 可能暂时为空） */
+        /**
+         * 用户在系统设置里已开启本服务。
+         *
+         * 两路判据取 OR，因为不同 ROM 的实现不一致：
+         *  ① AccessibilityManager 的「已启用服务列表」——系统真正认为生效的那份；
+         *  ② Settings.Secure 的 enabled_accessibility_services 字符串——部分国产 ROM
+         *     不回填 ① 的列表，只能读这个。
+         * 只靠 ② 时，ROM 把状态存在自有数据库 / 字符串返回 null 就会误报「未开启」，
+         * 用户看到的就是「明明开了，过一会儿又显示没开」。
+         */
         fun isEnabled(ctx: Context): Boolean {
             val expected = ComponentName(ctx.applicationContext, DuoLockService::class.java)
             val flat = expected.flattenToString()
             val short = expected.flattenToShortString()
+            val simple = DuoLockService::class.java.simpleName
+            runCatching {
+                val am = ctx.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+                val list = am.getEnabledAccessibilityServiceList(
+                    AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+                )
+                if (list.any { info ->
+                        info.id == flat || info.id == short ||
+                            info.resolveInfo?.serviceInfo?.let {
+                                it.packageName == ctx.packageName && it.name == DuoLockService::class.java.name
+                            } == true
+                    }) return true
+            }
             val enabled = runCatching {
                 Settings.Secure.getString(
                     ctx.contentResolver,
                     Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
                 )
             }.getOrNull() ?: return false
-            return enabled.split(':').any {
-                it.equals(flat, true) || it.equals(short, true) ||
-                    it.endsWith("/${DuoLockService::class.java.simpleName}")
+            return enabled.split(':', ';').any {
+                val v = it.trim()
+                v.equals(flat, true) || v.equals(short, true) ||
+                    v.endsWith("/$simple") || v.endsWith(".$simple")
             }
         }
 
