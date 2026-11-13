@@ -6,12 +6,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
 import android.os.Build
+import android.app.WallpaperManager
+import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import android.telephony.SignalStrength
+import android.util.Log
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.text.format.DateFormat
@@ -22,9 +30,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -37,6 +51,9 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -46,11 +63,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.duolauncher.data.DuoState
+import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import kotlin.math.cos
 import kotlin.math.min
@@ -70,8 +89,9 @@ import kotlin.math.sin
  * 底部开口 33°~147°：已连 WiFi → 沿 R28.4 圆弧的 4 个等大信号点（126/102/78.5/54.5°）；
  * 未连 WiFi → 居中 4 根蜂窝条 + 下方放大的 5G。
  *
- * 颜色：填充 = 绿(充电) / 红(<20%) / 白(正常)；内容（数字 / 闪电 / WiFi / 信号点 / 5G）
- * 一律白色 —— 红、绿只染电量弧本身，低电量不会让整块徽标发红。
+ * 颜色：填充 = 黄(省电模式) / 绿(充电) / 红(<20%) / 白(正常)；内容（数字 / 闪电 /
+ * WiFi / 信号点 / 制式文字）一律白色 —— 颜色只染电量弧本身。
+ * 连接耳机或个人热点时，中间的 WiFi 双弧分别换成耳机 / 共享链环图标，底部信号点不变。
  * 环 R=30 / 描边 3.6 / 圆头；中心 WiFi 外弧 R21.2（圆心 y=+12.3）/ 内弧 R14.5（圆心 y=+13.9）。
  *
  * 同一套坐标与 duolauncher-preview.html 的 renderSig() 严格对应，保证预览与真机一致。
@@ -88,7 +108,17 @@ data class DuoStatus(
      * 每张「已启用」SIM 卡各自的信号格，按卡槽顺序（卡1、卡2…）。
      * size >= 2 时徽标改用双排信号点；单卡 / 读不到时留空，保持原来的单排样式。
      */
-    val simLevels: List<Int> = emptyList()
+    val simLevels: List<Int> = emptyList(),
+    /** 底部网络制式文字：按真实网络自动识别（2G/3G/LTE/4G/5G/5GA/5GUW） */
+    val netLabel: String = "5G",
+    /** 已连接耳机（有线 / 蓝牙 / USB）：中间的 WiFi 双弧换成耳机图标 */
+    val headphones: Boolean = false,
+    /** 已开启个人热点：中间的 WiFi 双弧换成共享链环图标 */
+    val hotspot: Boolean = false,
+    /** 系统省电模式：电量弧改黄色 */
+    val powerSave: Boolean = false,
+    /** 电量已充满（BATTERY_STATUS_FULL）；充满时充电图标用插头而非闪电 */
+    val full: Boolean = false
 )
 
 /**
@@ -211,6 +241,54 @@ private fun readSimLevels(app: Context): List<Int> {
     }.getOrDefault(emptyList())
 }
 
+/** 是否连着耳机：有线 / 蓝牙 / USB / BLE 耳机都算 */
+private fun readHeadphones(app: Context): Boolean = runCatching {
+    val am = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { d ->
+        when (d.type) {
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+            AudioDeviceInfo.TYPE_BLE_HEADSET -> true
+            else -> false
+        }
+    }
+}.getOrDefault(false)
+
+/**
+ * 个人热点是否开启。系统没有公开 API：优先反射 WifiManager 的隐藏方法，
+ * 隐藏接口被限制时退回「存在一个不带 INTERNET 能力的 WiFi 本地网络」判断。
+ */
+private fun readHotspot(app: Context): Boolean {
+    runCatching {
+        val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val m = WifiManager::class.java.getDeclaredMethod("isWifiApEnabled")
+        m.isAccessible = true
+        (m.invoke(wm) as? Boolean)?.let { return it }
+    }
+    runCatching {
+        val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val m = WifiManager::class.java.getDeclaredMethod("getWifiApState")
+        m.isAccessible = true
+        if ((m.invoke(wm) as? Int) == 13) return true   // WIFI_AP_STATE_ENABLED
+    }
+    return runCatching {
+        val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        cm.allNetworks.any { n ->
+            val c = cm.getNetworkCapabilities(n)
+            c != null && c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                    !c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
+    }.getOrDefault(false)
+}
+
+private fun readPowerSave(app: Context): Boolean = runCatching {
+    (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isPowerSaveMode
+}.getOrDefault(false)
+
 private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
     val app = ctx.applicationContext
     val time = DateFormat
@@ -238,6 +316,7 @@ private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
 
     var battery = 0
     var charging = false
+    var full = false
     runCatching {
         val sticky = app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         if (sticky != null) {
@@ -247,9 +326,14 @@ private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
             val status = sticky.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
             charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                     status == BatteryManager.BATTERY_STATUS_FULL
+            full = status == BatteryManager.BATTERY_STATUS_FULL
         }
     }
-    return DuoStatus(time, wifi, cellular, level, battery, charging, readSimLevels(app))
+    return DuoStatus(
+        time, wifi, cellular, level, battery, charging, readSimLevels(app),
+        com.duolauncher.util.NetworkLabelResolver.label(app, DuoState.status4gLabel),
+        readHeadphones(app), readHotspot(app), readPowerSave(app), full
+    )
 }
 
 /** 每分钟刷新 + 监听时间/网络/电量变化广播 */
@@ -283,6 +367,11 @@ fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
             // 插拔 / 启用停用 SIM、飞行模式切换时立即重算双卡信号，不必等 30 秒轮询
             addAction("android.intent.action.SIM_STATE_CHANGED")
             addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            // 耳机插拔 / 蓝牙耳机 / 个人热点 / 省电模式变化时立即刷新，不必等 30 秒轮询
+            addAction(Intent.ACTION_HEADSET_PLUG)
+            addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED")
+            addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
+            addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         }
         runCatching {
             ContextCompat.registerReceiver(
@@ -306,31 +395,45 @@ fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
 fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
     val status = rememberDuoStatus(DuoState.status24h).value
     val scale = DuoState.statusScale.coerceIn(0.55f, 1.8f)
-    val netLabel = DuoState.statusNetworkLabel
+    val netLabel = status.netLabel
+    // 关掉电量数字后，顶部不再为数字留缺口，圆环连成完整一段
+    val showNum = DuoState.showBatteryNumber
 
     val timeSize = (18 * scale).sp
     val iconSize = (50 * scale).dp
-    // 填充色：绿=充电 / 红=<20% / 白=正常
-    val fillColor = when {
-        status.charging -> Color(0xFF34C759)
-        status.battery < 20 -> Color(0xFFFF3B30)
-        else -> Color.White
-    }
-    // 内容色：固定白色。红/绿只用于电量弧本身 —— 数字、WiFi、信号点、5G 始终白色，
-    // 低电量时只有电量弧变红，避免整块徽标发红看不清。
-    val inkColor = Color.White
-    // 轨道色：素材为浅灰轨道，深色壁纸上用 40% 白更稳
-    val trackColor = Color.White.copy(alpha = 0.40f)
-    val shade = if (dark) Color(0x55000000) else Color(0x77000000)
     val measurer = rememberTextMeasurer()
 
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+    // 只取「时间 + 三合一」正下方那块壁纸区域的明暗，不参考壁纸其他位置。
+    // onGloballyPositioned 拿到的就是这两个元素的外接矩形（徽标在右上角也能正确对应）。
+    var blockBounds by remember { mutableStateOf<Rect?>(null) }
+    val wallpaperDark = rememberWallpaperInk(blockBounds).value
+    // 白图标配黑阴影、黑图标配白阴影，两种底色下轮廓都清楚
+    val shade = if (wallpaperDark) Color(0x55000000)
+    else Color.White.copy(alpha = if (dark) 0.38f else 0.48f)
+
+    // 填充色：黄=省电模式 / 绿=充电 / 红=<20% / 跟随壁纸自适应=正常。省电模式优先，与系统一致
+    val fillColor = when {
+        status.powerSave -> Color(0xFFFFCC00)
+        status.charging -> Color(0xFF34C759)
+        status.battery < 20 -> Color(0xFFFF3B30)
+        else -> if (wallpaperDark) Color.White else Color.Black
+    }
+    // 内容色（数字 / WiFi / 信号点 / 制式文字 / 充电图标）：根据壁纸区域明暗自动白/黑，
+    // 保证在任何壁纸上都看得清；红/绿只用于电量弧本身，不影响内容色。
+    val inkColor = if (wallpaperDark) Color.White else Color.Black
+    // 轨道色：与内容色同色系、40% 透明度，深色/亮色壁纸上都稳
+    val trackColor = inkColor.copy(alpha = 0.40f)
+
+        Column(
+        modifier.then(Modifier.onGloballyPositioned { blockBounds = it.boundsInWindow() }),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Text(
             text = status.time,
             fontSize = timeSize,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp,
-            color = Color.White,
+            color = inkColor,
             style = TextStyle(shadow = Shadow(shade, Offset(0f, 1.8f * scale), 4f * scale))
         )
         Spacer(Modifier.height((6 * scale).dp))
@@ -369,7 +472,8 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
             val half = Math.toDegrees(
                 kotlin.math.asin(((total / 2f + edge) / R).coerceIn(0f, 1f).toDouble())
             ).toFloat()
-            val th = maxOf(30f, half)     // 半角 ≥ 30° → 顶口 ≥ 60°
+            // 隐藏电量数字时不留顶口，两段弧在 270° 处对接，上半圈连成完整一段
+            val th = if (showNum) maxOf(30f, half) else 0f
             val leftEnd = 270f - th       // 240°
             val rightStart = 270f + th    // 300°
             val botStart = 147f           // 底口 33°~147°
@@ -396,18 +500,39 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
                 }
             }
 
-            // ── 5. 数字居中（整体含闪电），充电时右侧紧跟白色闪电 ──
-            val startX = cx - total / 2f
-            drawText(
-                textLayoutResult = num,
-                topLeft = Offset(startX, cy - 19.6f * k - num.firstBaseline)
-            )
-            if (status.charging) {
-                drawBoltGlyph(
-                    bx = startX + numW + boltGap + boltW / 2f,
-                    by = cy - 25.8f * k,
-                    k = k, color = inkColor, shade = shade, off = off
+            // ── 5. 电量数字 + 充电 / 满电图标 ──
+            // 充满（仍连着电）显示插头，未充满的充电显示闪电；「关闭数字」时二者也照常显示。
+            val chargeGlyph = when {
+                status.full -> 2      // 插头
+                status.charging -> 1  // 闪电
+                else -> 0             // 无
+            }
+            if (showNum) {
+                val startX = cx - total / 2f
+                drawText(
+                    textLayoutResult = num,
+                    topLeft = Offset(startX, cy - 19.6f * k - num.firstBaseline)
                 )
+                if (chargeGlyph == 1) {
+                    drawBoltGlyph(
+                        bx = startX + numW + boltGap + boltW / 2f,
+                        by = cy - 25.8f * k,
+                        k = k, color = inkColor, shade = shade, off = off
+                    )
+                } else if (chargeGlyph == 2) {
+                    drawPlugGlyph(
+                        bx = startX + numW + boltGap + boltW / 2f,
+                        by = cy - 25.8f * k,
+                        k = k, color = inkColor, shade = shade, off = off
+                    )
+                }
+            } else {
+                // 关掉数字：顶部圆环连成完整一段，充电 / 满电图标居中显示在环内上部
+                if (chargeGlyph == 1) {
+                    drawBoltGlyph(bx = cx, by = cy - 25.8f * k, k = k, color = inkColor, shade = shade, off = off)
+                } else if (chargeGlyph == 2) {
+                    drawPlugGlyph(bx = cx, by = cy - 25.8f * k, k = k, color = inkColor, shade = shade, off = off)
+                }
             }
 
             // ── 6 / 7. 中心 + 底部 ──
@@ -417,7 +542,23 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
             //   仅蜂窝 → 双排点居中替代原来的 4 根竖条，底部仍是制式文字。
             // 单卡、或读不到 SIM 列表时，一律走原来的画法，外观完全不变。
             val dualSim = status.simLevels.size >= 2
-            if (status.wifi) {
+            // 中间图标优先级：个人热点 > 耳机 > WiFi / 蜂窝。前两者占据 WiFi 双弧的位置，
+            // 替换后底部信号点仍按当前信号格点亮，与参考图一致。
+            val specialGlyph = when {
+                status.hotspot -> 2
+                status.headphones -> 1
+                else -> 0
+            }
+            if (specialGlyph != 0) {
+                if (specialGlyph == 2) drawHotspotGlyph(cx, cy, k, inkColor, shade, off)
+                else drawHeadphonesGlyph(cx, cy, k, inkColor, shade, off)
+                if (dualSim) {
+                    drawDualSimDots(cx, cy, k, inkColor, shade, off, status.simLevels, center = false)
+                } else {
+                    drawSignalDots(cx, cy, k, inkColor, shade, off, status.level)
+                }
+                if (!status.wifi) drawNetLabel(measurer, netLabel, cx, cy, k, inkColor, shade)
+            } else if (status.wifi) {
                 drawWifiGlyph(cx, cy, k, inkColor, shade, off)
                 if (dualSim) {
                     drawDualSimDots(cx, cy, k, inkColor, shade, off, status.simLevels, center = false)
@@ -430,22 +571,60 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
                 } else {
                     drawCellularGlyph(cx, cy, k, inkColor, shade, off, status.level)
                 }
-                val g5Style = TextStyle(
-                    color = inkColor,
-                    // LTE 三个字符比 5G 宽，略收字号，免得顶到两侧电量弧
-                    fontSize = ((if (netLabel.length > 2) 15.5f else 17.5f) * k).toSp(),
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.4).sp,
-                    shadow = Shadow(shade, Offset(0f, 0.8f * k), 1.8f * k)
-                )
-                val g5 = measurer.measure(AnnotatedString(netLabel), g5Style)
-                drawText(
-                    textLayoutResult = g5,
-                    topLeft = Offset(cx - g5.size.width / 2f, cy + 30f * k - g5.firstBaseline)
-                )
+                drawNetLabel(measurer, netLabel, cx, cy, k, inkColor, shade)
             }
         }
     }
+}
+
+/** 底部网络制式文字：5GUW / 5GA 这类长标签按可用宽度自动收字号 */
+private fun DrawScope.drawNetLabel(
+    measurer: androidx.compose.ui.text.TextMeasurer,
+    label: String, cx: Float, cy: Float, k: Float, color: Color, shade: Color
+) {
+    val maxLabelW = 27f * k
+    var style = TextStyle(
+        color = color,
+        fontSize = (17.5f * k).toSp(),
+        fontWeight = FontWeight.Bold,
+        letterSpacing = (-0.4).sp,
+        shadow = Shadow(shade, Offset(0f, 0.8f * k), 1.8f * k)
+    )
+    var layout = measurer.measure(AnnotatedString(label), style)
+    if (layout.size.width > maxLabelW) {
+        val f = 17.5f * maxLabelW / layout.size.width
+        style = style.copy(fontSize = (f * k).toSp())
+        layout = measurer.measure(AnnotatedString(label), style)
+    }
+    drawText(
+        textLayoutResult = layout,
+        topLeft = Offset(cx - layout.size.width / 2f, cy + 30f * k - layout.firstBaseline)
+    )
+}
+
+/** 耳机：头梁弧 + 左右耳罩，取代 WiFi 双弧 */
+private fun DrawScope.drawHeadphonesGlyph(
+    cx: Float, cy: Float, k: Float, color: Color, shade: Color, off: Float
+) {
+    drawArcAt(cx, cy + 9f * k, 12f * k, k, color, shade, off, 205f, 130f)
+    val ew = 7.5f * k
+    val eh = 12f * k
+    val ey = cy + 5f * k
+    val corner = androidx.compose.ui.geometry.CornerRadius(3f * k)
+    listOf(cx - 16f * k, cx + 8.5f * k).forEach { x ->
+        drawRoundRect(shade, topLeft = Offset(x, ey + off), size = Size(ew, eh), cornerRadius = corner)
+        drawRoundRect(color, topLeft = Offset(x, ey), size = Size(ew, eh), cornerRadius = corner)
+    }
+}
+
+/** 个人热点：两枚相扣的圆环（共享 / 链接），取代 WiFi 双弧 */
+private fun DrawScope.drawHotspotGlyph(
+    cx: Float, cy: Float, k: Float, color: Color, shade: Color, off: Float
+) {
+    val r = 7.2f * k
+    val y = cy + 8f * k
+    drawArcAt(cx - 5.2f * k, y, r, k, color, shade, off, 0f, 360f)
+    drawArcAt(cx + 5.2f * k, y, r, k, color, shade, off, 0f, 360f)
 }
 
 /** 圆环单段弧：R=30 / 描边 3.6 / 圆头；起点角 + 扫过角 */
@@ -606,4 +785,180 @@ private fun DrawScope.drawBoltGlyph(
     }
     withTransform({ translate(0f, off) }) { drawPath(p, shade) }
     drawPath(p, color)
+}
+
+/**
+ * 充满电插头：两枚插脚 + 壳体 + 底部电源线，尺寸与闪电相仿（约 7×14），居中绘制于 [bx]/[by]。
+ * 充电未充满用闪电，充满（仍连着电）改用此插头，一眼区分「正在充」和「已充满」。
+ */
+private fun DrawScope.drawPlugGlyph(
+    bx: Float, by: Float, k: Float, color: Color, shade: Color, off: Float
+) {
+    fun ux(v: Float) = bx + v * k
+    fun uy(v: Float) = by + v * k
+    val cr = androidx.compose.ui.geometry.CornerRadius(0.5f * k)
+    // 两枚插脚（顶部）
+    val prongW = 1.3f * k
+    val prongH = 3.0f * k
+    listOf(-1.7f, 0.4f).forEach { px ->
+        val x = ux(px) - prongW / 2f
+        val y = uy(-7.0f)
+        drawRoundRect(shade, topLeft = Offset(x, y + off), size = Size(prongW, prongH), cornerRadius = cr)
+        drawRoundRect(color, topLeft = Offset(x, y), size = Size(prongW, prongH), cornerRadius = cr)
+    }
+    // 壳体（中部圆角方块）
+    val bodyW = 7.2f * k
+    val bodyH = 7.6f * k
+    val bodyR = androidx.compose.ui.geometry.CornerRadius(2.2f * k)
+    val b0x = ux(0f) - bodyW / 2f
+    val b0y = uy(-3.8f)
+    drawRoundRect(shade, topLeft = Offset(b0x, b0y + off), size = Size(bodyW, bodyH), cornerRadius = bodyR)
+    drawRoundRect(color, topLeft = Offset(b0x, b0y), size = Size(bodyW, bodyH), cornerRadius = bodyR)
+    // 底部电源线（短圆角条）
+    val cordW = 2.0f * k
+    val cordH = 2.2f * k
+    val cordR = androidx.compose.ui.geometry.CornerRadius(1f * k)
+    val c0x = ux(0f) - cordW / 2f
+    val c0y = uy(4.0f)
+    drawRoundRect(shade, topLeft = Offset(c0x, c0y + off), size = Size(cordW, cordH), cornerRadius = cordR)
+    drawRoundRect(color, topLeft = Offset(c0x, c0y), size = Size(cordW, cordH), cornerRadius = cordR)
+}
+
+private const val TAG_INK = "DuoInk"
+
+/**
+ * 只求「时间 + 三合一」正下方那一小块壁纸的平均灰度，壁纸其他区域一律不参与判断。
+ * bounds 为 null（首帧尚未布局）时返回 -1，宁可这一轮不采样、等布局完成再算，
+ * 也不拿「顶部居中」之类猜出来的区域凑数 —— 徽标在右上角，猜会完全错位。
+ */
+private fun regionLuma(bmp: Bitmap, bounds: Rect?, sw: Int, sh: Int): Float {
+    if (bounds == null || bounds.width <= 0f || bounds.height <= 0f) return -1f
+    val bw = bmp.width
+    val bh = bmp.height
+    // 四周各内缩 8%，进一步排除徽标边框外的背景
+    val ix = bounds.width * 0.08f
+    val iy = bounds.height * 0.08f
+    val x0 = ((bounds.left + ix) / sw * bw).toInt().coerceIn(0, bw - 1)
+    val x1 = ((bounds.right - ix) / sw * bw).toInt().coerceIn(x0 + 1, bw)
+    val y0 = ((bounds.top + iy) / sh * bh).toInt().coerceIn(0, bh - 1)
+    val y1 = ((bounds.bottom - iy) / sh * bh).toInt().coerceIn(y0 + 1, bh)
+    var sum = 0L
+    var n = 0
+    for (y in y0 until y1) {
+        for (x in x0 until x1) {
+            val px = bmp.getPixel(x, y)
+            val r = (px shr 16) and 0xFF
+            val g = (px shr 8) and 0xFF
+            val b = px and 0xFF
+            sum += (0.299 * r + 0.587 * g + 0.114 * b).toLong()
+            n++
+        }
+    }
+    return if (n == 0) -1f else sum.toFloat() / n
+}
+
+/**
+ * 取色数据源优先级：
+ * ① 本应用自动切换的壁纸：直接对「当前这张」按屏幕比例 cover 出缩略图采样。
+ *    原实现只走 WallpaperManager.getDrawable()，在部分 ROM 上会因权限 / 内部缓存
+ *    返回 null 或旧图，导致换壁纸后图标颜色永远不变 —— 现在这条路径与系统服务解耦。
+ * ② 用户从图库手动设置的静态壁纸：系统壁纸 drawable。
+ * ③ 动态壁纸等读不到位图的场合：系统算好的 WallpaperColors 提示。
+ */
+private fun computeRegionLuma(ctx: Context, bounds: Rect?): Float? {
+    if (bounds == null) return null
+    val dm = ctx.resources.displayMetrics
+    val sw = dm.widthPixels.coerceAtLeast(1)
+    val sh = dm.heightPixels.coerceAtLeast(1)
+    val bw = 256
+    val bh = (bw.toLong() * sh / sw).toInt().coerceAtLeast(1)
+
+    // ① 本应用设置的壁纸：精确、与系统壁纸服务的缓存 / ROM 权限无关
+    val own = if (DuoState.wallpaperOwned) runCatching {
+        val t = WallpaperRotator.currentThumbnail(ctx, bw, bh) ?: return@runCatching null
+        val v = regionLuma(t, bounds, sw, sh)
+        t.recycle()
+        if (v < 0f) null else v
+    }.getOrNull() else null
+
+    // ② 系统壁纸 drawable：用于识别「用户从图库换了壁纸」并取那块区域的真实明暗
+    val sys = runCatching {
+        val wm = WallpaperManager.getInstance(ctx.applicationContext)
+        val d = wm.getDrawable() ?: wm.peekDrawable() ?: return@runCatching null
+        val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+        d.setBounds(0, 0, bw, bh)
+        d.draw(android.graphics.Canvas(bmp))
+        val v = regionLuma(bmp, bounds, sw, sh)
+        bmp.recycle()
+        if (v < 0f) null else v
+    }.getOrElse {
+        // 部分 ROM 读系统壁纸位图要求运行时存储权限，取不到属正常；
+        // 此时以自有图片采样为准，不为此申请额外权限。
+        Log.d(TAG_INK, "system sample unavailable: ${it.message}")
+        null
+    }
+
+    // 两者明显不同 → 用户在别处换了壁纸，改采系统壁纸；刚由本应用 setBitmap 后的
+    // 3 秒内不这么判，避免读到系统服务尚未刷新的旧缓存。
+    // 全程只用「徽标底下」这一块区域，不看壁纸其他位置、也不做整屏亮度兜底。
+    val external = own != null && sys != null &&
+        kotlin.math.abs(own - sys) > 45f &&
+        (WallpaperRotator.lastSetAt == 0L ||
+            System.currentTimeMillis() - WallpaperRotator.lastSetAt > 3000L)
+    val picked = when {
+        external -> sys
+        own != null -> own
+        sys != null -> sys
+        else -> null
+    }
+    Log.d(TAG_INK, "own=$own sys=$sys external=$external rect=$bounds")
+    return picked
+}
+
+/**
+ * 跟随「徽标底下」区域明暗自动选图标颜色（白 / 黑），true = 偏暗 → 用白色。
+ * 重算时机：① 首帧拿到真实 bounds；② 自动换壁纸（wallpaperVersion 递增）；
+ * ③ 回到桌面 ON_RESUME；④ 系统壁纸颜色变化（含用户从图库手动换壁纸）。
+ */
+@Composable
+private fun rememberWallpaperInk(bounds: Rect?): State<Boolean> {
+    val ctx = LocalContext.current
+    val ink = remember { mutableStateOf(true) }   // 默认偏暗 → 白图标，与旧版外观一致
+    val scope = rememberCoroutineScope()
+    // 一次换壁纸会连发多次重算（wallpaperVersion 变化 / OnColorsChanged / ON_RESUME），
+    // 每次都要解码一遍图片并建两张位图。合并成最后一次，降低连续切壁纸时的内存峰值。
+    var pending by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    fun recompute() {
+        pending?.cancel()
+        pending = scope.launch(Dispatchers.IO) {
+            delay(140)
+            val luma = computeRegionLuma(ctx, bounds) ?: return@launch
+            // 滞回区间避免临界灰度反复跳色：<135 判暗、>165 判亮，中间保持现状
+            val next = when {
+                luma < 135f -> true
+                luma > 165f -> false
+                else -> ink.value
+            }
+            Log.d(TAG_INK, "luma=$luma ink ${ink.value} -> $next")
+            withContext(Dispatchers.Main) { ink.value = next }
+        }
+    }
+    LaunchedEffect(bounds, DuoState.wallpaperVersion) { recompute() }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(ctx, bounds, lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) recompute()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        val wm = WallpaperManager.getInstance(ctx.applicationContext)
+        val listener = WallpaperManager.OnColorsChangedListener { _, _ -> recompute() }
+        if (Build.VERSION.SDK_INT >= 24) {
+            wm.addOnColorsChangedListener(listener, Handler(Looper.getMainLooper()))
+        }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (Build.VERSION.SDK_INT >= 24) wm.removeOnColorsChangedListener(listener)
+        }
+    }
+    return ink
 }

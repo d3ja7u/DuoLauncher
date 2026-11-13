@@ -3,6 +3,8 @@ package com.duolauncher.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
+import android.provider.Settings
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -49,6 +51,7 @@ import com.duolauncher.util.InstallStats
 import com.duolauncher.util.ScreenOff
 import com.duolauncher.util.SearchEngines
 import com.duolauncher.util.UpdateChecker
+import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -86,6 +89,13 @@ private fun languageLabelRes(tag: String): Int = when (tag) {
     else -> R.string.language_system
 }
 
+/** 壁纸切换间隔的显示文案 */
+private fun wpIntervalLabel(min: Int): String = when {
+    min >= 1440 -> Lang.s(R.string.wp_every_day)
+    min >= 60 -> Lang.s(R.string.wp_every_hours, min / 60)
+    else -> Lang.s(R.string.wp_every_minutes, min)
+}
+
 /** LocalContext 可能包了几层 ContextWrapper，逐层找到 Activity 才能 recreate() */
 private fun Context.asActivity(): Activity? {
     var c: Context? = this
@@ -96,11 +106,50 @@ private fun Context.asActivity(): Activity? {
     return null
 }
 
+/** 状态徽标读取蜂窝信号 / 逐张 SIM 信号所需的运行时权限 */
+private fun phonePermissionGranted(ctx: Context): Boolean =
+    androidx.core.content.ContextCompat.checkSelfPermission(
+        ctx, android.Manifest.permission.READ_PHONE_STATE
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+/** 跳到系统的应用权限页；少数 ROM 没有该页时回退到应用详情页 */
+private fun openPhonePermissionSettings(ctx: Context) {
+    val pkg = Uri.parse("package:" + ctx.packageName)
+    val permissionPage = Intent("android.settings.APP_PERMISSION_SETTINGS")
+        .setData(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val detailsPage = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+        .setData(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching {
+        if (permissionPage.resolveActivity(ctx.packageManager) != null) ctx.startActivity(permissionPage)
+        else ctx.startActivity(detailsPage)
+    }.onFailure { runCatching { ctx.startActivity(detailsPage) } }
+}
+
 @Composable
 private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (String) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val ver = remember { UpdateChecker.currentVersion(ctx) }
+
+    // 电话权限状态：从系统权限页返回时的刷新挂在下面已有的 onResume 观察者上
+    var phoneGranted by remember { mutableStateOf(phonePermissionGranted(ctx)) }
+
+    // 壁纸自动切换：图片导入后复制到私有目录，这里只记录数量用于设置页回显
+    var wpCount by remember { mutableStateOf(WallpaperRotator.count(ctx)) }
+    var showWpInterval by remember { mutableStateOf(false) }
+    // 系统相册选择器（Android 13+ 原生照片选择器，旧版自动回退文件选择器），可多选
+    val pickWallpapers = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val n = WallpaperRotator.importUris(ctx, uris)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                wpCount = WallpaperRotator.count(ctx)
+                nav.toast(Lang.s(R.string.wp_toast_added, n))
+            }
+        }
+    }
 
     var pickIconPack by remember { mutableStateOf(false) }
     var editUpdateUrl by remember { mutableStateOf(false) }
@@ -240,6 +289,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                phoneGranted = phonePermissionGranted(ctx)
                 accReady = ScreenOff.isEnabled(ctx)
                 badgeAccess = DuoNotificationListener.hasAccess(ctx)
                 // 从「安装未知来源应用」设置页返回：授权通过就接着下载
@@ -458,15 +508,15 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     SettingToggle(Lang.s(R.string.status_24h), Lang.s(R.string.status_24h_desc), DuoState.status24h, dark) {
                         DuoState.status24h = it; DuoState.save()
                     }
-                    // 未连 WiFi 时徽标底部的制式文字：只影响显示，不读取真实注册网络
+                    // 其余制式按真实网络自动显示；这一项只决定 4G 时写 LTE 还是 4G
                     SettingRow(
                         Lang.s(R.string.status_network_label),
                         Lang.s(R.string.status_network_label_desc),
                         dark,
                         trailing = {
                             Row {
-                                listOf("5G", "LTE").forEach { v ->
-                                    val on = DuoState.statusNetworkLabel == v
+                                listOf("LTE", "4G").forEach { v ->
+                                    val on = DuoState.status4gLabel == v
                                     Text(
                                         v,
                                         fontSize = 13.sp,
@@ -474,27 +524,58 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(10.dp))
                                             .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
-                                            .clickable { DuoState.statusNetworkLabel = v; DuoState.save() }
+                                            .clickable { DuoState.status4gLabel = v; DuoState.save() }
                                             .padding(horizontal = 14.dp, vertical = 6.dp)
                                     )
                                     Spacer(Modifier.width(6.dp))
                                 }
                             }
                         })
+                    SettingToggle(
+                        Lang.s(R.string.status_battery_number),
+                        Lang.s(R.string.status_battery_number_desc),
+                        DuoState.showBatteryNumber, dark
+                    ) { DuoState.showBatteryNumber = it; DuoState.save() }
                     SettingSliderRow(Lang.s(R.string.status_top_padding), "${DuoState.statusTop} dp", DuoState.statusTop.toFloat(),
                         8f..140f, dark) { DuoState.statusTop = it.toInt(); DuoState.save() }
                     SettingSliderRow(Lang.s(R.string.status_scale), "${"%.1f".format(DuoState.statusScale)}×", DuoState.statusScale,
                         0.7f..1.6f, dark) { DuoState.statusScale = it; DuoState.save() }
+                    // 双卡信号依赖「电话」权限。首次启动拒绝过授权的用户，在这里可以重新开启。
+                    val openPhonePerm = { openPhonePermissionSettings(ctx) }
+                    SettingRow(
+                        Lang.s(R.string.status_phone_permission),
+                        Lang.s(R.string.status_phone_permission_desc),
+                        dark,
+                        trailing = {
+                            Text(
+                                if (phoneGranted) Lang.s(R.string.status_phone_granted)
+                                else Lang.s(R.string.status_phone_open),
+                                fontSize = 13.sp,
+                                color = if (phoneGranted) glassTextColor(dark) else Color.White,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (phoneGranted) glassTextColor(dark).copy(alpha = 0.10f)
+                                        else glassBlue
+                                    )
+                                    .clickable(enabled = !phoneGranted) { openPhonePerm() }
+                                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        },
+                        onClick = if (phoneGranted) null else openPhonePerm
+                    )
                     val st = rememberDuoStatus(DuoState.status24h).value
                     val simInfo = if (st.simLevels.size >= 2)
                         " · " + Lang.s(R.string.status_dual_sim, st.simLevels[0], st.simLevels[1]) else ""
+                    // 非 WiFi 时把自动识别出的制式也显示出来，方便核对 5GA / 5GUW 等
+                    val netInfo = if (st.wifi) "" else " · " + st.netLabel
                     SettingRow(
                         Lang.s(R.string.live_status),
                         "${st.time} · " + when {
                             st.wifi -> Lang.s(R.string.status_wifi, st.level)
                             st.cellular -> Lang.s(R.string.status_cellular, st.level)
                             else -> Lang.s(R.string.status_no_network)
-                        } + simInfo + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
+                        } + simInfo + netInfo + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
                         dark
                     )
                 }
@@ -567,6 +648,74 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     SettingToggle(Lang.s(R.string.dark_glass), Lang.s(R.string.dark_glass_desc), DuoState.darkGlass, dark) {
                         DuoState.darkGlass = it; DuoState.save()
                     }
+                }
+            }
+        }
+        item {
+            SectionTitle(Lang.s(R.string.sec_wallpaper_rotate), dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    SettingToggle(
+                        Lang.s(R.string.wp_rotate), Lang.s(R.string.wp_rotate_desc),
+                        DuoState.wallpaperRotate, dark
+                    ) {
+                        DuoState.wallpaperRotate = it; DuoState.save()
+                        // 开启且已有图片时立刻换一张，让效果马上可见，并从现在开始计时
+                        if (it && wpCount > 0) {
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) { WallpaperRotator.rotateNow(ctx) }
+                        }
+                    }
+                    SettingToggle(
+                        Lang.s(R.string.wp_swipe), Lang.s(R.string.wp_swipe_desc),
+                        DuoState.wallpaperSwipe, dark
+                    ) {
+                        DuoState.wallpaperSwipe = it; DuoState.save()
+                    }
+                    SettingRow(
+                        Lang.s(R.string.wp_pick),
+                        Lang.s(R.string.wp_pick_desc, wpCount),
+                        dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                        onClick = {
+                            runCatching {
+                                pickWallpapers.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            }
+                        }
+                    )
+                    SettingRow(
+                        Lang.s(R.string.wp_interval),
+                        wpIntervalLabel(DuoState.wallpaperIntervalMin),
+                        dark,
+                        onClick = { showWpInterval = true }
+                    )
+                    SettingToggle(
+                        Lang.s(R.string.wp_random), Lang.s(R.string.wp_random_desc),
+                        DuoState.wallpaperRandom, dark
+                    ) { DuoState.wallpaperRandom = it; DuoState.save() }
+                    SettingRow(
+                        Lang.s(R.string.wp_now), Lang.s(R.string.wp_now_desc), dark,
+                        onClick = {
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val ok = WallpaperRotator.rotateNow(ctx)
+                                if (!ok) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    nav.toast(Lang.s(R.string.wp_toast_fail))
+                                }
+                            }
+                        }
+                    )
+                    SettingRow(
+                        Lang.s(R.string.wp_clear), Lang.s(R.string.wp_clear_desc), dark,
+                        onClick = {
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                WallpaperRotator.clear(ctx)
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { wpCount = 0 }
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -811,6 +960,37 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     )
                     if (tag == langChoice) {
                         Icon(Icons.Filled.Check, null, tint = glassBlue, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+        }
+    }
+
+    if (showWpInterval) {
+        Dialog(onDismissRequest = { showWpInterval = false }) {
+            GlassCard(Modifier.fillMaxWidth(), radius = 26.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(18.dp)) {
+                    Text(Lang.s(R.string.wp_interval), fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold, color = glassTextColor(dark))
+                    Spacer(Modifier.height(12.dp))
+                    listOf(15, 30, 60, 180, 360, 1440).forEach { min ->
+                        val on = DuoState.wallpaperIntervalMin == min
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (on) glassBlue.copy(alpha = 0.18f) else Color.Transparent)
+                                .clickable {
+                                    DuoState.wallpaperIntervalMin = min
+                                    DuoState.save()
+                                    showWpInterval = false
+                                }
+                                .padding(horizontal = 10.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(wpIntervalLabel(min), fontSize = 15.sp,
+                                color = glassTextColor(dark), modifier = Modifier.weight(1f))
+                            if (on) Icon(Icons.Filled.Check, null, tint = glassBlue, modifier = Modifier.size(20.dp))
+                        }
                     }
                 }
             }

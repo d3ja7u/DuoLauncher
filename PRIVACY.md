@@ -19,6 +19,8 @@ This is a personal open-source project. Source and issue tracker: https://github
 
 应用在设备本地保存一个配置文件（JSON）与一个语言偏好项，内容包括：桌面图标布局与顺序、侧边栏内容与显隐、分类与隐藏应用列表、壁纸与界面外观设置、手势开关、通知角标设置、界面语言、搜索设置、更新源地址、上次检查更新的时间与上次看到的版本号，以及统计开关与上报地址。这些数据仅用于还原你自己的桌面配置，**不会离开设备**，卸载应用即全部删除；也可在系统「设置 → 应用 → DuoLauncher → 清除数据」中清除。
 
+**壁纸图片**：设置 → 壁纸自动切换中从相册选中的图片，会复制到应用私有目录 `files/wp_rotate/`，仅用于在本机设为系统主屏壁纸。不会上传、不写入公共目录、不需要外部存储权限；「清空已选图片」或清除应用数据即全部删除。
+
 **匿名 ID 单独存放**：统计用的随机 UUID 保存在一个独立的偏好文件里，**不写入配置备份**，因此导出/导入备份不会把匿名 ID 带给别人或被别人的 ID 覆盖。卸载、清除数据、或在设置里关闭统计都会立即删除它。
 
 **设置备份**：设置 → 备份与恢复 → 导出设置，会把配置写成 JSON 文件，保存位置完全由你在系统文件选择器里决定。应用不会自动上传，也不会访问该位置以外的文件；导入时只读取你主动选中的那一份文件并整体覆盖当前配置。文件里除配置外还记录导出时间与应用版本号，不含匿名 ID、通知角标已读状态、壁纸图片、应用数据、通讯录或账号信息。此功能不需要存储权限（使用系统文件选择器 SAF）。
@@ -55,6 +57,7 @@ This is a personal open-source project. Source and issue tracker: https://github
 | 通知使用权（`BIND_NOTIFICATION_LISTENER_SERVICE`） | 统计未读通知数量以显示角标 | 可选，仅本机处理，不读取通知正文上传 |
 | 无障碍服务（`BIND_ACCESSIBILITY_SERVICE`） | 仅用于「双击桌面息屏」，调用系统锁屏全局操作 | 可选；`canRetrieveWindowContent=false`，不读取屏幕内容、不监听输入、不自主执行动作 |
 | `EXPAND_STATUS_BAR` | 下滑手势展开通知栏 / 控制中心 | 可选，未授权时有降级处理 |
+| `SET_WALLPAPER` | 设置系统主屏壁纸（壁纸自动切换 / 上滑切换） | 可选；所选图片只保存在应用私有目录，不上传 |
 | `CAMERA` / `FLASHLIGHT` | 可选的手电筒快捷动作 | 可选，不会拍照或录像 |
 | `ACCESS_WIFI_STATE` / `ACCESS_NETWORK_STATE` | 在自定义状态栏绘制 Wi-Fi 与信号指示 | 仅本机读取系统状态 |
 | `INTERNET` | 上述检查更新、在线安装与可选的匿名统计 | 可选；关闭更新检查与匿名统计后不产生业务请求 |
@@ -94,6 +97,8 @@ This is a personal open-source project. Source and issue tracker: https://github
 
 The app keeps one local JSON configuration file and one language preference, containing home screen layout and icon order, dock contents, categories and hidden apps, wallpaper and appearance settings, gesture toggles, badge settings, UI language, search settings, the update source URL, the last update-check timestamp, the last version seen, and the statistics toggle/endpoint. This exists only to restore your own setup, **never leaves the device**, and is removed on uninstall. You can clear it via Android Settings → Apps → DuoLauncher → Clear data.
 
+**Wallpaper images**: pictures you pick in Settings → Wallpaper rotation are copied into the app's private directory (`files/wp_rotate/`) and used only to set the home screen wallpaper on this device. They are never uploaded, never written to shared storage, and no external-storage permission is needed. "Clear selected images" or clearing app data removes them all.
+
 **The anonymous ID is stored separately**, in its own preference file, and is **excluded from settings backups** — exporting or importing a backup never transfers an ID. Uninstalling, clearing data, or disabling statistics deletes it immediately.
 
 **Settings backup**: Settings → Backup and restore → Export settings writes the configuration to a JSON file at a location you choose with the system file picker. Nothing is uploaded; importing reads only the file you explicitly pick. Apart from the settings, the file holds the export time and app version — no anonymous ID, badge read state, wallpaper image, app data, contacts or account information. No storage permission is needed (Storage Access Framework).
@@ -130,6 +135,7 @@ The app makes only two kinds of network requests, both of which you can disable.
 | Notification Access (`BIND_NOTIFICATION_LISTENER_SERVICE`) | Count unread notifications for badges | Optional; on device only, no content uploaded |
 | Accessibility Service (`BIND_ACCESSIBILITY_SERVICE`) | Double-tap to sleep via the system lock-screen action | Optional; `canRetrieveWindowContent=false`, cannot read screen content or input |
 | `EXPAND_STATUS_BAR` | Down-swipe to open the notification shade / quick settings | Optional, with a graceful fallback |
+| `SET_WALLPAPER` | Set the home screen wallpaper (auto-rotate / swipe-up) | Optional; selected images stay in the app's private storage, never uploaded |
 | `CAMERA` / `FLASHLIGHT` | Optional flashlight toggle | Optional; never takes photos or video |
 | `ACCESS_WIFI_STATE` / `ACCESS_NETWORK_STATE` | Draw Wi-Fi and signal indicators in the custom status bar | On-device system state only |
 | `INTERNET` | Update check, in-app install and optional anonymous statistics | Optional; no business requests when both are disabled |
@@ -169,6 +175,8 @@ Any future feature that changes the above will be reflected here first and noted
 
 設定は端末内の JSON ファイル 1 つと言語設定 1 項に保存されます。ホーム画面のレイアウトと並び順、サイドドック、カテゴリと非表示アプリ、壁紙・外観設定、ジェスチャー、バッジ設定、表示言語、検索設定、更新元 URL、最終確認日時、最後に確認したバージョン、統計のオン・オフと送信先です。自分の設定を復元するためだけに使われ、**端末外に送信されません**。アンインストールで削除され、Android の設定 → アプリ → DuoLauncher → データを消去 からも消せます。
 
+**壁紙画像**：設定 → 壁紙自動切替で選んだ画像はアプリの私有ディレクトリ（`files/wp_rotate/`）にコピーされ、この端末のホーム壁紙を設定するためだけに使います。外部送信せず、共有ストレージにも書き込まず、ストレージ権限も不要です。「選択画像をクリア」またはデータ消去で全て削除されます。
+
 **匿名 ID は別ファイルに保存**され、**設定バックアップには含まれません**。バックアップの書き出し・読み込みで ID が移ったり上書きされたりしません。アンインストール、データ消去、統計のオフでただちに削除されます。
 
 **設定のバックアップ**：設定 → バックアップと復元 → 設定を書き出す と、システムのファイル選択画面で指定した場所へ JSON を保存します。自動アップロードはなく、読み込みも利用者が選んだ 1 ファイルだけです。設定以外には書き出し日時とアプリバージョンのみで、匿名 ID・通知バッジの既読状態・壁紙画像・アプリデータ・連絡先・アカウント情報は含まれません。ストレージ権限は不要です（SAF を利用）。
@@ -205,6 +213,7 @@ Any future feature that changes the above will be reflected here first and noted
 | 通知アクセス（`BIND_NOTIFICATION_LISTENER_SERVICE`） | 未読数をバッジに表示 | 任意。端末内処理のみ、本文の送信なし |
 | アクセシビリティサービス（`BIND_ACCESSIBILITY_SERVICE`） | ダブルタップでスリープ（システムのロック操作を呼ぶだけ） | 任意。`canRetrieveWindowContent=false` で画面内容・入力を読み取らない |
 | `EXPAND_STATUS_BAR` | 下スワイプで通知欄／クイック設定 | 任意。未許可時は代替動作 |
+| `SET_WALLPAPER` | ホーム画面の壁紙を設定（自動切替・上スワイプ） | 任意。選んだ画像はアプリの私有領域にのみ保存し、外部送信しない |
 | `CAMERA` / `FLASHLIGHT` | 任意の懐中電灯アクション | 任意。撮影・録画はしない |
 | `ACCESS_WIFI_STATE` / `ACCESS_NETWORK_STATE` | 独自ステータスバーの Wi-Fi・電波表示 | 端末内のシステム状態のみ |
 | `INTERNET` | 更新確認・アプリ内インストール・任意の匿名統計 | 任意。両方オフなら業務通信なし |

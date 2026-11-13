@@ -14,9 +14,11 @@
     <uses-permission android:name="android.permission.BIND_APPWIDGET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <!-- 状态徽标里的蜂窝信号格：读取真实信号强度（首次启动会弹一次系统授权框，
-         拒绝也不影响任何功能，只是信号条回退为满格） -->
+    <!-- 状态徽标里的蜂窝信号格 / 双卡双排：读取真实信号强度（首次启动弹一次授权框；
+         拒绝后可在「设置 → iOS 风格状态栏 → 电话权限」重新开启，未授权时回退为单卡满格） -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- 壁纸自动切换：设置系统主屏壁纸（安装即授予的普通权限，图片来自用户本机选择） -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <!-- 展开通知栏 / 快捷开关（下滑手势）。多数 ROM 上是 normal 权限，安装即授予 -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 

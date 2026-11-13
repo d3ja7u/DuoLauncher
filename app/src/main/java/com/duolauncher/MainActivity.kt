@@ -40,6 +40,8 @@ import com.duolauncher.ui.*
 import kotlinx.coroutines.delay
 import com.duolauncher.util.InstallStats
 import com.duolauncher.util.Lang
+import com.duolauncher.util.NetworkLabelResolver
+import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -92,12 +94,12 @@ class MainActivity : ComponentActivity() {
 
         setContent { DuoRoot() }
 
-        // 状态徽标的蜂窝信号格需要 READ_PHONE_STATE：只在第一次启动问一次，
-        // 拒绝后写标记，永远不再打扰（功能自动回退成满格）
+        // 状态徽标的蜂窝信号格 / 双卡双排需要 READ_PHONE_STATE：只在第一次启动问一次，
+        // 拒绝后写标记不再打扰（回退成单卡满格）；用户可在「设置 → iOS 风格状态栏 → 电话权限」重新开启
         maybeAskPhonePermission()
     }
 
-    /** 首次启动申请一次「电话状态」权限，用于显示真实蜂窝信号格 */
+    /** 首次启动申请一次「电话状态」权限，用于显示真实蜂窝信号格与双卡双排；拒绝后可在设置页重新开启 */
     private fun maybeAskPhonePermission() {
         if (Build.VERSION.SDK_INT < 28) return
         val granted = ContextCompat.checkSelfPermission(
@@ -113,6 +115,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         reloadApps()
+        // 5GA / 5GUW 需要 telephony 显示信息回调；权限可能在设置页补授，故每次回桌面都试注册
+        NetworkLabelResolver.attach(this)
+        // 壁纸自动切换：只在回到桌面时按间隔判断，解码与设壁纸放 IO 线程。
+        // 裁切算法升级后先自动重绘当前这张，让修复立即可见（不推进轮播序号）。
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            WallpaperRotator.reapplyIfNeeded(applicationContext)
+            WallpaperRotator.rotateIfDue(applicationContext)
+        }
         // 从系统「通知使用权」授权页返回、或监听服务被回收后回到桌面，都重新对齐一次角标
         runCatching { com.duolauncher.service.DuoNotificationListener.ensureBound(this) }
         // 匿名统计：只有已确认告知且开关打开才会联网，内部有 24 小时心跳节流

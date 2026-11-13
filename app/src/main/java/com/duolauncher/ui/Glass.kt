@@ -36,11 +36,15 @@ import kotlin.math.roundToInt
 @Composable
 fun rememberWallpaperBitmap(): Bitmap? {
     val ctx = LocalContext.current
-    return remember(ctx) {
+    // 壁纸自动切换后 version 递增，强制重新取一次系统壁纸，避免毛玻璃底图还是旧图
+    val version = DuoState.wallpaperVersion
+    return remember(ctx, version) {
         runCatching {
             val d = WallpaperManager.getInstance(ctx).drawable ?: return@runCatching null
-            val w = (d.intrinsicWidth.takeIf { it > 0 } ?: 720).coerceAtMost(720)
-            val h = (d.intrinsicHeight.takeIf { it > 0 } ?: 1440).coerceAtMost(1440)
+            // 毛玻璃底图最终只缩到 140px 宽显示，720x1440(约 4MB) 纯属浪费；
+            // 每次换壁纸都会重建一张，降到 360x720 后常驻内存减少约 3/4。
+            val w = (d.intrinsicWidth.takeIf { it > 0 } ?: 360).coerceAtMost(360)
+            val h = (d.intrinsicHeight.takeIf { it > 0 } ?: 720).coerceAtMost(720)
             val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val c = Canvas(b)
             d.setBounds(0, 0, w, h)

@@ -60,10 +60,12 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.duolauncher.R
 import com.duolauncher.util.Lang
 import com.duolauncher.util.SystemPanel
+import com.duolauncher.util.WallpaperRotator
 import kotlin.math.roundToInt
 import com.duolauncher.data.AppInfo
 import com.duolauncher.data.AppRepository
@@ -89,6 +91,7 @@ fun HomePage(
     allowSwipeRight: Boolean = false
 ) {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var editMode by remember { mutableStateOf(false) }
     var sidebarMenu by remember { mutableStateOf<SidebarItem?>(null) }
     var showHomeMenu by remember { mutableStateOf(false) }
@@ -183,38 +186,70 @@ fun HomePage(
                     }
                 )
             }
-            // 下滑呼出系统面板（iOS 那套分区）：左半屏 → 通知栏，右半屏 → 控制中心。
-            // 竖直手势和左右翻页互不干扰；图标长按拖拽会先消费事件，这里自然让位。
-            .pointerInput(DuoState.gesturePanels) {
-                if (!DuoState.gesturePanels) return@pointerInput
-                val threshold = 96.dp.toPx()
+            // 竖直手势统一由一个检测器处理：下滑呼出系统面板（左半屏通知栏 / 右半屏控制中心），
+            // 上滑切换壁纸。绝不能挂两个 detectVerticalDragGestures —— 它们会争抢同一批触摸
+            // 事件，后挂的先拿到 down/slop，把下滑那个饿死（187 实测「左右下滑都失效」）。
+            // 单个检测器按累计位移的正负分流，方向反转即清零，互不干扰。
+            .pointerInput(DuoState.gesturePanels, DuoState.wallpaperSwipe) {
+                val downEnabled = DuoState.gesturePanels
+                val upEnabled = DuoState.wallpaperSwipe
+                if (!downEnabled && !upEnabled) return@pointerInput
+                // 96dp 在本机约 264px，几乎要划过大半屏；手指稍有回弹就功亏一篑，
+                // 是「有时候上滑没反应」的主因之一。改取 72dp 与屏高 9% 的较小值。
+                val threshold = minOf(72.dp.toPx(), size.height * 0.09f)
                 var acc = 0f
                 var startX = 0f
+                var upFired = false
+                fun switchWallpaper() {
+                    if (WallpaperRotator.count(ctx) == 0) return
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val ok = WallpaperRotator.rotateNow(ctx)
+                        if (!ok) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            nav.toast(Lang.s(R.string.wp_toast_fail))
+                        }
+                    }
+                }
                 detectVerticalDragGestures(
-                    onDragStart = { offset -> acc = 0f; startX = offset.x },
-                    onDragCancel = { acc = 0f },
+                    onDragStart = { offset -> acc = 0f; startX = offset.x; upFired = false },
+                    onDragCancel = {
+                        // 手势被翻页 / 其它检测器取消时若已达阈值，仍补一次，避免偶发丢失
+                        if (!upFired && upEnabled && acc <= -threshold) switchWallpaper()
+                        acc = 0f
+                    },
                     onDragEnd = {
                         val travelled = acc
                         acc = 0f
-                        if (travelled >= threshold) {
-                            val leftHalf = startX < size.width / 2f
-                            val ok =
-                                if (leftHalf) SystemPanel.openNotifications(ctx)
-                                else SystemPanel.openQuickSettings(ctx)
-                            if (!ok) {
-                                nav.toast(Lang.s(R.string.toast_enable_service))
-                                ScreenOff.requestPermission(ctx)
+                        when {
+                            travelled >= threshold && downEnabled -> {
+                                val leftHalf = startX < size.width / 2f
+                                val ok =
+                                    if (leftHalf) SystemPanel.openNotifications(ctx)
+                                    else SystemPanel.openQuickSettings(ctx)
+                                if (!ok) {
+                                    nav.toast(Lang.s(R.string.toast_enable_service))
+                                    ScreenOff.requestPermission(ctx)
+                                }
                             }
+                            // 兜底：正常情况已在拖动过程中触发，这里防止极短促的一划漏掉
+                            travelled <= -threshold && upEnabled && !upFired -> switchWallpaper()
                         }
                     }
                 ) { change, dy ->
                     if (DuoState.dragging) {
                         acc = 0f
-                    } else if (dy > 0f) {
-                        acc += dy
-                        if (acc > 20f) change.consume()
                     } else {
-                        acc = 0f
+                        // 用净位移判定，不再「方向一反转就清零」：真人手指上滑常有轻微回弹，
+                        // 旧逻辑一遇回弹就把累计值清掉，划够了距离也可能不触发。
+                        // 净位移天然能区分「上滑后又下滑」（正负相抵），不会误判方向。
+                        acc += dy
+                        if (kotlin.math.abs(acc) > 16f) change.consume()
+                        // 上滑一旦达到阈值就立即执行，不等松手：快速连续上滑时 up 事件
+                        // 可能被后一次手势 / 翻页抢走，旧逻辑只在 onDragEnd 判定会偶发丢失。
+                        // 下滑仍保持松手才弹面板，不改变原有手感。
+                        if (upEnabled && !upFired && acc <= -threshold) {
+                            upFired = true
+                            switchWallpaper()
+                        }
                     }
                 }
             }

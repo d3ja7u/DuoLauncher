@@ -173,10 +173,32 @@ object DuoState {
     var statusTopVer by mutableStateOf(0)
     var statusScale by mutableStateOf(1.0f)
     /**
-     * 未连 WiFi 时徽标底部显示的网络制式文字：5G / LTE。
-     * 只是显示选项，不读取真实注册网络；默认 5G 与旧版外观一致。
+     * 4G 网络时徽标底部显示的文字：LTE / 4G。
+     * 其余制式（2G / 3G / 5G / 5GA / 5GUW）按真实注册网络自动显示，不由此开关控制。
      */
-    var statusNetworkLabel by mutableStateOf("5G")
+    var status4gLabel by mutableStateOf("LTE")
+    /** 是否显示电量数字；关闭后顶部圆环连成完整一段 */
+    var showBatteryNumber by mutableStateOf(true)
+
+    // ── 壁纸自动切换：默认关闭，不改变用户原有壁纸习惯 ──
+    var wallpaperRotate by mutableStateOf(false)
+    /** 切换间隔（分钟） */
+    var wallpaperIntervalMin by mutableStateOf(60)
+    var wallpaperRandom by mutableStateOf(false)
+    var wallpaperLastAt by mutableStateOf(0L)
+    var wallpaperIndex by mutableStateOf(0)
+    /** 每次换壁纸 +1，让毛玻璃底图缓存失效、重新取系统壁纸 */
+    var wallpaperVersion by mutableStateOf(0)
+    /** 主屏上滑切换壁纸（与下滑呼出系统面板互不干扰）；默认关闭，不影响原有手势 */
+    var wallpaperSwipe by mutableStateOf(false)
+    /** 已应用的壁纸裁切算法版本；低于当前版本时回桌面自动重绘当前壁纸一次 */
+    var wallpaperRenderVer by mutableStateOf(0)
+    /**
+     * 当前系统壁纸是否由本应用设置。状态栏图标取色时据此选数据源：
+     * true → 直接对自有图片按屏幕比例采样（最精确、不受系统壁纸缓存影响）；
+     * 用户从图库手动换壁纸时由 OnColorsChangedListener 置 false，改采系统壁纸。
+     */
+    var wallpaperOwned by mutableStateOf(true)
 
     fun init(ctx: Context) {
         if (ready) return
@@ -249,7 +271,19 @@ object DuoState {
             statusTop = o.optInt("statusTop", 26)
             statusTopVer = o.optInt("statusTopVer", 0)
             statusScale = o.optDouble("statusScale", 1.0).toFloat()
-            statusNetworkLabel = o.optString("netLabel", "5G").let { if (it == "LTE") "LTE" else "5G" }
+            // 旧存档 netLabel 是「5G / LTE」二选一；现在 5G 家族由真实制式自动识别，
+            // 该开关只管 4G 显示 LTE 还是 4G。旧值 5G 归到默认 LTE（5G 文字仍会自动出现）。
+            status4gLabel = if (o.optString("net4g", "") == "4G" ||
+                o.optString("netLabel", "") == "4G") "4G" else "LTE"
+            showBatteryNumber = o.optBoolean("battNum", true)
+            wallpaperRotate = o.optBoolean("wpRotate", false)
+            wallpaperIntervalMin = o.optInt("wpInterval", 60).let { if (it > 0) it else 60 }
+            wallpaperRandom = o.optBoolean("wpRandom", false)
+            wallpaperLastAt = o.optLong("wpLastAt", 0L)
+            wallpaperIndex = o.optInt("wpIndex", 0)
+            wallpaperSwipe = o.optBoolean("wpSwipe", false)
+            wallpaperRenderVer = o.optInt("wpRenderVer", 0)
+            wallpaperOwned = o.optBoolean("wpOwned", true)
             showBadges = o.optBoolean("badgeOn", true)
             badgeColor = o.optInt("badgeColor", IOS_RED)
             recentCount = o.optInt("recentCnt", 10).let { n ->
@@ -319,7 +353,16 @@ object DuoState {
             o.put("statusTop", statusTop)
             o.put("statusTopVer", statusTopVer)
             o.put("statusScale", statusScale.toDouble())
-            o.put("netLabel", statusNetworkLabel)
+            o.put("net4g", status4gLabel)
+            o.put("battNum", showBatteryNumber)
+            o.put("wpRotate", wallpaperRotate)
+            o.put("wpInterval", wallpaperIntervalMin)
+            o.put("wpRandom", wallpaperRandom)
+            o.put("wpLastAt", wallpaperLastAt)
+            o.put("wpIndex", wallpaperIndex)
+            o.put("wpSwipe", wallpaperSwipe)
+            o.put("wpRenderVer", wallpaperRenderVer)
+            o.put("wpOwned", wallpaperOwned)
             o.put("badgeOn", showBadges)
             o.put("badgeColor", badgeColor)
             o.put("recentCnt", recentCount)
