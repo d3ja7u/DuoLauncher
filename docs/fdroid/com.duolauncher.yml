@@ -4,8 +4,8 @@
 # metadata/com.duolauncher.yml ，从 master 建分支 com.duolauncher ，
 # 跑 fdroid lint / fdroid build 后在 GitLab 提 Merge Request。
 #
-# 本模板已按当前基准版 v1.5.12 / versionCode 182 填好，
-# Builds[0].commit 已是 v1.5.12 tag 的完整 40 位 hash，提交前只需核对版本字段，
+# 本模板已按当前基准版 v1.5.13 / versionCode 195 填好，
+# Builds[0].commit 已是 v1.5.13 tag 的完整 40 位 hash，提交前只需核对版本字段，
 # 不要用 tag 名或分支名替换 commit。每次发版同步更新版本字段与 commit。
 # 详细步骤与可直接粘贴的 MR 描述见 ../DISTRIBUTION.md
 
@@ -31,9 +31,9 @@ RepoType: git
 Repo: https://github.com/d3ja7u/DuoLauncher.git
 
 Builds:
-  - versionName: '1.5.12'
-    versionCode: 182
-    commit: 2faabee34bd941d8d1ceb01f194d0987c931f566
+  - versionName: '1.5.13'
+    versionCode: 195
+    commit: e0674ec3beb69dfdc0c7ef210c3523045477f2a6
     subdir: app
     gradle:
       - yes
@@ -45,5 +45,5 @@ Builds:
 
 AutoUpdateMode: Version v%v
 UpdateCheckMode: Tags
-CurrentVersion: '1.5.12'
-CurrentVersionCode: 182
+CurrentVersion: '1.5.13'
+CurrentVersionCode: 195
