@@ -237,6 +237,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.5.14 | Added a "Sync lock-screen wallpaper" toggle in Settings → Wallpaper; when enabled the lock screen and home wallpaper switch together; improved home-screen scrolling and reduced power use |
 | 1.5.13 | Added wallpaper rotation in Settings (pick multiple photos, interval-based, swipe-up to switch) and a "Show battery percentage" toggle for the tri-status badge; the badge now follows headset, hotspot, power-saving and charging state and adapts its colour to the wallpaper; improved wallpaper rendering and network-type labels |
 | 1.5.12 | Dual-SIM status badge now uses two rows of signal dots (upper row SIM 1, lower row SIM 2); single-SIM layout unchanged; added a 5G / LTE label switch in Settings; improved the accessibility authorization state for double-tap-to-sleep |
 | 1.5.11 | Search now uses native paging like the App Library; batch add / remove home icons (with confirmation) and an auto-add toggle for newly installed apps in Settings; fixed the blank second page with 5+ columns, 5G signal bars and bottom-center alignment |
