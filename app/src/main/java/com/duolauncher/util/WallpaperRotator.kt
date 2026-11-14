@@ -211,6 +211,12 @@ object WallpaperRotator {
         val decodeEdge = (max(tw, th) * 1.5f).roundToInt().coerceAtMost(MAX_EDGE)
         val src = decodeFile(list[idx], decodeEdge) ?: return false
         val out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888)
+        // 开启同步锁屏时，主屏 + 锁屏一起换（FLAG_SYSTEM | FLAG_LOCK）；否则只换主屏。
+        // minSdk 28，FLAG_LOCK 必然可用。
+        val which = if (DuoState.wallpaperSyncLockscreen)
+            WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
+        else
+            WallpaperManager.FLAG_SYSTEM
         // 显式把整张位图作为可见裁剪区交给系统（对齐图库写法），
         // 且位图比例已与屏幕一致，ROM 即便忽略该提示也不会二次裁切。
         // 系统壁纸服务偶发拒绝一次 setBitmap，重试一次即可，避免「上滑没反应」。
@@ -229,14 +235,14 @@ object WallpaperRotator {
                 TAG,
                 "apply screen=${sw}x${sh} desired=${wm.desiredMinimumWidth}x${wm.desiredMinimumHeight} " +
                     "bitmap=${tw}x${th} src=${src.width}x${src.height} decode=$decodeEdge " +
-                    "file=${list[idx].name} advance=$advance"
+                    "syncLs=${DuoState.wallpaperSyncLockscreen} file=${list[idx].name} advance=$advance"
             )
             runCatching {
-                wm.setBitmap(out, Rect(0, 0, tw, th), true, WallpaperManager.FLAG_SYSTEM)
+                wm.setBitmap(out, Rect(0, 0, tw, th), true, which)
                 true
             }.getOrDefault(false) || runCatching {
                 Thread.sleep(180L)
-                wm.setBitmap(out, Rect(0, 0, tw, th), true, WallpaperManager.FLAG_SYSTEM)
+                wm.setBitmap(out, Rect(0, 0, tw, th), true, which)
                 true
             }.getOrDefault(false)
         } finally {

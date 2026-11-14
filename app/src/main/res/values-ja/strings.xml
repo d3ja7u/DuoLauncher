@@ -395,6 +395,8 @@
     <string name="wp_rotate_desc">初期はオフ。オンにすると現在のホーム壁紙を上書きします</string>
     <string name="wp_swipe">上スワイプで壁紙切替</string>
     <string name="wp_swipe_desc">ホームで上にスワイプすると次の画像に切り替わります。下スワイプのパネルとは干渉しません</string>
+    <string name="wp_sync_ls">ロック画面を同期</string>
+    <string name="wp_sync_ls_desc">オンにするとホーム壁紙の変更と同時にロック画面も更新します。オフの場合ロック画面はそのまま</string>
     <string name="wp_pick">画像を選択</string>
     <string name="wp_pick_desc">アルバム／ファイルから複数選択・%1$d 枚選択済み、タップで追加</string>
     <string name="wp_interval">切替間隔</string>

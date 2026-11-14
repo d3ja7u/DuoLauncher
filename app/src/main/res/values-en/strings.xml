@@ -395,6 +395,8 @@
     <string name="wp_rotate_desc">Off by default; replaces the current home screen wallpaper</string>
     <string name="wp_swipe">Swipe up to change wallpaper</string>
     <string name="wp_swipe_desc">Swipe up on the home screen to switch to the next image; does not conflict with swipe-down panels</string>
+    <string name="wp_sync_ls">Sync lock screen wallpaper</string>
+    <string name="wp_sync_ls_desc">When on, changing the home wallpaper also updates the lock screen; off keeps lock screen untouched</string>
     <string name="wp_pick">Choose photos</string>
     <string name="wp_pick_desc">Multi-select from photos or files; %1$d selected, tap to add more</string>
     <string name="wp_interval">Interval</string>

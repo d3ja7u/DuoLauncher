@@ -64,7 +64,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.duolauncher.data.DuoState
 import com.duolauncher.util.WallpaperRotator
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -917,41 +920,71 @@ private fun computeRegionLuma(ctx: Context, bounds: Rect?): Float? {
 
 /**
  * 跟随「徽标底下」区域明暗自动选图标颜色（白 / 黑），true = 偏暗 → 用白色。
- * 重算时机：① 首帧拿到真实 bounds；② 自动换壁纸（wallpaperVersion 递增）；
- * ③ 回到桌面 ON_RESUME；④ 系统壁纸颜色变化（含用户从图库手动换壁纸）。
+ *
+ * 计算时机（只在这几种「壁纸真的变了 / 首帧」时，其余一律不重算，省电）：
+ *   ① 首帧拿到真实 bounds：用当前壁纸采样一次作为初始值；
+ *   ② 本应用自动 / 上滑 / 立即切换壁纸（wallpaperVersion 递增）；
+ *   ③ 系统壁纸颜色变化（含用户从图库手动换壁纸）；
+ *   ④ 回到桌面 ON_RESUME（兜底，壁纸可能在别处被换过）。
+ *
+ * 主屏左右翻页（HorizontalPager）不会触发重算：翻页时徽标的屏幕坐标不变，且
+ * bounds 不再作为任何 Launched/Disposable 的 key，页面重组 / 相邻页 mount 都不会
+ * 重新解码位图；全应用只维护一份底色结论（inkState），多页 HomePage 共享同一结果，
+ * 避免每个分页各自解码位图、重复计算导致滑动掉帧 / 耗电。
  */
+// 全应用共享的一份底色结论：只算一次、所有页面同步，杜绝翻页时重复采样。
+private val inkState = mutableStateOf(true)   // 默认偏暗 → 白图标，与旧版外观一致
+private var inkBooted = false
+private val inkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+private var inkJob: Job? = null
+
+private fun inkSchedule(ctx: Context, bounds: Rect?) {
+    // 一次换壁纸会连发多次事件（wallpaperVersion 变化 / OnColorsChanged / ON_RESUME），
+    // 每次都要解码图片并建两张位图。合并成最后一次，降低连续切壁纸时的内存峰值。
+    inkJob?.cancel()
+    inkJob = inkScope.launch {
+        delay(140)
+        val luma = computeRegionLuma(ctx, bounds) ?: return@launch
+        // 滞回区间避免临界灰度反复跳色：<135 判暗、>165 判亮，中间保持现状
+        val next = when {
+            luma < 135f -> true
+            luma > 165f -> false
+            else -> inkState.value
+        }
+        Log.d(TAG_INK, "luma=$luma ink ${inkState.value} -> $next")
+        withContext(Dispatchers.Main) { inkState.value = next }
+    }
+}
+
 @Composable
 private fun rememberWallpaperInk(bounds: Rect?): State<Boolean> {
     val ctx = LocalContext.current
-    val ink = remember { mutableStateOf(true) }   // 默认偏暗 → 白图标，与旧版外观一致
-    val scope = rememberCoroutineScope()
-    // 一次换壁纸会连发多次重算（wallpaperVersion 变化 / OnColorsChanged / ON_RESUME），
-    // 每次都要解码一遍图片并建两张位图。合并成最后一次，降低连续切壁纸时的内存峰值。
-    var pending by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    fun recompute() {
-        pending?.cancel()
-        pending = scope.launch(Dispatchers.IO) {
-            delay(140)
-            val luma = computeRegionLuma(ctx, bounds) ?: return@launch
-            // 滞回区间避免临界灰度反复跳色：<135 判暗、>165 判亮，中间保持现状
-            val next = when {
-                luma < 135f -> true
-                luma > 165f -> false
-                else -> ink.value
-            }
-            Log.d(TAG_INK, "luma=$luma ink ${ink.value} -> $next")
-            withContext(Dispatchers.Main) { ink.value = next }
+    // 首帧拿到真实 bounds 后只采样一次（初始化）；之后翻页 / 重排不再触发，省电。
+    LaunchedEffect(bounds) {
+        if (!inkBooted && bounds != null) {
+            inkBooted = true
+            inkSchedule(ctx, bounds)
         }
     }
-    LaunchedEffect(bounds, DuoState.wallpaperVersion) { recompute() }
+    // 之后只在「切换壁纸」时重算：本应用换壁纸（wallpaperVersion 递增）
+    LaunchedEffect(DuoState.wallpaperVersion) {
+        if (inkBooted) inkSchedule(ctx, bounds)
+    }
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-    DisposableEffect(ctx, bounds, lifecycleOwner) {
+    // 注意：bounds 不放在 key 里，避免翻页时徽标 bounds 每帧拿到新对象就反复
+    // 注销 / 重新注册系统监听（原来正是这个导致滑动掉帧、耗电）。
+    DisposableEffect(ctx, lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) recompute()
+            // 回到桌面兜底：壁纸可能已在别处被换过，但翻页不会走到这里，不影响省电
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && inkBooted) {
+                inkSchedule(ctx, bounds)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         val wm = WallpaperManager.getInstance(ctx.applicationContext)
-        val listener = WallpaperManager.OnColorsChangedListener { _, _ -> recompute() }
+        val listener = WallpaperManager.OnColorsChangedListener { _, _ ->
+            if (inkBooted) inkSchedule(ctx, bounds)
+        }
         if (Build.VERSION.SDK_INT >= 24) {
             wm.addOnColorsChangedListener(listener, Handler(Looper.getMainLooper()))
         }
@@ -960,5 +993,5 @@ private fun rememberWallpaperInk(bounds: Rect?): State<Boolean> {
             if (Build.VERSION.SDK_INT >= 24) wm.removeOnColorsChangedListener(listener)
         }
     }
-    return ink
+    return inkState
 }

@@ -392,9 +392,11 @@
     <string name="status_battery_number_desc">关闭后不显示电量数字，顶部圆环连成完整一段</string>
     <string name="sec_wallpaper_rotate">壁纸自动切换</string>
     <string name="wp_rotate">自动切换壁纸</string>
-    <string name="wp_rotate_desc">默认关闭；开启后会覆盖当前系统壁纸，仅更换主屏</string>
+    <string name="wp_rotate_desc">默认关闭；开启后会覆盖当前系统壁纸</string>
     <string name="wp_swipe">上滑切换壁纸</string>
     <string name="wp_swipe_desc">在主屏向上滑动即可换到下一张；与下滑呼出系统面板互不干扰</string>
+    <string name="wp_sync_ls">同步锁屏壁纸</string>
+    <string name="wp_sync_ls_desc">开启后切换主屏壁纸时一并更换锁屏；关闭则只换主屏</string>
     <string name="wp_pick">选择图片</string>
     <string name="wp_pick_desc">从相册或文件中多选；已选择 %1$d 张，点击可继续添加</string>
     <string name="wp_interval">切换间隔</string>

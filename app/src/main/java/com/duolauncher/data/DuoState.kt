@@ -191,6 +191,8 @@ object DuoState {
     var wallpaperVersion by mutableStateOf(0)
     /** 主屏上滑切换壁纸（与下滑呼出系统面板互不干扰）；默认关闭，不影响原有手势 */
     var wallpaperSwipe by mutableStateOf(false)
+    /** 锁屏与主屏壁纸同步：开启时切换主屏壁纸一并更换锁屏；默认关闭，不影响原有习惯 */
+    var wallpaperSyncLockscreen by mutableStateOf(false)
     /** 已应用的壁纸裁切算法版本；低于当前版本时回桌面自动重绘当前壁纸一次 */
     var wallpaperRenderVer by mutableStateOf(0)
     /**
@@ -282,6 +284,7 @@ object DuoState {
             wallpaperLastAt = o.optLong("wpLastAt", 0L)
             wallpaperIndex = o.optInt("wpIndex", 0)
             wallpaperSwipe = o.optBoolean("wpSwipe", false)
+            wallpaperSyncLockscreen = o.optBoolean("wpSyncLs", false)
             wallpaperRenderVer = o.optInt("wpRenderVer", 0)
             wallpaperOwned = o.optBoolean("wpOwned", true)
             showBadges = o.optBoolean("badgeOn", true)
@@ -361,6 +364,7 @@ object DuoState {
             o.put("wpLastAt", wallpaperLastAt)
             o.put("wpIndex", wallpaperIndex)
             o.put("wpSwipe", wallpaperSwipe)
+            o.put("wpSyncLs", wallpaperSyncLockscreen)
             o.put("wpRenderVer", wallpaperRenderVer)
             o.put("wpOwned", wallpaperOwned)
             o.put("badgeOn", showBadges)

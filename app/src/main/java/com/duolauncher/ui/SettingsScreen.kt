@@ -671,6 +671,18 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     ) {
                         DuoState.wallpaperSwipe = it; DuoState.save()
                     }
+                    SettingToggle(
+                        Lang.s(R.string.wp_sync_ls), Lang.s(R.string.wp_sync_ls_desc),
+                        DuoState.wallpaperSyncLockscreen, dark
+                    ) {
+                        DuoState.wallpaperSyncLockscreen = it; DuoState.save()
+                        // 开启时立即按当前设置重设一次，锁屏马上生效（含同步关闭→只换主屏的回退）
+                        if (wpCount > 0) {
+                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                WallpaperRotator.rotateNow(ctx)
+                            }
+                        }
+                    }
                     SettingRow(
                         Lang.s(R.string.wp_pick),
                         Lang.s(R.string.wp_pick_desc, wpCount),
