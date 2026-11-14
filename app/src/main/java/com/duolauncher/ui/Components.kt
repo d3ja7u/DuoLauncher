@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,6 +113,26 @@ fun NotificationBadge(count: Int, iconSize: Dp, color: Color) {
     }
 }
 
+/**
+ * 编辑态图标抖动角度。
+ *
+ * 关键：**非编辑态完全不创建无限动画**。旧实现给每个桌面图标都无条件
+ * rememberInfiniteTransition 并在组合期读它的值，wobble=false 只是把结果换成 0，
+ * 动画照样每 120ms 请求一帧、每帧重组整个图标子树 —— 桌面几十个图标 × 常驻，
+ * CPU 一直无法休眠，这是启动器最典型的耗电源。
+ * 编辑态把动画值放到 graphicsLayer 的绘制阶段读取，只重绘 layer 不重组子树。
+ */
+@Composable
+private fun rememberWobble(enabled: Boolean): State<Float> {
+    if (!enabled) return remember { mutableStateOf(0f) }
+    val transition = rememberInfiniteTransition(label = "wobble")
+    return transition.animateFloat(
+        initialValue = -1.6f, targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing), RepeatMode.Reverse),
+        label = "wobbleAngle"
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppIconCell(
@@ -127,12 +148,7 @@ fun AppIconCell(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
-    val wobbleAnim by rememberInfiniteTransition(label = "wobble").animateFloat(
-        initialValue = -1.6f, targetValue = 1.6f,
-        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing), RepeatMode.Reverse),
-        label = "wobbleAngle"
-    )
-    val wobbleAngle = if (wobble) wobbleAnim else 0f
+    val wobbleAngle = rememberWobble(wobble)
 
     // 外层 Box 不参与抖动：iOS 里只有图标轻微摆动，左上角「-」是静止的
     Box(contentAlignment = Alignment.TopCenter) {
@@ -140,7 +156,7 @@ fun AppIconCell(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .width(size + 14.dp)
-                .graphicsLayer { rotationZ = wobbleAngle }
+                .graphicsLayer { rotationZ = wobbleAngle.value }
                 .combinedClickable(
                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                     indication = null,
@@ -220,18 +236,13 @@ fun ActionIconCell(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
-    val wobbleAnim by rememberInfiniteTransition(label = "wobble2").animateFloat(
-        initialValue = -1.6f, targetValue = 1.6f,
-        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing), RepeatMode.Reverse),
-        label = "wobbleAngle2"
-    )
-    val wobbleAngle = if (wobble) wobbleAnim else 0f
+    val wobbleAngle = rememberWobble(wobble)
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .width(size + 14.dp)
-            .graphicsLayer { rotationZ = wobbleAngle }
+            .graphicsLayer { rotationZ = wobbleAngle.value }
             .combinedClickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
@@ -279,19 +290,14 @@ fun FolderCell(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {}
 ) {
-    val wobbleAnim by rememberInfiniteTransition(label = "wobbleF").animateFloat(
-        initialValue = -1.6f, targetValue = 1.6f,
-        animationSpec = infiniteRepeatable(tween(120, easing = LinearEasing), RepeatMode.Reverse),
-        label = "wobbleAngleF"
-    )
-    val wobbleAngle = if (wobble) wobbleAnim else 0f
+    val wobbleAngle = rememberWobble(wobble)
     val apps = folder.apps.mapNotNull { DuoState.appOf(it) }.take(4)
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .width(size + 14.dp)
-            .graphicsLayer { rotationZ = wobbleAngle }
+            .graphicsLayer { rotationZ = wobbleAngle.value }
             .combinedClickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,

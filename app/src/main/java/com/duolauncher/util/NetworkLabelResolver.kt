@@ -81,7 +81,9 @@ object NetworkLabelResolver {
         }
     }
 
-    private fun is2g(t: Int) = t in setOf(
+    // 用静态 IntArray 而不是 setOf()：状态栏每次刷新都会走这里，
+    // setOf 每次都要新建 HashSet 并装箱，属于无谓分配。
+    private val NET_2G = intArrayOf(
         TelephonyManager.NETWORK_TYPE_GPRS,
         TelephonyManager.NETWORK_TYPE_EDGE,
         TelephonyManager.NETWORK_TYPE_CDMA,
@@ -90,7 +92,7 @@ object NetworkLabelResolver {
         TelephonyManager.NETWORK_TYPE_GSM
     )
 
-    private fun is3g(t: Int) = t in setOf(
+    private val NET_3G = intArrayOf(
         TelephonyManager.NETWORK_TYPE_UMTS,
         TelephonyManager.NETWORK_TYPE_HSDPA,
         TelephonyManager.NETWORK_TYPE_HSUPA,
@@ -102,4 +104,7 @@ object NetworkLabelResolver {
         TelephonyManager.NETWORK_TYPE_EHRPD,
         TelephonyManager.NETWORK_TYPE_TD_SCDMA
     )
+
+    private fun is2g(t: Int) = t in NET_2G
+    private fun is3g(t: Int) = t in NET_3G
 }

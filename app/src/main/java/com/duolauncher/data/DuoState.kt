@@ -482,9 +482,13 @@ object DuoState {
 
     /** 监听服务聚合后的整份未读数写回（差值相同就不动，避免无意义重组） */
     fun setNotifCounts(map: Map<String, Int>) {
-        if (notifCounts.size == map.size && map.all { notifCounts[it.key] == it.value }) return
-        notifCounts.clear()
-        notifCounts.putAll(map.filterValues { it > 0 })
+        // 逐 key 更新：旧实现 clear() + putAll() 会让所有观察角标的图标一起重组，
+        // 一条新消息就重绘整片桌面。SnapshotStateMap 支持按 key 精确失效，
+        // 只有数字真正变化的那个应用图标会刷新。
+        val next = map.filterValues { it > 0 }
+        if (notifCounts.size == next.size && next.all { notifCounts[it.key] == it.value }) return
+        notifCounts.keys.toList().forEach { if (it !in next) notifCounts.remove(it) }
+        next.forEach { (k, v) -> if (notifCounts[k] != v) notifCounts[k] = v }
     }
 
     /** 打开某个应用后清掉它的角标（iOS 行为：进过一次就算已读） */

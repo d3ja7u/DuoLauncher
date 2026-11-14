@@ -35,9 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,7 +66,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -264,19 +261,31 @@ private fun readHeadphones(app: Context): Boolean = runCatching {
 /**
  * 个人热点是否开启。系统没有公开 API：优先反射 WifiManager 的隐藏方法，
  * 隐藏接口被限制时退回「存在一个不带 INTERNET 能力的 WiFi 本地网络」判断。
+ *
+ * 反射查找的结果缓存一次：getDeclaredMethod 每次都做类结构查找，在状态刷新这种
+ * 高频路径上属于纯浪费；方法不存在（被隐藏 API 限制）也记住，避免每次抛异常。
  */
-private fun readHotspot(app: Context): Boolean {
-    runCatching {
-        val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val m = WifiManager::class.java.getDeclaredMethod("isWifiApEnabled")
-        m.isAccessible = true
-        (m.invoke(wm) as? Boolean)?.let { return it }
+private val hotspotMethods: List<java.lang.reflect.Method?> by lazy {
+    listOf("isWifiApEnabled", "getWifiApState").map { name ->
+        runCatching {
+            WifiManager::class.java.getDeclaredMethod(name).apply { isAccessible = true }
+        }.getOrNull()
     }
-    runCatching {
-        val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val m = WifiManager::class.java.getDeclaredMethod("getWifiApState")
-        m.isAccessible = true
-        if ((m.invoke(wm) as? Int) == 13) return true   // WIFI_AP_STATE_ENABLED
+}
+
+private fun readHotspot(app: Context): Boolean {
+    val (isEnabled, apState) = hotspotMethods
+    isEnabled?.let { m ->
+        runCatching {
+            val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            (m.invoke(wm) as? Boolean)?.let { return it }
+        }
+    }
+    apState?.let { m ->
+        runCatching {
+            val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            if ((m.invoke(wm) as? Int) == 13) return true   // WIFI_AP_STATE_ENABLED
+        }
     }
     return runCatching {
         val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -339,24 +348,132 @@ private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
     )
 }
 
-/** 每分钟刷新 + 监听时间/网络/电量变化广播 */
-@Composable
-fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
-    val ctx = LocalContext.current
-    // 组合（主线程）只算一次首帧值。后续所有刷新都走 IO 线程：
-    // readStatus 里的 telephony / WiFi 查询是跨进程 binder 调用（172 为了对齐系统
-    // 信号格还加了逐 SIM、逐小区遍历），而 RSSI_CHANGED_ACTION 这类广播每秒都会来，
-    // 放在主线程执行就是持续掉帧。广播接收器只负责「发起一次后台刷新」。
-    val initial = remember(ctx, use24h) { readStatus(ctx, use24h) }
-    return produceState(initialValue = initial, ctx, use24h) {
-        fun refresh() {
-            launch(Dispatchers.IO) {
-                val s = runCatching { readStatus(ctx, use24h) }.getOrNull() ?: return@launch
-                value = s
-            }
+/**
+ * 全应用唯一的状态采集总线。
+ *
+ * 旧实现：每个 DuoStatusBar 实例都在自己的 produceState 里各起一套「30 秒轮询 +
+ * 动态广播接收器」。HorizontalPager 会同时保留多个主屏页，于是有 N 套在跑；而
+ * Compose 的 produceState 不随 Activity 停止而取消 —— 熄屏后启动器仍常驻，每秒
+ * 响应 RSSI_CHANGED 广播，每次都要做一遍 telephony / 双卡逐小区 / WiFi / 音频 /
+ * 反射热点等跨进程查询。这是后台耗电与翻页掉帧的主要来源。
+ *
+ * 现在：所有主屏页与设置页预览共用一个 State、一套接收器、一个轮询。且只在
+ * 「有页面订阅 且 界面可见（STARTED）」时工作 —— 熄屏 / 切到别的应用立即注销
+ * 广播、停掉轮询；回到桌面再注册并立即刷新一次。高频广播合并节流，同一时刻
+ * 只跑一个 readStatus，避免秒级广播把跨进程查询堆成并发。
+ */
+private object StatusBus {
+    private const val TICK_MS = 30_000L
+    /** RSSI_CHANGED 每秒都来，合并为最多每 10 秒一次完整查询 */
+    private const val RSSI_GAP_MS = 10_000L
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val gate = Any()
+    @Volatile private var enabled = false
+    @Volatile private var lastFireAt = 0L
+
+    private var stateRef: androidx.compose.runtime.MutableState<DuoStatus>? = null
+    private var subscribers = 0
+    /** 生命周期：界面是否可见（STARTED） */
+    private var visible = false
+    /** 屏幕是否点亮。与 visible 分开，避免 SCREEN_ON 丢失后采集永久停摆 */
+    private var screenOn = true
+    private var app: Context? = null
+    private var use24h = true
+    /** 高频业务广播：只在真正采集时注册 */
+    private var statusReceiver: BroadcastReceiver? = null
+    /** 屏幕开关广播：只要有订阅者就常驻，保证熄屏后仍能收到 SCREEN_ON 恢复 */
+    private var screenReceiver: BroadcastReceiver? = null
+    private var ticker: Job? = null
+    private var pending: Job? = null
+    private var inFlight: Job? = null
+
+    /** 首帧值：全应用只同步读一次系统状态，其余页面直接复用同一个 State */
+    fun state(appCtx: Context, h24: Boolean): State<DuoStatus> = synchronized(gate) {
+        stateRef ?: mutableStateOf(readStatus(appCtx, h24)).also { stateRef = it }
+    }
+
+    fun attach(appCtx: Context, h24: Boolean) {
+        synchronized(gate) {
+            val formatChanged = use24h != h24
+            app = appCtx
+            use24h = h24
+            subscribers++
+            syncLocked()
+            // 切换 12/24 小时制时立刻重算，不等下一次 30 秒轮询
+            if (formatChanged && enabled) refresh(0L)
         }
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(c: Context?, i: Intent?) { refresh() }
+    }
+
+    fun detach() {
+        synchronized(gate) {
+            subscribers = (subscribers - 1).coerceAtLeast(0)
+            syncLocked()
+        }
+    }
+
+    fun setVisible(v: Boolean) {
+        synchronized(gate) {
+            // 回到前台必然是亮屏，顺手把 screenOn 复位：即便某些 ROM 漏发
+            // SCREEN_ON，也不会因为熄屏时置的 false 而一直不刷新。
+            if (v) screenOn = true
+            visible = v
+            // 不提前 return：多个页面各自派发同一事件，syncLocked 内部自带短路，
+            // 每次都过一遍才能保证 enabled 与三个条件始终一致。
+            syncLocked()
+        }
+    }
+
+    private fun setScreenOn(v: Boolean) {
+        synchronized(gate) {
+            screenOn = v
+            syncLocked()
+        }
+    }
+
+    /** 采集条件 = 有页面订阅 + 界面可见 + 屏幕点亮；三个条件任一不满足即停 */
+    private fun syncLocked() {
+        val ctx = app
+        // 屏幕开关接收器与采集状态解耦：只要有页面就常驻，否则熄屏后收不到 SCREEN_ON
+        val needScreenRx = subscribers > 0 && ctx != null
+        if (needScreenRx && screenReceiver == null && ctx != null) {
+            val sr = object : BroadcastReceiver() {
+                override fun onReceive(c: Context?, i: Intent?) {
+                    when (i?.action) {
+                        Intent.ACTION_SCREEN_OFF -> setScreenOn(false)
+                        Intent.ACTION_SCREEN_ON -> setScreenOn(true)
+                    }
+                }
+            }
+            val sf = IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            }
+            screenReceiver = sr
+            runCatching {
+                ContextCompat.registerReceiver(
+                    ctx, sr, sf, ContextCompat.RECEIVER_NOT_EXPORTED
+                )
+            }
+        } else if (!needScreenRx && screenReceiver != null) {
+            screenReceiver?.let { runCatching { ctx?.unregisterReceiver(it) } }
+            screenReceiver = null
+        }
+
+        val should = subscribers > 0 && visible && screenOn
+        if (should == enabled) return
+        enabled = should
+        if (should) startLocked() else stopLocked()
+    }
+
+    private fun startLocked() {
+        val ctx = app ?: return
+        val r = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) {
+                // 只有信号强度广播是秒级高频，其余状态类广播走立即刷新
+                val gap = if (i?.action == WifiManager.RSSI_CHANGED_ACTION) RSSI_GAP_MS else 0L
+                refresh(gap)
+            }
         }
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_TIME_TICK)
@@ -367,31 +484,103 @@ fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
             addAction(Intent.ACTION_POWER_DISCONNECTED)
             addAction(ConnectivityManager.CONNECTIVITY_ACTION)
             addAction(WifiManager.RSSI_CHANGED_ACTION)
-            // 插拔 / 启用停用 SIM、飞行模式切换时立即重算双卡信号，不必等 30 秒轮询
+            // 插拔 / 启用停用 SIM、飞行模式切换时立即重算双卡信号
             addAction("android.intent.action.SIM_STATE_CHANGED")
             addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
-            // 耳机插拔 / 蓝牙耳机 / 个人热点 / 省电模式变化时立即刷新，不必等 30 秒轮询
+            // 耳机插拔 / 蓝牙耳机 / 个人热点 / 省电模式变化时立即刷新
             addAction(Intent.ACTION_HEADSET_PLUG)
             addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED")
             addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         }
+        statusReceiver = r
         runCatching {
             ContextCompat.registerReceiver(
-                ctx, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
+                ctx, r, filter, ContextCompat.RECEIVER_NOT_EXPORTED
             )
         }
-        try {
-            refresh()
+        ticker = scope.launch {
             while (isActive) {
-                delay(30_000L)
-                refresh()
+                delay(TICK_MS)
+                refresh(0L)
             }
-            awaitCancellation()
-        } finally {
-            runCatching { ctx.unregisterReceiver(receiver) }
+        }
+        refresh(0L)   // 回到桌面 / 亮屏立即刷一次，时间 / 电量不滞后
+    }
+
+    private fun stopLocked() {
+        ticker?.cancel(); ticker = null
+        pending?.cancel(); pending = null
+        inFlight?.cancel(); inFlight = null
+        statusReceiver?.let { runCatching { app?.unregisterReceiver(it) } }
+        statusReceiver = null
+        lastFireAt = 0L
+    }
+
+    /**
+     * [gapMs] 为距上次查询的最小间隔（0 = 立即）。短时间内的多次请求合并成
+     * 最后一次，且同一时刻只跑一个 readStatus —— 信号广播每秒都来，旧实现会
+     * 为每条广播各起一个 IO 协程并发做全套跨进程查询。
+     */
+    private fun refresh(gapMs: Long) {
+        if (!enabled) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val wait = (lastFireAt + gapMs - now).coerceAtLeast(0L)
+        val busy = synchronized(gate) { inFlight?.isActive == true }
+        if (!busy && wait == 0L) {
+            fire(now)
+            return
+        }
+        synchronized(gate) {
+            pending?.cancel()
+            pending = scope.launch {
+                delay(wait.coerceAtLeast(200L))
+                if (enabled) fire(android.os.SystemClock.elapsedRealtime())
+            }
         }
     }
+
+    private fun fire(now: Long) {
+        synchronized(gate) {
+            if (!enabled || inFlight?.isActive == true) return@synchronized
+            val ctx = app ?: return@synchronized
+            val h24 = use24h
+            lastFireAt = now
+            inFlight = scope.launch {
+                // readStatus 全是跨进程 binder 调用，必须留在 IO 线程，不能占用主线程
+                val s = runCatching { readStatus(ctx, h24) }.getOrNull() ?: return@launch
+                if (enabled) stateRef?.value = s
+            }
+        }
+    }
+}
+
+/** 所有页面共享同一份状态；广播与轮询只在界面可见时运行（见 StatusBus）。 */
+@Composable
+fun rememberDuoStatus(use24h: Boolean): State<DuoStatus> {
+    val app = LocalContext.current.applicationContext
+    val state = remember(app) { StatusBus.state(app, use24h) }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(app, lifecycleOwner, use24h) {
+        StatusBus.attach(app, use24h)
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> StatusBus.setVisible(true)
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> StatusBus.setVisible(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        StatusBus.setVisible(
+            lifecycleOwner.lifecycle.currentState
+                .isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+        )
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            StatusBus.detach()
+        }
+    }
+    return state
 }
 
 @Composable
@@ -937,6 +1126,16 @@ private val inkState = mutableStateOf(true)   // 默认偏暗 → 白图标，�
 private var inkBooted = false
 private val inkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 private var inkJob: Job? = null
+/** 最近一次有效的徽标矩形；各主屏页徽标位置相同，取任一即可 */
+@Volatile private var inkBounds: Rect? = null
+/** 已处理过的壁纸版本：同一版本只调度一次，避免多页各触发一遍解码 */
+private var inkHandledVersion = -1
+/** 系统壁纸颜色监听 / 生命周期兜底的引用计数：全应用只注册一套 */
+private var inkRefs = 0
+private var inkApp: Context? = null
+private var inkLifecycle: androidx.lifecycle.Lifecycle? = null
+private var inkObserver: androidx.lifecycle.LifecycleEventObserver? = null
+private var inkListener: WallpaperManager.OnColorsChangedListener? = null
 
 private fun inkSchedule(ctx: Context, bounds: Rect?) {
     // 一次换壁纸会连发多次事件（wallpaperVersion 变化 / OnColorsChanged / ON_RESUME），
@@ -958,39 +1157,64 @@ private fun inkSchedule(ctx: Context, bounds: Rect?) {
 
 @Composable
 private fun rememberWallpaperInk(bounds: Rect?): State<Boolean> {
-    val ctx = LocalContext.current
-    // 首帧拿到真实 bounds 后只采样一次（初始化）；之后翻页 / 重排不再触发，省电。
-    LaunchedEffect(bounds) {
-        if (!inkBooted && bounds != null) {
+    val app = LocalContext.current.applicationContext
+    // 只记最新的有效矩形；翻页时徽标坐标不变，这里不做任何重算
+    if (bounds != null) inkBounds = bounds
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+
+    // ① 首帧拿到真实 bounds 后初始化一次。key 用「是否已有 bounds」而非 bounds 本身：
+    // 翻页时 onGloballyPositioned 会不断给出新的 Rect 对象，用布尔值才不会反复起 effect。
+    LaunchedEffect(bounds != null) {
+        if (!inkBooted && inkBounds != null) {
             inkBooted = true
-            inkSchedule(ctx, bounds)
+            inkSchedule(app, inkBounds)
         }
     }
-    // 之后只在「切换壁纸」时重算：本应用换壁纸（wallpaperVersion 递增）
+    // ② 切壁纸：同一版本多页只调度一次（多页各自有 effect，但重活只跑一遍）
     LaunchedEffect(DuoState.wallpaperVersion) {
-        if (inkBooted) inkSchedule(ctx, bounds)
+        val v = DuoState.wallpaperVersion
+        if (inkBooted && v != inkHandledVersion) {
+            inkHandledVersion = v
+            inkSchedule(app, inkBounds)
+        }
     }
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-    // 注意：bounds 不放在 key 里，避免翻页时徽标 bounds 每帧拿到新对象就反复
-    // 注销 / 重新注册系统监听（原来正是这个导致滑动掉帧、耗电）。
-    DisposableEffect(ctx, lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            // 回到桌面兜底：壁纸可能已在别处被换过，但翻页不会走到这里，不影响省电
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && inkBooted) {
-                inkSchedule(ctx, bounds)
+    // ③ / ④ 系统壁纸变化与回到桌面兜底：引用计数，全应用只注册一套监听。
+    // 旧版每个主屏页各注册一套 OnColorsChanged + lifecycle observer，翻页时反复注销重注册。
+    DisposableEffect(app, lifecycleOwner) {
+        if (inkRefs++ == 0) {
+            inkApp = app
+            inkLifecycle = lifecycleOwner.lifecycle
+            val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && inkBooted) {
+                    inkSchedule(app, inkBounds)
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            inkObserver = observer
+            if (Build.VERSION.SDK_INT >= 24) {
+                val listener = WallpaperManager.OnColorsChangedListener { _, _ ->
+                    if (inkBooted) inkSchedule(app, inkBounds)
+                }
+                WallpaperManager.getInstance(app).addOnColorsChangedListener(
+                    listener, Handler(Looper.getMainLooper())
+                )
+                inkListener = listener
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        val wm = WallpaperManager.getInstance(ctx.applicationContext)
-        val listener = WallpaperManager.OnColorsChangedListener { _, _ ->
-            if (inkBooted) inkSchedule(ctx, bounds)
-        }
-        if (Build.VERSION.SDK_INT >= 24) {
-            wm.addOnColorsChangedListener(listener, Handler(Looper.getMainLooper()))
-        }
         onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            if (Build.VERSION.SDK_INT >= 24) wm.removeOnColorsChangedListener(listener)
+            if (--inkRefs == 0) {
+                inkObserver?.let { inkLifecycle?.removeObserver(it) }
+                inkObserver = null
+                inkLifecycle = null
+                if (Build.VERSION.SDK_INT >= 24) inkListener?.let { l ->
+                    runCatching {
+                        WallpaperManager.getInstance(inkApp ?: app)
+                            .removeOnColorsChangedListener(l)
+                    }
+                }
+                inkListener = null
+                inkApp = null
+            }
         }
     }
     return inkState

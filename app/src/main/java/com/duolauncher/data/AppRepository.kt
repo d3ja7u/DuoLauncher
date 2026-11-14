@@ -14,6 +14,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Process
+import android.os.SystemClock
 import android.os.UserHandle
 import android.os.UserManager
 import android.provider.MediaStore
@@ -32,7 +33,46 @@ import java.util.Locale
 
 object AppRepository {
 
-    suspend fun loadApps(context: Context): List<AppInfo> = withContext(Dispatchers.IO) {
+    /**
+     * 应用列表内存快照。
+     *
+     * 启动器每次回到桌面都会走 onResume → reloadApps()。旧实现每次都重新枚举所有
+     * profile 的 activity、再对每个应用 getIcon(density) 解码 Drawable —— 上百次
+     * 跨进程调用 + 上百张位图，而应用列表实际上只会在安装 / 卸载 / 启停时变化。
+     * Pixel Launcher / Lawnchair 都是「内存快照 + 包广播失效」，这里同理。
+     * 另留 10 分钟兜底刷新，防止个别 ROM 漏发包广播、或克隆资料切换没有通知。
+     */
+    @Volatile private var cachedApps: List<AppInfo>? = null
+    @Volatile private var cachedAt = 0L
+    @Volatile private var cachedKey = ""
+    private const val SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000L
+
+    /** 系统语言 / 屏幕密度变化时快照里的应用名与图标会失效，必须重新扫描 */
+    private fun snapshotKey(ctx: Context): String =
+        Locale.getDefault().language + "|" + ctx.resources.displayMetrics.densityDpi
+
+    /** 需要强制重新扫描时调用（例如备份导入、图标包切换） */
+    fun invalidateApps() { cachedApps = null }
+
+    suspend fun loadApps(context: Context, refresh: Boolean = false): List<AppInfo> =
+        withContext(Dispatchers.IO) {
+            val appCtx = context.applicationContext
+            val key = snapshotKey(appCtx)
+            if (!refresh) {
+                val snap = cachedApps
+                if (snap != null && cachedKey == key &&
+                    SystemClock.elapsedRealtime() - cachedAt < SNAPSHOT_MAX_AGE_MS) {
+                    return@withContext snap
+                }
+            }
+            val result = scanApps(appCtx)
+            cachedApps = result
+            cachedKey = key
+            cachedAt = SystemClock.elapsedRealtime()
+            result
+        }
+
+    private suspend fun scanApps(context: Context): List<AppInfo> = withContext(Dispatchers.IO) {
         val ctx = context.applicationContext
         val pm = ctx.packageManager
         val collator = Collator.getInstance(Locale.CHINA)

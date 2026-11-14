@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import android.os.UserManager
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
@@ -140,6 +141,7 @@ class DuoNotificationListener : NotificationListenerService() {
 
     /** 和通知栏对齐一次（服务重连 / 桌面回到前台时调用），保留用户已读状态 */
     fun resync() {
+        lastResyncAt = SystemClock.elapsedRealtime()
         entries.clear()
         val active = runCatching { activeNotifications }.getOrNull().orEmpty()
         val liveKeys = HashSet<String>(active.size)
@@ -380,6 +382,9 @@ class DuoNotificationListener : NotificationListenerService() {
         /** 服务没连上时用户点开过的应用，等绑定后补清角标 */
         private val pendingDismiss = Collections.synchronizedSet(LinkedHashSet<String>())
 
+        /** 最近一次全量对齐通知栏的时刻 */
+        @Volatile private var lastResyncAt = 0L
+
         /** 是否已在系统里授予「通知使用权」 */
         fun hasAccess(ctx: Context): Boolean {
             val flat = runCatching {
@@ -404,7 +409,10 @@ class DuoNotificationListener : NotificationListenerService() {
         fun ensureBound(ctx: Context) {
             val cur = instance
             if (cur != null) {
-                cur.resync()
+                // 服务连上时 onListenerConnected 已对齐过，之后通知变化都由
+                // onNotificationPosted / Removed 实时维护。频繁按 Home 回桌面没必要
+                // 每次都跨进程遍历整条通知栏，短时间内的重复 resync 合并掉。
+                if (SystemClock.elapsedRealtime() - lastResyncAt >= 2_000L) cur.resync()
                 return
             }
             if (!hasAccess(ctx)) return

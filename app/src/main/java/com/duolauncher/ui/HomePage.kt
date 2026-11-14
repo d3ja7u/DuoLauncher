@@ -824,24 +824,28 @@ private fun NowPlayingCapsule(
 @Composable
 private fun MusicSpectrum(playing: Boolean, color: Color) {
     val base = listOf(5f, 10f, 15f, 10f, 5f)          // 各条满格高度（dp）
-    val transition = rememberInfiniteTransition()
-    val ratios = base.indices.map { i ->
-        transition.animateFloat(
-            initialValue = 0.30f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(420 + i * 75, easing = FastOutSlowInEasing),
-                repeatMode = RepeatMode.Reverse,
-                initialStartOffset = StartOffset(i * 95)
+    // 只在播放时创建无限动画。暂停 / 无媒体时若仍挂着 5 个 transition，
+    // 它们会持续向 Choreographer 请求帧，桌面常驻白白耗电。
+    val ratios: List<State<Float>>? = if (playing) {
+        val transition = rememberInfiniteTransition()
+        base.indices.map { i ->
+            transition.animateFloat(
+                initialValue = 0.30f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(420 + i * 75, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse,
+                    initialStartOffset = StartOffset(i * 95)
+                )
             )
-        )
-    }
+        }
+    } else null
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.5.dp)
     ) {
         base.forEachIndexed { i, full ->
-            val k = if (playing) ratios[i].value else 0.45f
+            val k = ratios?.get(i)?.value ?: 0.45f
             Box(
                 Modifier
                     .width(2.5.dp)

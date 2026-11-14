@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.graphics.drawable.Drawable
 import android.util.Log
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 图标包支持：枚举已安装图标包，按 appfilter.xml 把目标应用映射到包内 drawable；
@@ -16,10 +17,15 @@ object IconPacks {
 
     data class PackInfo(val pkg: String, val label: String)
 
-    private val filterCache = mutableMapOf<String, Map<String, String>>()
-    private val iconCache = mutableMapOf<String, Drawable?>()
-    private val drawablesCache = mutableMapOf<String, List<String>>()
-    private val ownerCache = mutableMapOf<String, Map<String, String>>()
+    // 资源解析可能在主线程（图标绘制）或 IO 线程（图标选择器）发生，用并发容器。
+    private val filterCache = ConcurrentHashMap<String, Map<String, String>>()
+    private val drawablesCache = ConcurrentHashMap<String, List<String>>()
+    private val ownerCache = ConcurrentHashMap<String, Map<String, String>>()
+    // 只存「解析成功」的 Drawable；ConcurrentHashMap 不允许 null value，
+    // 所以「解析过但没匹配到」单独用 misses 记下来，避免每次组合都重跑
+    // loadFilter + 多次 getIdentifier 这类跨进程查找。
+    private val iconCache = ConcurrentHashMap<String, Drawable>()
+    private val iconMisses = ConcurrentHashMap.newKeySet<String>()
 
     /** 枚举本机已安装的图标包（覆盖 nova / adw / go / 等常见 intent 声明） */
     fun listPacks(ctx: Context): List<PackInfo> {
@@ -130,6 +136,9 @@ object IconPacks {
         if (packPkg.isBlank() && ov == null) return null
         val cacheKey = "$packPkg|${ov ?: ""}|${app.id}|${app.activityClass}"
         iconCache[cacheKey]?.let { return it }
+        // 「没匹配到」也是结论，同样要缓存：否则装了图标包的应用每次重组都会
+        // 重跑一遍 appfilter 解析与若干次跨进程 getIdentifier。
+        if (iconMisses.contains(cacheKey)) return null
 
         val pm = ctx.packageManager
         val result = runCatching {
@@ -173,7 +182,7 @@ object IconPacks {
             pRes.getDrawable(id)?.mutate()
         }.getOrNull()
 
-        iconCache[cacheKey] = result
+        if (result != null) iconCache[cacheKey] = result else iconMisses.add(cacheKey)
         return result
     }
 

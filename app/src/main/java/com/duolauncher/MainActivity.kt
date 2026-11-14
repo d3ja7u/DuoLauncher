@@ -50,6 +50,11 @@ class MainActivity : ComponentActivity() {
     private var homeSignal by mutableStateOf(0)
     private var packageReceiver: BroadcastReceiver? = null
 
+    /** 应用列表全量扫描的节流状态：避免回桌面时反复枚举应用、解码图标 */
+    private var lastAppsReloadAt = 0L
+    private var appsReloadJob: kotlinx.coroutines.Job? = null
+    private companion object { const val APPS_RELOAD_MIN_GAP_MS = 5_000L }
+
     /** 蜂窝信号强度权限：只申请一次，拒绝就永久回退（不再反复弹） */
     private val phonePermLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 拒绝也不影响功能 */ }
@@ -87,7 +92,7 @@ class MainActivity : ComponentActivity() {
                 val newlyInstalled = intent?.action == Intent.ACTION_PACKAGE_ADDED &&
                         intent.getBooleanExtra(Intent.EXTRA_REPLACING, false).not() &&
                         pkg != null && pkg != this@MainActivity.packageName
-                reloadApps(autoAddPkg = if (newlyInstalled) pkg else null)
+                reloadApps(autoAddPkg = if (newlyInstalled) pkg else null, force = true)
             }
         }
         runCatching { packageReceiver?.let { registerReceiver(it, filter) } }
@@ -149,11 +154,34 @@ class MainActivity : ComponentActivity() {
      * 包广播会并发触发本方法，差集在协程交错时可能恰好看不到新应用。按包名过滤则与执行
      * 顺序无关，且不会把已经装好的其它应用补进桌面，也不会撤销用户手动移除的图标。
      */
-    private fun reloadApps(autoAddPkg: String? = null) {
-        lifecycleScope.launch {
-            val list = AppRepository.loadApps(this@MainActivity)
-            DuoState.apps.clear()
-            DuoState.apps.addAll(list)
+    private fun reloadApps(autoAddPkg: String? = null, force: Boolean = false) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        // 每次回桌面都全量枚举应用并解码图标（LauncherApps + 每个 app 的 Drawable）代价很高，
+        // onCreate / onResume / onNewIntent 往往接连触发。短时间内合并为一次；
+        // 包变化广播（force）与首次加载一定执行，保证列表不会漏更新。
+        // 已有一次扫描在跑时也不再叠加，避免两个协程交错写 DuoState.apps。
+        if (!force && autoAddPkg == null &&
+            (appsReloadJob?.isActive == true ||
+                (DuoState.appLoadDone && lastAppsReloadAt > 0L &&
+                    now - lastAppsReloadAt < APPS_RELOAD_MIN_GAP_MS))) return
+        lastAppsReloadAt = now
+        appsReloadJob?.cancel()
+        appsReloadJob = lifecycleScope.launch {
+            // 只有包变化（force）才真正重扫并解码图标；普通回桌面直接复用应用列表快照，
+            // 避免每次 onResume 都枚举全部 profile 并解码上百个图标 Drawable。
+            val list = AppRepository.loadApps(this@MainActivity, refresh = force)
+            // 内容没变就别 clear+addAll：那会让所有观察 apps 的组合整页重组，回桌面明显顿一下。
+            // 但包变化（force）必须整表替换 —— 应用更新后图标 Drawable 会变，稳定键却完全相同。
+            val unchanged = !force && DuoState.apps.size == list.size &&
+                DuoState.apps.indices.all { i ->
+                    val a = DuoState.apps[i]
+                    val b = list[i]
+                    a.id == b.id && a.label == b.label && a.activityClass == b.activityClass
+                }
+            if (!unchanged) {
+                DuoState.apps.clear()
+                DuoState.apps.addAll(list)
+            }
             DuoState.ensureDefaults()
             if (autoAddPkg != null && DuoState.autoAddNewApps) {
                 val fresh = list.filter { app ->
@@ -213,15 +241,38 @@ class MainActivity : ComponentActivity() {
          * 桌面底部那条「输入状态 / 双拼 / 麦克风」工具栏不会残留（171 版验证过的路径）。
          * 直接由 pager 状态实时计算，不用异步收集，避免快速滑动时晚一帧。
          */
-        val searchFocused = pagerState.currentPage == searchPagerPage &&
-                !pagerState.isScrollInProgress &&
-                kotlin.math.abs(pagerState.currentPageOffsetFraction) < 0.02f
+        // offsetFraction 每帧都在变，直接在组合里读会让整个 DuoRoot 每帧重组（连带所有
+        // lambda / 子页参数重算）。用 derivedStateOf 后只有布尔结果翻转才通知重组：
+        // 滑动过程中它一直是 false，停稳那一刻才变 true，正是我们要的语义。
+        val searchFocused by remember(searchPagerPage) {
+            derivedStateOf {
+                pagerState.currentPage == searchPagerPage &&
+                        !pagerState.isScrollInProgress &&
+                        kotlin.math.abs(pagerState.currentPageOffsetFraction) < 0.02f
+            }
+        }
         // 视口中心离搜索页 / 资源库页各有多远（页为单位）：1 = 整页可见，0 = 完全离开。
-        // 根层级的虚化壁纸据此随翻页自然淡入淡出，两张页共用同一套做法；
-        // 不铺不透明纯色底（173 版曾把系统壁纸盖成纯黑）。
-        val pagerPos = pagerState.currentPage + pagerState.currentPageOffsetFraction
-        val searchVisibility = (1f - kotlin.math.abs(pagerPos - searchPagerPage)).coerceIn(0f, 1f)
-        val libraryVisibility = (1f - kotlin.math.abs(pagerPos - libraryPagerPage)).coerceIn(0f, 1f)
+        // 根层级的虚化壁纸据此随翻页自然淡入淡出；不铺不透明纯色底
+        // （173 版曾把系统壁纸盖成纯黑）。
+        // 「是否该出现在组合里」也走 derivedStateOf：滑动时只在跨越可见阈值时重组一次，
+        // 逐帧的 alpha 变化放到 graphicsLayer 的 draw 阶段读取，不触发任何重组。
+        val showSearchBackdrop by remember(searchPagerPage) {
+            derivedStateOf {
+                val pos = pagerState.currentPage + pagerState.currentPageOffsetFraction
+                (1f - kotlin.math.abs(pos - searchPagerPage)) > 0.01f
+            }
+        }
+        val showLibraryBackdrop by remember(libraryPagerPage) {
+            derivedStateOf {
+                val pos = pagerState.currentPage + pagerState.currentPageOffsetFraction
+                (1f - kotlin.math.abs(pos - libraryPagerPage)) > 0.01f
+            }
+        }
+        /** 逐帧的可见度；只在 graphicsLayer 的 draw lambda 里调用，不参与组合 */
+        fun backdropAlpha(page: Int): Float {
+            val pos = pagerState.currentPage + pagerState.currentPageOffsetFraction
+            return (1f - kotlin.math.abs(pos - page)).coerceIn(0f, 1f)
+        }
 
         var menuApp by remember { mutableStateOf<AppInfo?>(null) }
         var menuSource by remember { mutableStateOf("home") }
@@ -393,13 +444,13 @@ class MainActivity : ComponentActivity() {
                     // 按「视口离该页的距离」淡入淡出，翻页时与页面位移完全同步。
                     // 不铺不透明纯色底：窗口主题是 Theme.Wallpaper，壁纸由窗口本身透出，
                     // 173 版加过深色兜底，结果把系统壁纸整个盖成纯黑（齐老师实测）。
-                    if (libraryVisibility > 0.01f) {
-                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = libraryVisibility }) {
+                    if (showLibraryBackdrop) {
+                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = backdropAlpha(libraryPagerPage) }) {
                             GlassBackdrop(wallpaper, DuoState.glassLevel, dark)
                         }
                     }
-                    if (searchVisibility > 0.01f) {
-                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = searchVisibility }) {
+                    if (showSearchBackdrop) {
+                        Box(Modifier.fillMaxSize().graphicsLayer { alpha = backdropAlpha(searchPagerPage) }) {
                             GlassBackdrop(wallpaper, DuoState.glassLevel, dark)
                         }
                     }
