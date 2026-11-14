@@ -3,7 +3,7 @@
 本文件记录把 DuoLauncher 收录进 **IzzyOnDroid** 与 **F-Droid 主仓库** 的全部准备材料与操作步骤。
 商店元数据的正式文件在仓库 `fastlane/metadata/android/` 下，本文件只是操作说明。
 
-> 当前状态（2026-11-14）：**v1.5.14 / versionCode 197 已在 GitHub Releases 正式发布，但两家仓库都还没有提交收录申请**，所以在 F-Droid 客户端里搜不到本应用。F-Droid 不会自动同步 GitHub Release。
+> 当前状态（2026-11-14）：**v1.5.15 / versionCode 199 已在 GitHub Releases 正式发布，但两家仓库都还没有提交收录申请**，所以在 F-Droid 客户端里搜不到本应用。F-Droid 不会自动同步 GitHub Release。
 
 ---
 
@@ -26,8 +26,8 @@ F-Droid 官方重签的包与 GitHub / Izzy 版**不能互相覆盖安装**，�
 |---|---|---|---|
 | FOSS 许可 | 必须 | 必须 | ✅ MIT（`LICENSE`） |
 | 公开源码、无闭源 SDK / 无追踪 SDK | 必须 | 必须 | ✅ 仅 AndroidX / Compose / Kotlin（Apache-2.0） |
-| Release 附 APK，tag 与版本对应 | 必须 | 建议 | ✅ `v1.3.9` ~ `v1.5.14`，`vX.Y.Z` 对应 `versionName` |
-| **APK < 30 MB** | **硬性上限** | 无硬性上限但越小越好 | ✅ v1.5.14 为 **2.43 MiB**（2,542,516 B） |
+| Release 附 APK，tag 与版本对应 | 必须 | 建议 | ✅ `v1.3.9` ~ `v1.5.15`，`vX.Y.Z` 对应 `versionName` |
+| **APK < 30 MB** | **硬性上限** | 无硬性上限但越小越好 | ✅ v1.5.15 为 **2.43 MiB**（2,546,712 B） |
 | **非 debuggable** | 是（否则标 `ApplicationDebuggable`） | 是 | ✅ `assembleRelease` 构建，R8 + 资源缩减 |
 | 签名前后一致 | 必须（首次收录记录指纹，之后逐次比对） | 由 F-Droid 重签，不要求 | ✅ 所有版本同一把 key（见下） |
 | fastlane 元数据 | 强烈建议 | 建议 | ✅ en-US / zh-CN / ja-JP，含标题、简介、详述、图标、8 张实机截图 |
@@ -59,16 +59,16 @@ v1.5.0 的 52.78 MB 几乎全是 dex，原因是 CI 构建的是 **debug 变体*
 3. `fastlane/metadata/android/*/changelogs/138.txt`：新增三个语言的更新说明。
 4. 验收：APK 2.14 MiB、无 `debuggable`、签名指纹一致、真机可覆盖安装；CI 内置 30 MB 体积校验。
 
-### 当前基准版：v1.5.14 / versionCode 197
+### 当前基准版：v1.5.15 / versionCode 199
 
 | 项目 | 值 |
 |---|---|
-| tag / 源码提交 | `v1.5.14` → `a1091aab4e08892d0cf8fbbacfb309189ed3ed6b` |
-| Release 资产 | `DuoLauncher-1.5.14.apk`，2,542,516 B |
+| tag / 源码提交 | `v1.5.15` → `5e4791dff5e0a6e94d307b01b5069a0475b7c191` |
+| Release 资产 | `DuoLauncher-1.5.15.apk`，2,546,712 B |
 | 构建 | 本地 JDK 17 `assembleRelease`（沿用构建机下载 Gradle 发行包超时时的兜底方式，详见第八节） |
 | 校验 | `aapt dump badging` 无 `debuggable`；`apksigner` 指纹与上表一致；Release 资产 sha256 与本地包一致 |
 
-> 收录申请一律以**当前基准版**为准。IzzyOnDroid 的自动更新脚本只认"每个 tag 附带一个 versionCode 更大的 APK"，v1.5.14 满足该条件。
+> 收录申请一律以**当前基准版**为准。IzzyOnDroid 的自动更新脚本只认"每个 tag 附带一个 versionCode 更大的 APK"，v1.5.15 满足该条件。
 
 ---
 
@@ -151,7 +151,7 @@ Requirements: JDK 17, Android SDK platform android-34 and build-tools 34.0.0. Gr
 
 The release build is R8-minified, not debuggable, and contains no DEPENDENCY_INFO_BLOCK. If DUO_KEYSTORE is unset, Gradle falls back to the local default debug signing config; CI sets DUO_KEYSTORE (plus pass/alias) to point at a restored keystore. All published APKs use the same certificate (SHA-256: 3de9760f549173a4b2822bc9a9cfff357da12717307191b888ee95ebee7f820e). settings.gradle.kts currently prefers Aliyun Maven mirrors; if those are unreachable from a build host, replace them with google() / mavenCentral().
 
-Every vX.Y.Z tag has exactly one APK attached, named DuoLauncher-X.Y.Z.apk. Latest: v1.5.14, versionCode 197, 2,542,516 bytes.
+Every vX.Y.Z tag has exactly one APK attached, named DuoLauncher-X.Y.Z.apk. Latest: v1.5.15, versionCode 199, 2,546,712 bytes.
 ```
 
 ### AI Tools Usage（模板新增的必填组，⚠️ 需本人确认）
@@ -220,9 +220,9 @@ git checkout -b com.duolauncher master
 # 2. 复制模板（本仓库 docs/fdroid/com.duolauncher.yml）
 cp /path/to/DuoLauncher/docs/fdroid/com.duolauncher.yml metadata/com.duolauncher.yml
 
-# 3. 核对 commit：模板里已填好 v1.5.14 tag 的完整 40 位 hash，无需替换
-git -C /path/to/DuoLauncher rev-list -n 1 v1.5.14
-# → a1091aab4e08892d0cf8fbbacfb309189ed3ed6b
+# 3. 核对 commit：模板里已填好 v1.5.15 tag 的完整 40 位 hash，无需替换
+git -C /path/to/DuoLauncher rev-list -n 1 v1.5.15
+# → 5e4791dff5e0a6e94d307b01b5069a0475b7c191
 
 # 4. 本地校验（需 fdroidserver）
 fdroid lint com.duolauncher
@@ -261,12 +261,12 @@ git push origin com.duolauncher
 * [x] Only `metadata/com.duolauncher.yml` is added, valid YAML with LF endings. No summary, description, images or changelog files are duplicated here.
 * [x] Releases are tagged `vX.Y.Z`; `AutoUpdateMode: Version v%v` and `UpdateCheckMode: Tags` are enabled.
 * [x] Issue tracker, WebSite and AuthorName are present.
-* [x] `commit` is the full 40-character hash of tag `v1.5.14` (`a1091aab4e08892d0cf8fbbacfb309189ed3ed6b`).
+* [x] `commit` is the full 40-character hash of tag `v1.5.15` (`5e4791dff5e0a6e94d307b01b5069a0475b7c191`).
 * [x] Only the latest version is kept in the metadata; no disabled builds.
 
 ### Metadata
 * [x] `Categories: [System]`, `License: MIT`, `RepoType: git`.
-* [x] `Builds[0]`: `gradle: [yes]`, `subdir: app`, versionName `1.5.14`, versionCode `197`. The release build is R8-minified, not debuggable and contains no DEPENDENCY_INFO_BLOCK.
+* [x] `Builds[0]`: `gradle: [yes]`, `subdir: app`, versionName `1.5.15`, versionCode `199`. The release build is R8-minified, not debuggable and contains no DEPENDENCY_INFO_BLOCK.
 * [x] AntiFeatures `NonFreeNet` and `Tracking` are declared proactively with their reasons in the yml.
 
 ## Anti-Features
@@ -312,6 +312,7 @@ MR 合入后通常还要 **24–48 小时**（签名环节需要人工介入）�
 | 发布 v1.5.12 并附带 APK | ✅ 已完成（2026-11-12） |
 | 发布 v1.5.13 并附带 APK | ✅ 已完成（2026-11-13） |
 | 发布 v1.5.14 并附带 APK | ✅ 已完成（2026-11-14） |
+| 发布 v1.5.15 并附带 APK | ✅ 已完成（2026-11-14） |
 | 注册 / 登录 Codeberg 账号，按 **App Inclusion Request** 模板提交收录 Issue | ⬜ 待办，需要你的账号与身份 |
 | 确认并记录 **AI 工具使用等级与工具名**，如实填写模板必填组 | ⬜ 待办，属于开发者本人的声明，不可代选 |
 | 注册 / 登录 GitLab 账号、Fork `fdroiddata` 并提 MR | ⬜ 待办，需要你的账号 |
