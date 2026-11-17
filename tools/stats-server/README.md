@@ -15,10 +15,12 @@
 
 | 形态 | 数据存哪 | 适合 | 额度 / 成本 |
 |---|---|---|---|
-| 托管云服务 | 云数据库 `stats_pings`（本地 SQLite 同时留副本） | 零运维、换设备不丢数据 | 体验版 **10 个应用 / 单应用 5,000 资源点·月**，按月刷新，用尽自动暂停、不扣费 |
+| 托管云服务 | 云数据库 `stats_pings`（本地 SQLite 同时留副本） | 零运维、换设备不丢数据 | 体验版 **10 个应用 / 单应用 10,000 资源点**，按月刷新，用尽自动暂停、不扣费 |
 | 家里自托管 | 本地 SQLite（`CLOUD_MODE=off` 可完全不联云端） | 数据完全在自己手里、无额度上限 | 无平台费用，需自己管 HTTPS、备份和域名 |
 
 > 云服务体验版在官网标注为**限时免费**，官方没有"永久免费无限用"的承诺。因此长期跑统计，家里 Docker 自托管 + 云端只作可选备份，是更稳妥的组合。
+>
+> **看板刷新策略**：每次刷新都会在云库执行一次聚合（`stats_summary`），属于计费调用。因此看板只在**页面可见时**每 **10 分钟**刷新一次，切到后台立即停止，回到前台补一次；另有「立即刷新」按钮按需触发。不要改回秒级轮询——页面留一个后台标签页一天就会把额度耗光。
 
 ## 云服务接入（已完成）
 
@@ -118,4 +120,22 @@ stats.example.com:8443 {
 | 家里端口映射 | `https://stats.你的域名:8443/ping` | `https://stats.你的域名:8443/` |
 
 自托管时**不需要** `sharecode` 参数。地址留空则完全不上报。客户端不需要升级，改地址即可切换后端。
+
+### 托管云服务上更新本目录
+
+本目录已通过应用托管发布在 `duolauncher-stats.app.workbuddy.host`。重新发布**必须显式指定启动命令**，否则平台会按 `main.py` 猜测并启动失败：
+
+```bash
+# 启动命令：python3 server.py   端口：3000   语言：python   安装命令：留空
+```
+
+发布时**不要带 `data/` 目录**（已在 `.gitignore` 里忽略）。平台上传是整目录覆盖，本地那份 SQLite 会顶掉沙箱里更完整的副本；万一覆盖了，用下面的命令从云端数据面重建：
+
+```bash
+KEY=$(python3 -c "import json;print(json.load(open('cloud-config.json'))['publishableKey'])")
+EP=$(python3 -c "import json;print(json.load(open('cloud-config.json'))['endpoint'])")
+curl -s -H "x-wb-webapp-access-key: $KEY" -H "Origin: $EP" \
+  "$EP/.cloud/database/rest/stats_pings?select=anon_id,app,code,lang,api,kind,created_at&order=created_at.asc&limit=1000" \
+  -o /tmp/rows.json
+```
 

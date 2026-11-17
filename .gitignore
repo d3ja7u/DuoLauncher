@@ -21,3 +21,6 @@ Thumbs.db
 
 # 本地调试日志
 *.log
+
+# 统计服务端本地副本（运行时生成，发布时不要带上，否则会覆盖线上沙箱里的库）
+tools/stats-server/data/
