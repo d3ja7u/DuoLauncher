@@ -151,7 +151,11 @@
     <string name="reverse_pages_desc">オンにすると App ライブラリが左に来ます</string>
     <string name="double_tap_lock">ダブルタップでスリープ</string>
     <string name="double_tap_lock_on">ユーザー補助によるスリープが有効</string>
+    <string name="double_tap_lock_broken">有効ですが未接続です。タップして一度オフにし、再度オンにしてください</string>
     <string name="double_tap_lock_off">初回は「ユーザー補助」で DuoLauncher スリープサービスを有効にしてください（画面ロックのみ）</string>
+    <string name="lock_admin_title">予備のスリープ方法（端末管理者）</string>
+    <string name="lock_admin_desc">アプリ更新後にスリープサービスが無効になることがあります。予備を有効にすると、ダブルタップでのスリープが引き続き使えます</string>
+    <string name="lock_admin_explain">ダブルタップでのスリープ用の予備手段です。「強制ロック」のみを許可し、データ消去などの管理権限は要求しません。</string>
     <string name="swipe_down_panels">下スワイプで通知 / クイック設定</string>
     <string name="swipe_down_panels_desc">左半分を下スワイプで通知、右半分でクイック設定。ページ送りには影響しません</string>
     <string name="swipe_right_search">右スワイプで検索</string>
@@ -232,7 +236,7 @@
     <string name="err_no_release">このリポジトリにはまだ Release がありません</string>
     <string name="err_bad_json">Release 情報ではありません（tag_name がありません）</string>
     <string name="err_no_tag">フィードにバージョンタグがありません</string>
-    <string name="toast_sleep_starting">スリープサービスを起動中です。少し待ってください</string>
+    <string name="toast_sleep_rebind">スリープサービスが未接続です。「ユーザー補助」で一度オフにし、再度オンにしてください</string>
     <string name="toast_enable_accessibility">「ユーザー補助 → インストール済みサービス」で DuoLauncher スリープサービスを有効にしてください</string>
     <string name="toast_enable_service">「ユーザー補助」で DuoLauncher サービスを有効にして再試行してください</string>
     <string name="search_results">検索結果 · %1$d</string>

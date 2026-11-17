@@ -887,7 +887,7 @@ private fun DrawScope.drawCellularGlyph(
         val on = i < level.coerceIn(0, 4)
         if (on) drawRoundRect(shade, topLeft = Offset(x, y + off), size = Size(barW, bh), cornerRadius = rad)
         drawRoundRect(
-            if (on) color else color.copy(alpha = 0.26f),
+            if (on) color else color.copy(alpha = 0.34f),
             topLeft = Offset(x, y), size = Size(barW, bh), cornerRadius = rad
         )
     }
@@ -911,7 +911,7 @@ private fun DrawScope.drawSignalDots(
         val on = i < lit
         if (on) drawCircle(shade, radius = 3.5f * k, center = Offset(x, y + off))
         drawCircle(
-            if (on) color else color.copy(alpha = 0.26f),
+            if (on) color else color.copy(alpha = 0.34f),
             radius = 3.5f * k, center = Offset(x, y)
         )
     }
@@ -943,7 +943,7 @@ private fun DrawScope.drawDualSimDots(
             val on = i < lit
             if (on) drawCircle(shade, radius, Offset(x, y + off))
             drawCircle(
-                if (on) color else color.copy(alpha = 0.26f),
+                if (on) color else color.copy(alpha = 0.34f),
                 radius, Offset(x, y)
             )
         }
@@ -1019,12 +1019,27 @@ private fun DrawScope.drawPlugGlyph(
 private const val TAG_INK = "DuoInk"
 
 /**
- * 只求「时间 + 三合一」正下方那一小块壁纸的平均灰度，壁纸其他区域一律不参与判断。
- * bounds 为 null（首帧尚未布局）时返回 -1，宁可这一轮不采样、等布局完成再算，
+ * 「时间 + 三合一」正下方那一小块壁纸的亮度分布。
+ *
+ * 为什么不再只看平均值：夜景 / 霓虹 / 雨棚这类画面往往是「大片深色 + 少量很亮的建筑或灯」，
+ * 平均值会被那一小块亮部抬高，恰好落在阈值边界上，于是同一张壁纸只要取样点稍有移动
+ * 就在黑白之间来回跳（实测某张壁纸该区域平均 134.4，阈值 135，只差 0.6）。
+ * 改看中位数与暗 / 亮像素占比，少量亮块就拉不动结论了。
+ *
+ * [median] 亮度中位数 0..255；[dark] 亮度 < 90 的占比；[bright] 亮度 > 170 的占比。
+ */
+private class RegionStats(val median: Float, val dark: Float, val bright: Float) {
+    override fun toString(): String =
+        "median=%.1f dark=%.2f bright=%.2f".format(median, dark, bright)
+}
+
+/**
+ * 只统计「时间 + 三合一」正下方那一小块壁纸，壁纸其他区域一律不参与判断。
+ * bounds 为 null（首帧尚未布局）时返回 null，宁可这一轮不采样、等布局完成再算，
  * 也不拿「顶部居中」之类猜出来的区域凑数 —— 徽标在右上角，猜会完全错位。
  */
-private fun regionLuma(bmp: Bitmap, bounds: Rect?, sw: Int, sh: Int): Float {
-    if (bounds == null || bounds.width <= 0f || bounds.height <= 0f) return -1f
+private fun regionStats(bmp: Bitmap, bounds: Rect?, sw: Int, sh: Int): RegionStats? {
+    if (bounds == null || bounds.width <= 0f || bounds.height <= 0f) return null
     val bw = bmp.width
     val bh = bmp.height
     // 四周各内缩 8%，进一步排除徽标边框外的背景
@@ -1034,7 +1049,8 @@ private fun regionLuma(bmp: Bitmap, bounds: Rect?, sw: Int, sh: Int): Float {
     val x1 = ((bounds.right - ix) / sw * bw).toInt().coerceIn(x0 + 1, bw)
     val y0 = ((bounds.top + iy) / sh * bh).toInt().coerceIn(0, bh - 1)
     val y1 = ((bounds.bottom - iy) / sh * bh).toInt().coerceIn(y0 + 1, bh)
-    var sum = 0L
+    // 256 桶直方图：一次遍历同时得到中位数与暗 / 亮占比，不分配任何集合
+    val hist = IntArray(256)
     var n = 0
     for (y in y0 until y1) {
         for (x in x0 until x1) {
@@ -1042,11 +1058,27 @@ private fun regionLuma(bmp: Bitmap, bounds: Rect?, sw: Int, sh: Int): Float {
             val r = (px shr 16) and 0xFF
             val g = (px shr 8) and 0xFF
             val b = px and 0xFF
-            sum += (0.299 * r + 0.587 * g + 0.114 * b).toLong()
+            val v = (0.299f * r + 0.587f * g + 0.114f * b).toInt().coerceIn(0, 255)
+            hist[v]++
             n++
         }
     }
-    return if (n == 0) -1f else sum.toFloat() / n
+    if (n == 0) return null
+    var acc = 0
+    var median = 128f
+    var darkCnt = 0
+    var brightCnt = 0
+    var found = false
+    for (v in 0..255) {
+        acc += hist[v]
+        if (!found && acc * 2 >= n) {
+            median = v.toFloat()
+            found = true
+        }
+        if (v < 90) darkCnt += hist[v]
+        if (v > 170) brightCnt += hist[v]
+    }
+    return RegionStats(median, darkCnt.toFloat() / n, brightCnt.toFloat() / n)
 }
 
 /**
@@ -1055,9 +1087,9 @@ private fun regionLuma(bmp: Bitmap, bounds: Rect?, sw: Int, sh: Int): Float {
  *    原实现只走 WallpaperManager.getDrawable()，在部分 ROM 上会因权限 / 内部缓存
  *    返回 null 或旧图，导致换壁纸后图标颜色永远不变 —— 现在这条路径与系统服务解耦。
  * ② 用户从图库手动设置的静态壁纸：系统壁纸 drawable。
- * ③ 动态壁纸等读不到位图的场合：系统算好的 WallpaperColors 提示。
+ * 读不到位图时返回 null（保持上一次结论），不为此申请额外权限。
  */
-private fun computeRegionLuma(ctx: Context, bounds: Rect?): Float? {
+private fun computeRegionStats(ctx: Context, bounds: Rect?): RegionStats? {
     if (bounds == null) return null
     val dm = ctx.resources.displayMetrics
     val sw = dm.widthPixels.coerceAtLeast(1)
@@ -1068,9 +1100,9 @@ private fun computeRegionLuma(ctx: Context, bounds: Rect?): Float? {
     // ① 本应用设置的壁纸：精确、与系统壁纸服务的缓存 / ROM 权限无关
     val own = if (DuoState.wallpaperOwned) runCatching {
         val t = WallpaperRotator.currentThumbnail(ctx, bw, bh) ?: return@runCatching null
-        val v = regionLuma(t, bounds, sw, sh)
+        val v = regionStats(t, bounds, sw, sh)
         t.recycle()
-        if (v < 0f) null else v
+        v
     }.getOrNull() else null
 
     // ② 系统壁纸 drawable：用于识别「用户从图库换了壁纸」并取那块区域的真实明暗
@@ -1080,9 +1112,9 @@ private fun computeRegionLuma(ctx: Context, bounds: Rect?): Float? {
         val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
         d.setBounds(0, 0, bw, bh)
         d.draw(android.graphics.Canvas(bmp))
-        val v = regionLuma(bmp, bounds, sw, sh)
+        val v = regionStats(bmp, bounds, sw, sh)
         bmp.recycle()
-        if (v < 0f) null else v
+        v
     }.getOrElse {
         // 部分 ROM 读系统壁纸位图要求运行时存储权限，取不到属正常；
         // 此时以自有图片采样为准，不为此申请额外权限。
@@ -1090,11 +1122,11 @@ private fun computeRegionLuma(ctx: Context, bounds: Rect?): Float? {
         null
     }
 
-    // 两者明显不同 → 用户在别处换了壁纸，改采系统壁纸；刚由本应用 setBitmap 后的
+    // 两者中位数差异明显 → 用户在别处换了壁纸，改采系统壁纸；刚由本应用 setBitmap 后的
     // 3 秒内不这么判，避免读到系统服务尚未刷新的旧缓存。
     // 全程只用「徽标底下」这一块区域，不看壁纸其他位置、也不做整屏亮度兜底。
     val external = own != null && sys != null &&
-        kotlin.math.abs(own - sys) > 45f &&
+        kotlin.math.abs(own.median - sys.median) > 45f &&
         (WallpaperRotator.lastSetAt == 0L ||
             System.currentTimeMillis() - WallpaperRotator.lastSetAt > 3000L)
     val picked = when {
@@ -1143,14 +1175,19 @@ private fun inkSchedule(ctx: Context, bounds: Rect?) {
     inkJob?.cancel()
     inkJob = inkScope.launch {
         delay(140)
-        val luma = computeRegionLuma(ctx, bounds) ?: return@launch
-        // 滞回区间避免临界灰度反复跳色：<135 判暗、>165 判亮，中间保持现状
+        val st = computeRegionStats(ctx, bounds) ?: return@launch
+        // 判据刻意偏白：白色配深色阴影在深色、彩色、明暗交错的画面上都清楚，
+        // 只有真正大面积浅色底才转黑。结论完全由画面决定、不参考上一次的值，
+        // 所以同一张壁纸无论何时重算都得到同一个颜色，不会在黑白之间来回跳。
         val next = when {
-            luma < 135f -> true
-            luma > 165f -> false
-            else -> inkState.value
+            // 大面积浅色（浅色壁纸、白天天空、大片留白）→ 黑图标
+            st.bright > 0.60f && st.median > 175f -> false
+            // 整体很亮、且几乎没有暗块 → 黑图标
+            st.median >= 185f && st.dark < 0.10f -> false
+            // 其余（深色夜景、霓虹、雨棚、明暗交错）→ 白图标
+            else -> true
         }
-        Log.d(TAG_INK, "luma=$luma ink ${inkState.value} -> $next")
+        Log.d(TAG_INK, "stats=$st ink ${inkState.value} -> $next")
         withContext(Dispatchers.Main) { inkState.value = next }
     }
 }

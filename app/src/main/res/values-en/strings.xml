@@ -151,7 +151,11 @@
     <string name="reverse_pages_desc">Puts the App Library on the left when on</string>
     <string name="double_tap_lock">Double-tap to sleep</string>
     <string name="double_tap_lock_on">Accessibility sleep service enabled</string>
+    <string name="double_tap_lock_broken">Enabled but not connected — tap to turn it off and on again</string>
     <string name="double_tap_lock_off">First use: enable the DuoLauncher sleep service in Accessibility (screen lock only)</string>
+    <string name="lock_admin_title">Backup sleep method (device admin)</string>
+    <string name="lock_admin_desc">The sleep service may stop working after an update; with this backup, double-tap to sleep keeps working</string>
+    <string name="lock_admin_explain">Backup for double-tap to sleep. Only the force-lock policy is granted — no other admin rights such as erasing data.</string>
     <string name="swipe_down_panels">Swipe down for notifications / quick settings</string>
     <string name="swipe_down_panels_desc">Swipe down on the left half for notifications, right half for quick settings; page swipes are unaffected</string>
     <string name="swipe_right_search">Swipe right to search</string>
@@ -232,7 +236,7 @@
     <string name="err_no_release">This repository has no releases yet</string>
     <string name="err_bad_json">Response is not a Release (missing tag_name)</string>
     <string name="err_no_tag">No version tag found in the feed</string>
-    <string name="toast_sleep_starting">Sleep service is starting, please try again shortly</string>
+    <string name="toast_sleep_rebind">Sleep service not connected: turn it off and on again in Accessibility</string>
     <string name="toast_enable_accessibility">Enable the DuoLauncher sleep service under Accessibility → Downloaded services</string>
     <string name="toast_enable_service">Enable the DuoLauncher service in Accessibility and try again</string>
     <string name="search_results">Results · %1$d</string>

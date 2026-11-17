@@ -43,8 +43,16 @@ class DuoLockService : AccessibilityService() {
         @Volatile
         private var instance: DuoLockService? = null
 
-        /** 服务进程已连上（可直接调用全局操作） */
-        fun isRunning(): Boolean = instance != null
+        /**
+         * 服务进程已连上（可直接调用全局操作）。
+         *
+         * 与「用户已在系统设置里开启」是两件事：应用被覆盖安装后进程被杀，系统会把本服务
+         * 记进 Crashed services 且不再自动重连，此时设置里仍显示「已开启」，但这里是 null。
+         */
+        fun isConnected(): Boolean = instance != null
+
+        /** 旧名，等价于 [isConnected] */
+        fun isRunning(): Boolean = isConnected()
 
         /**
          * 用户在系统设置里已开启本服务。

@@ -172,13 +172,24 @@ fun HomePage(
                 detectTapGestures(
                     onDoubleTap = {
                         if (!DuoState.doubleTapSleep) return@detectTapGestures
-                        if (ScreenOff.lock()) {
-                            // 已息屏
-                        } else if (ScreenOff.isEnabled(ctx)) {
-                            nav.toast(Lang.s(R.string.toast_sleep_starting))
-                        } else {
-                            ScreenOff.requestPermission(ctx)
-                            nav.toast(Lang.s(R.string.toast_enable_accessibility))
+                        when {
+                            // ① 无障碍服务已连上
+                            ScreenOff.lock() -> Unit
+                            // ② 备用：设备管理员 lockNow。覆盖安装后无障碍绑定会失效，
+                            //    开了备用方式时这里仍能正常息屏，用户不必去设置里重开一次。
+                            ScreenOff.lockByAdmin(ctx) -> Unit
+                            // ③ 系统里显示已开启、但服务没连上（覆盖安装后的典型状态）。
+                            //    旧逻辑在这里只说「正在启动，请稍后再试」，而它永远不会启动 ——
+                            //    必须明确告诉用户「关一次再打开」，并直接跳到本服务的详情页。
+                            ScreenOff.isEnabled(ctx) -> {
+                                nav.toast(Lang.s(R.string.toast_sleep_rebind))
+                                ScreenOff.guideToRebind(ctx)
+                            }
+                            // ④ 从未开启过
+                            else -> {
+                                ScreenOff.requestPermission(ctx)
+                                nav.toast(Lang.s(R.string.toast_enable_accessibility))
+                            }
                         }
                     },
                     onLongPress = {

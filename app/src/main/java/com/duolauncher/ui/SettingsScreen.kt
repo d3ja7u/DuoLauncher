@@ -264,8 +264,12 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             doCheck(silent = true)
         }
     }
-    // 无障碍服务状态：从系统设置页返回时刷新（否则开关文案一直停在“未开启”）
-    var accReady by remember { mutableStateOf(ScreenOff.isEnabled(ctx)) }
+    // 无障碍服务状态：必须区分「系统设置里已开启」和「服务真的连上了」。
+    // 应用被覆盖安装后进程被杀，系统会把服务记成 Crashed services 且不再自动重连，
+    // 此时设置页仍显示「已开启」，只认前者就会给出无解提示（旧版「正在启动」）。
+    var accEnabled by remember { mutableStateOf(ScreenOff.isEnabled(ctx)) }
+    var accReady by remember { mutableStateOf(ScreenOff.isReady()) }
+    var adminReady by remember { mutableStateOf(ScreenOff.isAdminActive(ctx)) }
     // 通知使用权状态，同样需要在从系统页返回时刷新
     var badgeAccess by remember { mutableStateOf(DuoNotificationListener.hasAccess(ctx)) }
     // 有些 ROM 会在后台自行回收第三方无障碍服务，用户并没有再进过系统设置页，
@@ -279,18 +283,31 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             android.os.Handler(android.os.Looper.getMainLooper())
         ) {
             override fun onChange(selfChange: Boolean) {
-                accReady = ScreenOff.isEnabled(ctx)
+                accEnabled = ScreenOff.isEnabled(ctx)
+                accReady = ScreenOff.isReady()
             }
         }
         runCatching { ctx.contentResolver.registerContentObserver(uri, false, obs) }
         onDispose { runCatching { ctx.contentResolver.unregisterContentObserver(obs) } }
+    }
+    // 服务绑定是异步的：用户拨完开关回到这里时可能还没连上，也可能几秒后才连上。
+    // 设置页可见期间轻量轮询（只是读一个静态字段，几乎无开销），文案随之自动纠正。
+    LaunchedEffect(Unit) {
+        while (true) {
+            accReady = ScreenOff.isReady()
+            accEnabled = ScreenOff.isEnabled(ctx)
+            adminReady = ScreenOff.isAdminActive(ctx)
+            kotlinx.coroutines.delay(1_500L)
+        }
     }
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 phoneGranted = phonePermissionGranted(ctx)
-                accReady = ScreenOff.isEnabled(ctx)
+                accEnabled = ScreenOff.isEnabled(ctx)
+                accReady = ScreenOff.isReady()
+                adminReady = ScreenOff.isAdminActive(ctx)
                 badgeAccess = DuoNotificationListener.hasAccess(ctx)
                 // 从「安装未知来源应用」设置页返回：授权通过就接着下载
                 val waiting = pendingRelease
@@ -594,12 +611,27 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         DuoState.reversePages, dark) { DuoState.reversePages = it; DuoState.save() }
                     SettingToggle(
                         Lang.s(R.string.double_tap_lock),
-                        if (accReady) Lang.s(R.string.double_tap_lock_on)
-                        else Lang.s(R.string.double_tap_lock_off),
+                        when {
+                            accReady -> Lang.s(R.string.double_tap_lock_on)
+                            accEnabled -> Lang.s(R.string.double_tap_lock_broken)
+                            else -> Lang.s(R.string.double_tap_lock_off)
+                        },
                         DuoState.doubleTapSleep, dark
                     ) { on ->
                         DuoState.doubleTapSleep = on; DuoState.save()
-                        if (on && !accReady) ScreenOff.requestPermission(ctx)
+                        if (on) when {
+                            // 已开启但没连上：直接跳到本服务的详情页，让用户关一次再打开
+                            accEnabled -> ScreenOff.openServiceSettings(ctx)
+                            else -> ScreenOff.requestPermission(ctx)
+                        }
+                    }
+                    SettingToggle(
+                        Lang.s(R.string.lock_admin_title),
+                        Lang.s(R.string.lock_admin_desc),
+                        adminReady, dark
+                    ) { on ->
+                        if (on) ScreenOff.requestAdmin(ctx) else ScreenOff.removeAdmin(ctx)
+                        // 真实状态以系统为准：授权页返回时 ON_RESUME、以及本页轮询都会纠正文案
                     }
                     SettingToggle(
                         Lang.s(R.string.swipe_down_panels),
