@@ -237,7 +237,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
-| 1.5.16 | Added a "backup sleep method" for double-tap-to-sleep with accessibility or device-admin schemes; improved how the desktop clock and tri-status badge choose black or white icons on dark wallpapers |
+| 1.5.16 | Added a "backup sleep method" for double-tap-to-sleep with accessibility or device-admin schemes; improved how the desktop clock and tri-status badge choose black or white icons on dark wallpapers; fixed the backup method failing to enable and the accessibility prompt still appearing when it is enabled |
 | 1.5.15 | Further reduced power consumption and optimised overall app performance |
 | 1.5.14 | Added a "Sync lock-screen wallpaper" toggle in Settings → Wallpaper; when enabled the lock screen and home wallpaper switch together; improved home-screen scrolling and reduced power use |
 | 1.5.13 | Added wallpaper rotation in Settings (pick multiple photos, interval-based, swipe-up to switch) and a "Show battery percentage" toggle for the tri-status badge; the badge now follows headset, hotspot, power-saving and charging state and adapts its colour to the wallpaper; improved wallpaper rendering and network-type labels |
