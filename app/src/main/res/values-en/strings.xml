@@ -152,10 +152,13 @@
     <string name="double_tap_lock">Double-tap to sleep</string>
     <string name="double_tap_lock_on">Accessibility sleep service enabled</string>
     <string name="double_tap_lock_broken">Enabled but not connected — tap to turn it off and on again</string>
+    <string name="double_tap_lock_admin">Backup sleep method enabled (device admin)</string>
     <string name="double_tap_lock_off">First use: enable the DuoLauncher sleep service in Accessibility (screen lock only)</string>
     <string name="lock_admin_title">Backup sleep method (device admin)</string>
     <string name="lock_admin_desc">The sleep service may stop working after an update; with this backup, double-tap to sleep keeps working</string>
     <string name="lock_admin_explain">Backup for double-tap to sleep. Only the force-lock policy is granted — no other admin rights such as erasing data.</string>
+    <string name="toast_admin_confirm">Tap \"Activate\" on the system screen to finish</string>
+    <string name="toast_admin_fail">Cannot open the system screen; enable it manually in Settings → Device admin apps</string>
     <string name="swipe_down_panels">Swipe down for notifications / quick settings</string>
     <string name="swipe_down_panels_desc">Swipe down on the left half for notifications, right half for quick settings; page swipes are unaffected</string>
     <string name="swipe_right_search">Swipe right to search</string>

@@ -1,8 +1,10 @@
 package com.duolauncher.util
 
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.os.SystemClock
 import android.provider.Settings
@@ -65,18 +67,28 @@ object ScreenOff {
     }
 
     /** 跳系统「启用设备管理员」页，由用户确认；返回后由调用方重新读 [isAdminActive] */
-    fun requestAdmin(ctx: Context) {
-        runCatching {
-            ctx.startActivity(
-                Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-                    .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent(ctx))
-                    .putExtra(
-                        DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                        Lang.s(R.string.lock_admin_explain)
-                    )
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    fun requestAdmin(ctx: Context): Boolean = runCatching {
+        val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+            .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent(ctx))
+            .putExtra(
+                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                Lang.s(R.string.lock_admin_explain)
             )
+        // 这里绝对不能加 FLAG_ACTIVITY_NEW_TASK：系统的 DeviceAdminAdd 一旦发现该 flag 就
+        // 直接 finish()（logcat: "Cannot start ADD_DEVICE_ADMIN as a new task"），
+        // 表现是授权页闪一下又退回、开关怎么也打不开。必须由 Activity 原地启动。
+        val target = ctx.activityOrNull() ?: ctx.applicationContext
+        target.startActivity(intent)
+    }.isSuccess
+
+    /** 逐层解包 ContextWrapper，拿到真正的 Activity */
+    private fun Context.activityOrNull(): Activity? {
+        var c: Context? = this
+        while (c is ContextWrapper) {
+            if (c is Activity) return c
+            c = c.baseContext
         }
+        return null
     }
 
     /** 关闭备用方式（撤销设备管理员） */

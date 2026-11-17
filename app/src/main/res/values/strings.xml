@@ -152,10 +152,13 @@
     <string name="double_tap_lock">双击桌面息屏</string>
     <string name="double_tap_lock_on">已开启无障碍息屏服务</string>
     <string name="double_tap_lock_broken">已开启但未连接，点此关闭后重新打开</string>
+    <string name="double_tap_lock_admin">已启用备用息屏方式（设备管理员）</string>
     <string name="double_tap_lock_off">首次使用需在「无障碍」中开启 DuoLauncher 息屏服务（仅锁屏）</string>
     <string name="lock_admin_title">备用息屏方式（设备管理员）</string>
     <string name="lock_admin_desc">安装新版本后息屏服务可能失效；开启此备用方式后双击息屏依旧可用</string>
     <string name="lock_admin_explain">用于「双击桌面息屏」的备用方案：仅授予「强制锁屏」权限，不涉及擦除数据等其他管理权限。</string>
+    <string name="toast_admin_confirm">请在系统页面点击「激活」完成开启</string>
+    <string name="toast_admin_fail">无法打开系统授权页面，请到系统设置 → 设备管理器中手动开启</string>
     <string name="swipe_down_panels">下滑打开通知栏 / 控制中心</string>
     <string name="swipe_down_panels_desc">左半屏下滑出通知栏，右半屏下滑出控制中心；与左右翻页互不影响</string>
     <string name="swipe_right_search">右滑打开搜索</string>

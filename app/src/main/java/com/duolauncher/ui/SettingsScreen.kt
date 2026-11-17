@@ -614,15 +614,18 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         when {
                             accReady -> Lang.s(R.string.double_tap_lock_on)
                             accEnabled -> Lang.s(R.string.double_tap_lock_broken)
+                            adminReady -> Lang.s(R.string.double_tap_lock_admin)
                             else -> Lang.s(R.string.double_tap_lock_off)
                         },
                         DuoState.doubleTapSleep, dark
                     ) { on ->
                         DuoState.doubleTapSleep = on; DuoState.save()
-                        if (on) when {
+                        // 已经有可用通道时不要再弹无障碍授权：无障碍连上了就无需任何跳转，
+                        // 只开了设备管理员备用方式时也足够息屏。只有两条路都不通时才引导。
+                        if (on && !accReady && !adminReady) {
                             // 已开启但没连上：直接跳到本服务的详情页，让用户关一次再打开
-                            accEnabled -> ScreenOff.openServiceSettings(ctx)
-                            else -> ScreenOff.requestPermission(ctx)
+                            if (accEnabled) ScreenOff.openServiceSettings(ctx)
+                            else ScreenOff.requestPermission(ctx)
                         }
                     }
                     SettingToggle(
@@ -630,7 +633,13 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         Lang.s(R.string.lock_admin_desc),
                         adminReady, dark
                     ) { on ->
-                        if (on) ScreenOff.requestAdmin(ctx) else ScreenOff.removeAdmin(ctx)
+                        if (on) {
+                            // 系统授权页必须由 Activity 原地启动，跳过去后由用户点「激活」
+                            if (ScreenOff.requestAdmin(ctx)) nav.toast(Lang.s(R.string.toast_admin_confirm))
+                            else nav.toast(Lang.s(R.string.toast_admin_fail))
+                        } else {
+                            ScreenOff.removeAdmin(ctx)
+                        }
                         // 真实状态以系统为准：授权页返回时 ON_RESUME、以及本页轮询都会纠正文案
                     }
                     SettingToggle(

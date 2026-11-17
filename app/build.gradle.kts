@@ -16,7 +16,7 @@ android {
         applicationId = "com.duolauncher"
         minSdk = 28
         targetSdk = 34
-        versionCode = 201
+        versionCode = 202
         versionName = "1.5.16"
     }
 
