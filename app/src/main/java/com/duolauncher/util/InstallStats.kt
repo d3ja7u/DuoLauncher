@@ -25,10 +25,10 @@ import java.util.UUID
  */
 object InstallStats {
 
-    /** 默认接收端（WorkBuddy 沙箱实例）；正式使用建议自托管 tools/stats-server 后改掉这里 */
-    const val DEFAULT_URL = "https://duolauncher-stats.app.workbuddy.host/ping?sharecode=AKJCYWSUYS"
+    /** 默认接收端（自托管：家里软路由上的 stats.d3ja7u.top，走 8443 的 HTTPS） */
+    const val DEFAULT_URL = "https://stats.d3ja7u.top:8443/ping"
     /** 人看的统计页，设置里「查看统计数据」打开它 */
-    const val STATS_PAGE = "https://duolauncher-stats.app.workbuddy.host/?sharecode=AKJCYWSUYS"
+    const val STATS_PAGE = "https://stats.d3ja7u.top:8443/?sharecode=DUOD91F4B87"
 
     private const val PREF = "duo_stats_v1"
     private const val K_ID = "anon_id"

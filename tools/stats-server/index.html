@@ -29,7 +29,7 @@ footer{margin-top:36px;font-size:12px;opacity:.6}
 </head>
 <body>
 <h1>DuoLauncher 匿名统计</h1>
-<div class="sub">仅统计随机匿名 ID 的数量，不采集设备标识、IP、位置或任何个人信息 · <span id="updated">每 10 分钟自动更新，切到后台即暂停</span></div>
+<div class="sub">仅统计随机匿名 ID 的数量，不采集设备标识、IP、位置或任何个人信息 · <span id="updated">已停止自动刷新，点「立即刷新」查看最新</span></div>
 <div class="src" id="src">正在连接…</div>
 <button id="btn-refresh" class="mini">立即刷新</button>
 <div class="msg" id="msg"></div>
@@ -163,32 +163,11 @@ footer{margin-top:36px;font-size:12px;opacity:.6}
   }
 
   // ── 刷新策略 ───────────────────────────────────────────────────────────────
-  // 每次刷新都会在云库执行一次聚合，属于计费调用。因此：
-  //   1. 10 分钟一次，不再 60 秒一次；
-  //   2. 页面切到后台（不可见）立即停止，回到前台才补一次；
-  //   3. 用 setTimeout 串行排队，避免上一次请求未返回就叠加下一次。
-  var REFRESH_MS = 10 * 60 * 1000;
-  var timer = null;
-
-  function stopTimer() {
-    if (timer) { clearTimeout(timer); timer = null; }
-  }
-
-  function tick() {
-    stopTimer();
-    if (document.visibilityState === 'hidden') return;
-    timer = setTimeout(function () { load().then(tick, tick); }, REFRESH_MS);
-  }
-
+  // 接收端已迁到自托管（stats.d3ja7u.top），云端看板只留作历史查阅：
+  // 不再自动轮询（每次刷新都是一次计费聚合），只在点「立即刷新」时请求一次。
   function refresh(bustCache) {
-    stopTimer();
-    return load(bustCache).then(tick, tick);
+    return load(bustCache);
   }
-
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') refresh(false);
-    else stopTimer();
-  });
 
   document.getElementById('btn-refresh').addEventListener('click', function () {
     refresh(true);

@@ -76,7 +76,9 @@ def load_cloud_config():
     if os.environ.get("CLOUD_PUBLISHABLE_KEY", "").strip():
         cfg["publishableKey"] = os.environ["CLOUD_PUBLISHABLE_KEY"].strip()
     if os.environ.get("CLOUD_MODE", "").strip().lower() in ("off", "0", "false"):
+        # 纯本地模式：连应用标识一起清掉，看板不会尝试初始化云 SDK
         cfg["endpoint"] = ""
+        cfg["publishableKey"] = ""
     return cfg
 
 
@@ -246,7 +248,7 @@ h2{font-size:16px;margin:26px 0 8px} code{background:rgba(128,128,128,.15);paddi
 footer{margin-top:36px;font-size:12px;opacity:.6}
 </style></head><body>
 <h1>DuoLauncher 匿名安装统计</h1>
-<div class="sub">仅统计随机匿名 ID 的数量，不采集设备标识、IP、位置或任何个人信息 · 数据每 10 分钟刷新</div>
+<div class="sub">仅统计随机匿名 ID 的数量，不采集设备标识、IP、位置或任何个人信息 · 手动刷新（已停止自动轮询）</div>
 <div class="cards" id="cards"></div>
 <h2>版本分布</h2><table id="versions"></table>
 <h2>界面语言</h2><table id="langs"></table>
@@ -266,7 +268,7 @@ async function load(){
   document.querySelector('.sub').lastChild.textContent=' · 更新于 '+d.generated_at;
  }catch(e){}
 }
-load();setInterval(function(){if(document.visibilityState!=='hidden')load();},600000);
+load();
 </script></body></html>"""
 
 
