@@ -3,7 +3,7 @@
 本文件记录把 DuoLauncher 收录进 **IzzyOnDroid** 与 **F-Droid 主仓库** 的全部准备材料与操作步骤。
 商店元数据的正式文件在仓库 `fastlane/metadata/android/` 下，本文件只是操作说明。
 
-> 当前状态（2026-11-20）：**v1.6.0 / versionCode 217 已在 GitHub Releases 正式发布，但两家仓库都还没有提交收录申请**，所以在 F-Droid 客户端里搜不到本应用。F-Droid 不会自动同步 GitHub Release。历史版本的 Release 与 tag 已清理，仓库只保留当前版本。
+> 当前状态（2026-11-20）：**v1.6.0 / versionCode 218 已在 GitHub Releases 正式发布，但两家仓库都还没有提交收录申请**，所以在 F-Droid 客户端里搜不到本应用。F-Droid 不会自动同步 GitHub Release。历史版本的 Release 与 tag 已清理，仓库只保留当前版本。
 
 ---
 
@@ -27,7 +27,7 @@ F-Droid 官方重签的包与 GitHub / Izzy 版**不能互相覆盖安装**，�
 | FOSS 许可 | 必须 | 必须 | ✅ MIT（`LICENSE`） |
 | 公开源码、无闭源 SDK / 无追踪 SDK | 必须 | 必须 | ✅ 仅 AndroidX / Compose / Kotlin（Apache-2.0） |
 | Release 附 APK，tag 与版本对应 | 必须 | 建议 | ✅ `v1.6.0`，`vX.Y.Z` 对应 `versionName`（历史 tag 已清理） |
-| **APK < 30 MB** | **硬性上限** | 无硬性上限但越小越好 | ✅ v1.6.0 为 **2.48 MiB**（2,600,020 B） |
+| **APK < 30 MB** | **硬性上限** | 无硬性上限但越小越好 | ✅ v1.6.0 为 **2.48 MiB**（2,600,000 B） |
 | **非 debuggable** | 是（否则标 `ApplicationDebuggable`） | 是 | ✅ `assembleRelease` 构建，R8 + 资源缩减 |
 | 签名前后一致 | 必须（首次收录记录指纹，之后逐次比对） | 由 F-Droid 重签，不要求 | ✅ 所有版本同一把 key（见下） |
 | fastlane 元数据 | 强烈建议 | 建议 | ✅ en-US / zh-CN / ja-JP，含标题、简介、详述、图标、8 张实机截图 |
@@ -59,12 +59,12 @@ v1.5.0 的 52.78 MB 几乎全是 dex，原因是 CI 构建的是 **debug 变体*
 3. `fastlane/metadata/android/*/changelogs/138.txt`：新增三个语言的更新说明。
 4. 验收：APK 2.14 MiB、无 `debuggable`、签名指纹一致、真机可覆盖安装；CI 内置 30 MB 体积校验。
 
-### 当前基准版：v1.6.0 / versionCode 217
+### 当前基准版：v1.6.0 / versionCode 218
 
 | 项目 | 值 |
 |---|---|
-| tag / 源码提交 | `v1.6.0` → `a3dfaa9aef6bbc734ce13b4ac5fbedcb33fda302` |
-| Release 资产 | `DuoLauncher-1.6.0.apk`，2,600,020 B |
+| tag / 源码提交 | `v1.6.0` → `cb5fcaecff5942261648778d32e8664ab0763374` |
+| Release 资产 | `DuoLauncher-1.6.0.apk`，2,600,000 B |
 | 构建 | 本地 JDK 17 `assembleRelease`（沿用构建机下载 Gradle 发行包超时时的兜底方式，详见第八节） |
 | 校验 | `aapt dump badging` 无 `debuggable`；`apksigner` 指纹与上表一致；Release 资产 sha256 与本地包一致 |
 
@@ -151,7 +151,7 @@ Requirements: JDK 17, Android SDK platform android-34 and build-tools 34.0.0. Gr
 
 The release build is R8-minified, not debuggable, and contains no DEPENDENCY_INFO_BLOCK. If DUO_KEYSTORE is unset, Gradle falls back to the local default debug signing config; CI sets DUO_KEYSTORE (plus pass/alias) to point at a restored keystore. All published APKs use the same certificate (SHA-256: 3de9760f549173a4b2822bc9a9cfff357da12717307191b888ee95ebee7f820e). settings.gradle.kts currently prefers Aliyun Maven mirrors; if those are unreachable from a build host, replace them with google() / mavenCentral().
 
-Every vX.Y.Z tag has exactly one APK attached, named DuoLauncher-X.Y.Z.apk. Latest: v1.6.0, versionCode 217, 2,600,020 bytes.
+Every vX.Y.Z tag has exactly one APK attached, named DuoLauncher-X.Y.Z.apk. Latest: v1.6.0, versionCode 218, 2,600,000 bytes.
 ```
 
 ### AI Tools Usage（模板新增的必填组，⚠️ 需本人确认）
@@ -261,12 +261,12 @@ git push origin com.duolauncher
 * [x] Only `metadata/com.duolauncher.yml` is added, valid YAML with LF endings. No summary, description, images or changelog files are duplicated here.
 * [x] Releases are tagged `vX.Y.Z`; `AutoUpdateMode: Version v%v` and `UpdateCheckMode: Tags` are enabled.
 * [x] Issue tracker, WebSite and AuthorName are present.
-* [x] `commit` is the full 40-character hash of tag `v1.6.0` (`a3dfaa9aef6bbc734ce13b4ac5fbedcb33fda302`).
+* [x] `commit` is the full 40-character hash of tag `v1.6.0` (`cb5fcaecff5942261648778d32e8664ab0763374`).
 * [x] Only the latest version is kept in the metadata; no disabled builds.
 
 ### Metadata
 * [x] `Categories: [System]`, `License: MIT`, `RepoType: git`.
-* [x] `Builds[0]`: `gradle: [yes]`, `subdir: app`, versionName `1.6.0`, versionCode `217`. The release build is R8-minified, not debuggable and contains no DEPENDENCY_INFO_BLOCK.
+* [x] `Builds[0]`: `gradle: [yes]`, `subdir: app`, versionName `1.6.0`, versionCode `218`. The release build is R8-minified, not debuggable and contains no DEPENDENCY_INFO_BLOCK.
 * [x] AntiFeatures `NonFreeNet` and `Tracking` are declared proactively with their reasons in the yml.
 
 ## Anti-Features
