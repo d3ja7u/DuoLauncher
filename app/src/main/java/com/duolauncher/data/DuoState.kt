@@ -4,9 +4,12 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.duolauncher.R
@@ -15,6 +18,7 @@ import com.duolauncher.util.Lang
 import com.duolauncher.util.UpdateChecker
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
 
 /**
  * 正在播放的媒体信息（由 [com.duolauncher.service.DuoNotificationListener] 维护）。
@@ -60,12 +64,46 @@ object DuoState {
      * 该列表是"自愈"的：app 被隐藏/移除、folder 被删掉时对应 token 自动失效，不用手工清理。
      */
     val homeOrder = mutableStateListOf<String>()
+    /**
+     * 主屏上的系统小组件：元素是 AppWidget 的 id 字符串。
+     * 小组件占主屏图标网格里的一块矩形（[widgetRowMap] / [widgetColMap]），
+     * 坐标走 [homeSlots]，排序时以 `widget:<id>` 的形式进 [homeOrder]。
+     */
+    val homeWidgets = mutableStateListOf<String>()
+    /**
+     * 主屏小组件占几行（AppWidget id → 行数），添加时按 provider 声明的 minHeight 换算。
+     *
+     * 必须和 [layoutHome] 预留的行数是同一个值：4×4 的小组件如果只按 2 行预留，
+     * 它自己画不下会顶出去，后面的图标也会被挤到看不见的地方。
+     */
+    val widgetRowMap = mutableStateMapOf<String, Int>()
+    /** 小组件占几列（provider 的 minWidth 换算）。有了它小组件才能只占半行、左右挪动 */
+    val widgetColMap = mutableStateMapOf<String, Int>()
+    /**
+     * 主屏自由摆放：token → `"页,行,列"`。
+     *
+     * 只有被手动拖动过的条目才在这里有坐标，其余条目按 [layoutHome] 的自动流式规则
+     * （从第 0 页左上角起逐格填充）排布。这样：
+     *  • 老存档没有坐标，布局与以前完全一致；
+     *  • 用户把图标 / 小组件拖到任意一格（包括空白处）后，位置就被记住；
+     *  • 坐标失效（列数改小、行数改小、条目被删）时该条目退回自动排布，不会丢。
+     */
+    val homeSlots = mutableStateMapOf<String, String>()
     val sidebar = mutableStateListOf<SidebarItem>()
     val hidden = mutableStateListOf<String>()
-    val widgets = mutableStateListOf<WidgetItem>()
     val folders = mutableStateListOf<FolderItem>()
     val usage = mutableStateMapOf<String, UsageRec>()
     val categoryOverride = mutableStateMapOf<String, String>()
+    /**
+     * 用户自建分类（按添加顺序排在资源库末尾）。
+     * 内置分类的「新增/删除」在 [CATEGORY_LIST] 之外另存两份：
+     * [categoryRenames] 存改名，[hiddenCategories] 存被删掉的内置分类 id。
+     */
+    val customCategories = mutableStateListOf<CategoryDef>()
+    /** 内置分类改名：id -> 新名字（没改过的走 strings.xml，切语言仍会跟着变） */
+    val categoryRenames = mutableStateMapOf<String, String>()
+    /** 被删掉的内置分类 id（软删除：应用不受影响，只是资源库里不再出这张卡） */
+    val hiddenCategories = mutableStateListOf<String>()
     /**
      * 单个应用手动指定的图标：应用包名 -> `图标包包名|drawable 名`。
      * 图标包自动匹配（appfilter）常常收录不全，匹配不到的应用可以在这里手动挑一个。
@@ -87,12 +125,12 @@ object DuoState {
     var searchEngine by mutableStateOf("baidu")
     /** 是否在搜索结果里包含通讯录联系人（需要 READ_CONTACTS） */
     var searchContacts by mutableStateOf(true)
-    /** 主屏幕是否显示玻璃侧边栏 */
+    /** 主屏是否显示玻璃侧边栏 */
     var showSidebar by mutableStateOf(true)
+    /** App 资源库那一页是否显示（关闭后 pager 里只剩主屏页与搜索页） */
+    var showLibrary by mutableStateOf(true)
     /** 主屏左下角「菜单」图标（点开含启动器设置）是否显示 */
-    var showBottomLeft by mutableStateOf(true)
     /** 主屏右下角「搜索」图标是否显示 */
-    var showBottomRight by mutableStateOf(true)
 
     // ── GitHub Releases 更新检查 ──
     /** 更新源地址；可以改成自建镜像，空串会自动回落到默认地址 */
@@ -113,7 +151,32 @@ object DuoState {
 
     var smartCategory by mutableStateOf(true)
     var sidebarLeft by mutableStateOf(false)
-    var cutoutPadding by mutableStateOf(88)
+    // 「顶部额外留白」：0 = 只按系统状态栏 / 挖孔自动避让（推荐）。
+    // 老存档里的 88 是旧版"整块让位"的默认值，load() 里已迁移成 0；
+    // 新装也必须是 0，否则第一行会被顶到 120dp 以下。
+    var cutoutPadding by mutableStateOf(0)
+    /**
+     * 系统顶部占用高度（px）：状态栏高度与**挖孔下沿**的较大值，由 MainActivity 的
+     * windowInsets 监听实时写入。挖孔常常开在左上角，`statusBars.top` 往往为 0 或很小，
+     * 只按它避让会让第一行图标被那颗摄像头压住（Titan 2 Elite 实测）。
+     * 取挖孔包围盒的 bottom 才能把整行推到孔下面。
+     */
+    var systemTopInsetPx by mutableStateOf(0)          // 临时状态，不持久化
+    var insetDensity by mutableStateOf(1f)
+
+    /** 系统顶部占用（dp）；还没收到 inset 时为 0，调用方按平台经验值兜底 */
+    val systemTopDp: Float
+        get() = if (insetDensity > 0f) systemTopInsetPx / insetDensity else 0f
+
+    fun setSystemTopInset(px: Int, density: Float) {
+        if (density <= 0f) return
+        val p = if (px < 0) 0 else px
+        if (p != systemTopInsetPx || density != insetDensity) {
+            systemTopInsetPx = p
+            insetDensity = density
+        }
+    }
+
     var glassLevel by mutableStateOf(0.55f)
     var darkGlass by mutableStateOf(true)   // 新装默认深色玻璃；已有配置仍按用户保存的值
     var hideStatusBar by mutableStateOf(true)
@@ -143,7 +206,6 @@ object DuoState {
     /** 当前正在播放的媒体（非播放态为 null） */
     var nowPlaying by mutableStateOf<NowPlaying?>(null)
     var iconPack by mutableStateOf("")              // 选中的图标包包名，空=系统默认
-    var notes by mutableStateOf("")
     var appLoadDone by mutableStateOf(false)
     /** 主屏图标正在被拖动（临时状态，不持久化）：拖拽期间要锁住翻页和下滑手势 */
     var dragging by mutableStateOf(false)
@@ -155,14 +217,6 @@ object DuoState {
      * 现在用一次性标记；且新版本默认就是空主屏，该标记主要用于兼容老存档。
      */
     var homeSeeded by mutableStateOf(false)
-    /**
-     * 负一屏小组件是否已经生成过默认集合。
-     * 原因同上：以前用 "widgets 为空" 判断首次，用户把负一屏删空后，
-     * 每次 onResume（reloadApps → ensureDefaults）都会把默认 4 个塞回去。
-     * 现在也是一次性标记，删空就永远保持空。
-     */
-    var widgetsSeeded by mutableStateOf(false)
-
     // ── iOS 风格状态指示器（时间 + 弧形信号）──
     var showDuoStatus by mutableStateOf(true)      // 默认显示，替代安卓原生状态栏
     var statusRight by mutableStateOf(true)        // 默认右上，避开 Titan 2 Elite 左上挖孔
@@ -218,9 +272,24 @@ object DuoState {
             val o = JSONObject(raw)
             homeApps.clear(); homeApps.addAll(o.strArray("home"))
             homeOrder.clear(); homeOrder.addAll(o.strArray("homeOrder"))
+            homeWidgets.clear(); homeWidgets.addAll(o.strArray("homeWg"))
+            widgetRowMap.clear()
+            o.optJSONObject("wgRows")?.let { obj ->
+                obj.keys().forEach { k -> widgetRowMap[k] = obj.optInt(k, 2) }
+            }
+            widgetColMap.clear()
+            o.optJSONObject("wgCols")?.let { obj ->
+                obj.keys().forEach { k -> widgetColMap[k] = obj.optInt(k, 4) }
+            }
+            homeSlots.clear()
+            o.optJSONObject("homeSlots")?.let { obj ->
+                obj.keys().forEach { k ->
+                    val v = obj.optString(k, "")
+                    if (v.isNotBlank()) homeSlots[k] = v
+                }
+            }
             sidebar.clear(); sidebar.addAll(o.strArray("sidebar").map { SidebarItem.decode(it) })
             hidden.clear(); hidden.addAll(o.strArray("hidden"))
-            widgets.clear(); widgets.addAll(o.strArray("widgets").map { WidgetItem.decode(it) })
             folders.clear(); folders.addAll(o.optJSONArray("folders")
                 ?.let { a -> (0 until a.length()).mapNotNull { FolderItem.decode(a.optString(it)) } } ?: emptyList())
             iconPack = o.optString("iconPack", "")
@@ -229,6 +298,20 @@ object DuoState {
             o.optJSONObject("cats")?.let { obj ->
                 obj.keys().forEach { k -> categoryOverride[k] = obj.optString(k) }
             }
+            customCategories.clear()
+            o.optJSONArray("userCats")?.let { a ->
+                (0 until a.length()).mapNotNull { CategoryDef.decode(a.optString(it)) }
+                    .forEach { customCategories.add(it) }
+            }
+            categoryRenames.clear()
+            o.optJSONObject("catRen")?.let { obj ->
+                obj.keys().forEach { k ->
+                    val v = obj.optString(k)
+                    if (v.isNotBlank()) categoryRenames[k] = v
+                }
+            }
+            hiddenCategories.clear()
+            o.strArray("catHide").forEach { if (it.isNotBlank()) hiddenCategories.add(it) }
             iconOverride.clear()
             o.optJSONObject("iconOv")?.let { obj ->
                 obj.keys().forEach { k ->
@@ -246,7 +329,15 @@ object DuoState {
             }
             smartCategory = o.optBoolean("smart", true)
             sidebarLeft = o.optBoolean("left", false)
-            cutoutPadding = o.optInt("cutout", 88)
+            // 「挖孔避让高度」语义变更：顶部改为按真实系统 inset 自动避让，
+            // 这个值只剩「额外再加多少」。旧存档里的 88（老默认，没人真调过）迁移成 0，
+            // 否则第一行图标会比系统状态栏低出一大截。cutoutV2 保证迁移只做一次。
+            cutoutPadding = if (o.optBoolean("cutoutV2", false)) {
+                o.optInt("cutout", 0).coerceIn(0, 120)
+            } else {
+                val old = o.optInt("cutout", 88)
+                if (old <= 88) 0 else (old - 88).coerceIn(0, 120)
+            }
             glassLevel = o.optDouble("glass", 0.55).toFloat()
             darkGlass = o.optBoolean("dark", true)
             hideStatusBar = o.optBoolean("hideStatus", true)
@@ -262,11 +353,9 @@ object DuoState {
             sidebarGlass = o.optDouble("sbGlass", 1.2).toFloat().coerceIn(0.4f, 2.4f)
             sidebarAlign = o.optString("sbAlign", "center").let { if (it == "bottom") "bottom" else "center" }
             showNowPlaying = o.optBoolean("npOn", true)
-            notes = o.optString("notes", "")
             sidebarVer = o.optInt("sbVer", 0)
             // 有存档 = 早就初始化过主屏了；缺省 true，避免"清空后被重新填满"
             homeSeeded = o.optBoolean("homeSeeded", true)
-            widgetsSeeded = o.optBoolean("wgSeeded", true)
             showDuoStatus = o.optBoolean("duoStatus", true)
             statusRight = o.optBoolean("statusRight", true)
             status24h = o.optBoolean("status24h", true)
@@ -295,8 +384,7 @@ object DuoState {
             searchEngine = o.optString("searchEng", "baidu").ifBlank { "baidu" }
             searchContacts = o.optBoolean("searchContacts", true)
             showSidebar = o.optBoolean("showSb", true)
-            showBottomLeft = o.optBoolean("bl", true)
-            showBottomRight = o.optBoolean("br", true)
+            showLibrary = o.optBoolean("libOn", true)
             updateUrl = o.optString("updUrl", UpdateChecker.DEFAULT_URL)
                 .ifBlank { UpdateChecker.DEFAULT_URL }
             autoCheckUpdate = o.optBoolean("updAuto", true)
@@ -308,20 +396,81 @@ object DuoState {
         }
     }
 
+    /**
+     * 主屏排版版本号：主屏相关数据（顺序 / 坐标 / 小组件尺寸）变化时自增。
+     *
+     * UI 侧拿它当 `remember` 的键，就不会在每次无关重组（换深色、翻页、状态栏刷新…）
+     * 时把整页排版重算一遍 —— layoutHome 每次都要分配每页的占用矩阵。
+     */
+    var homeLayoutVersion by mutableIntStateOf(0)
+        private set
+
+    /** 合并窗口：250ms 内的连续改动只落盘一次（设置页拖滑块是每帧一次 save） */
+    private const val SAVE_DEBOUNCE_MS = 250L
+
+    /** 写盘线程：只做 SharedPreferences 写，主线程不碰磁盘 */
+    private val saveIo = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "duo-state-save").apply { isDaemon = true }
+    }
+    private val saveHandler = Handler(Looper.getMainLooper())
+    private var pendingSave: Runnable? = null
+
+    /**
+     * 保存配置。
+     *
+     * 旧实现每次都把小一百个字段重新打包成 JSON 再写盘；而设置页的滑块
+     * （图标大小、玻璃强度、状态栏位置…）在 `onValueChange` 里每帧调一次 save，
+     * 拖一下就是几十次全量序列化 + 几十次磁盘写 —— 拖动越顺、写盘越密，
+     * 既卡主线程又白白耗电。
+     *
+     * 现在：主线程只做「版本号 +1 + 清坐标」这类必需的轻量工作，真正的
+     * 序列化与写盘合并到停手 250ms 后执行一次；离开桌面时 [flush] 强制落盘，
+     * 不会因为合并窗口没到而丢改动。
+     */
     fun save() {
+        homeLayoutVersion++
         if (!ready) return
-        runCatching {
+        pruneHomeSlots()
+        pendingSave?.let { saveHandler.removeCallbacks(it) }
+        val task = Runnable {
+            pendingSave = null
+            writeNow()
+        }
+        pendingSave = task
+        saveHandler.postDelayed(task, SAVE_DEBOUNCE_MS)
+    }
+
+    /** 立即落盘：Activity 进后台 / 导出备份 / 关统计等场景，别等合并窗口 */
+    fun flush() {
+        pendingSave?.let { saveHandler.removeCallbacks(it) }
+        pendingSave = null
+        if (ready) writeNow()
+    }
+
+    private fun writeNow() {
+        // 快照在主线程取（Compose State 只在主线程安全读），落盘丢给 IO 线程
+        val json = runCatching {
             val o = JSONObject()
             o.put("home", JSONArray(homeApps))
             o.put("homeOrder", JSONArray(homeOrder))
+            o.put("homeWg", JSONArray(homeWidgets))
+            val wgRows = JSONObject(); widgetRowMap.forEach { (k, v) -> wgRows.put(k, v) }
+            o.put("wgRows", wgRows)
+            val wgCols = JSONObject(); widgetColMap.forEach { (k, v) -> wgCols.put(k, v) }
+            o.put("wgCols", wgCols)
+            val slots = JSONObject(); homeSlots.forEach { (k, v) -> slots.put(k, v) }
+            o.put("homeSlots", slots)
             o.put("sidebar", JSONArray(sidebar.map { it.encode() }))
             o.put("hidden", JSONArray(hidden))
-            o.put("widgets", JSONArray(widgets.map { it.encode() }))
             o.put("folders", JSONArray(folders.map { it.encode() }))
             o.put("iconPack", iconPack)
             o.put("sidebarIconScale", sidebarIconScale.toDouble())
             val cats = JSONObject(); categoryOverride.forEach { (k, v) -> cats.put(k, v) }
             o.put("cats", cats)
+            o.put("userCats", JSONArray(customCategories.map { it.encode() }))
+            val catRen = JSONObject(); categoryRenames.forEach { (k, v) -> catRen.put(k, v) }
+            o.put("catRen", catRen)
+            o.put("catHide", JSONArray(hiddenCategories))
             val iconOv = JSONObject(); iconOverride.forEach { (k, v) -> iconOv.put(k, v) }
             o.put("iconOv", iconOv)
             val usg = JSONObject(); usage.forEach { (k, v) ->
@@ -331,6 +480,7 @@ object DuoState {
             o.put("smart", smartCategory)
             o.put("left", sidebarLeft)
             o.put("cutout", cutoutPadding)
+            o.put("cutoutV2", true)
             o.put("glass", glassLevel.toDouble())
             o.put("dark", darkGlass)
             o.put("hideStatus", hideStatusBar)
@@ -346,10 +496,8 @@ object DuoState {
             o.put("sbGlass", sidebarGlass.toDouble())
             o.put("sbAlign", sidebarAlign)
             o.put("npOn", showNowPlaying)
-            o.put("notes", notes)
             o.put("sbVer", sidebarVer)
             o.put("homeSeeded", homeSeeded)
-            o.put("wgSeeded", widgetsSeeded)
             o.put("duoStatus", showDuoStatus)
             o.put("statusRight", statusRight)
             o.put("status24h", status24h)
@@ -373,8 +521,7 @@ object DuoState {
             o.put("searchEng", searchEngine)
             o.put("searchContacts", searchContacts)
             o.put("showSb", showSidebar)
-            o.put("bl", showBottomLeft)
-            o.put("br", showBottomRight)
+            o.put("libOn", showLibrary)
             o.put("updUrl", updateUrl)
             o.put("updAuto", autoCheckUpdate)
             o.put("updAt", lastUpdateCheck)
@@ -382,8 +529,9 @@ object DuoState {
             o.put("statOn", statsEnabled)
             o.put("statConsent", statsConsentShown)
             o.put("statUrl", statsUrl)
-            sp.edit().putString("state", o.toString()).apply()
-        }
+            o.toString()
+        }.getOrNull() ?: return
+        saveIo.execute { runCatching { sp.edit().putString("state", json).apply() } }
     }
 
     /**
@@ -399,7 +547,7 @@ object DuoState {
         return (0 until a.length()).mapNotNull { a.optString(it, null) }
     }
 
-    /** 首次启动构造默认主屏 / 侧边栏 / 负一屏 */
+    /** 首次启动构造默认主屏 / 侧边栏 */
     fun ensureDefaults() {
         if (!ready) return
         // 顶部时间/徽标上提：旧默认 40dp 在真机上偏下，一次性迁移到 26dp
@@ -426,20 +574,6 @@ object DuoState {
                 .take(SIDEBAR_SLOTS - sidebar.size)
             sidebar.addAll(add)
             sidebarVer = SIDEBAR_SLOTS
-        }
-        // 负一屏默认小组件同样只填一次；删空后保持空，不再自动回来
-        if (!widgetsSeeded) {
-            if (widgets.isEmpty()) {
-                widgets.addAll(
-                    listOf(
-                        WidgetItem("clock"),
-                        WidgetItem("battery"),
-                        WidgetItem("recents"),
-                        WidgetItem("quick")
-                    )
-                )
-            }
-            widgetsSeeded = true
         }
         save()
     }
@@ -469,12 +603,135 @@ object DuoState {
     fun visibleApps(): List<AppInfo> =
         apps.filter { it.packageName != selfPackage && !hidden.contains(it.id) }
 
-    fun categoryOf(app: AppInfo): String =
-        categoryOverride[app.id]
-            ?: if (smartCategory) guessCategory(app.label, app.packageName, app.systemCategory) else "system"
+    // guessCategory 每个应用要做上百次字符串 contains + 一次 lowercase 分配，
+    // 而资源库 / 设置里的分类统计每帧都会对全部应用各算一两遍（上百个应用 = 几万次扫描）。
+    // 这里按「id + 当前覆盖值 + 是否智能分类」缓存结果，只在真正变化时重算。
+    private val categoryCache = HashMap<String, String>(256)
+
+    fun categoryOf(app: AppInfo): String {
+        val ov = categoryOverride[app.id]
+        val key = app.id + "|" + (ov ?: "") + "|" + smartCategory
+        categoryCache[key]?.let { return it }
+        if (categoryCache.size > 1024) categoryCache.clear()
+        val v = ov ?: if (smartCategory) {
+            guessCategory(app.label, app.packageName, app.systemCategory)
+        } else "system"
+        categoryCache[key] = v
+        return v
+    }
+
+    // ── 分类表：内置（可改名 / 可删）+ 用户自建 ──
+
+    /** 分类显示名：自定义名 > 自建分类名 > strings.xml > 原样返回 */
+    fun categoryDisplayName(id: String): String {
+        if (id == CATEGORY_OTHER) return Lang.s(R.string.cat_other)
+        categoryRenames[id]?.takeIf { it.isNotBlank() }?.let { return it }
+        customCategories.firstOrNull { it.id == id }?.let { return it.name }
+        CATEGORY_LIST.firstOrNull { it.first == id }?.let { return Lang.s(it.second) }
+        return id
+    }
+
+    /** 当前生效的分类表（id → 显示名）：内置去掉被删的，自建追加在末尾 */
+    fun categoryList(): List<Pair<String, String>> {
+        val builtin = CATEGORY_LIST
+            .filter { it.first !in hiddenCategories }
+            .map { it.first to categoryDisplayName(it.first) }
+        val custom = customCategories.map { it.id to it.name }
+        return builtin + custom
+    }
+
+    /** 指定分类下的应用数（资源库里能看到的那些） */
+    fun categoryAppCount(id: String): Int =
+        visibleApps().count { categoryOf(it) == id }
+
+    /** 名称是否已被占用（「其他」是兜底卡的名字，也算占用；[exceptId] 用于改名时排除自己） */
+    fun isDuplicateCategoryName(name: String, exceptId: String? = null): Boolean {
+        val n = name.trim()
+        if (n.isEmpty()) return false
+        if (n.equals(Lang.s(R.string.cat_other), true)) return true
+        return categoryList().any { it.first != exceptId && it.second.equals(n, true) }
+    }
+
+    /** 新建分类，返回新 id；名称重复或为空时返回 null */
+    fun addCategory(name: String): String? {
+        val n = name.trim()
+        if (n.isEmpty()) return null
+        if (isDuplicateCategoryName(n)) return null
+        val id = "u${System.currentTimeMillis()}"
+        customCategories.add(CategoryDef(id, n))
+        save()
+        return id
+    }
+
+    /** 改名：内置分类写 [categoryRenames]，自建分类直接改自己的名字 */
+    fun renameCategory(id: String, name: String) {
+        val n = name.trim()
+        if (n.isEmpty() || isDuplicateCategoryName(n, id)) return
+        val self = customCategories.firstOrNull { it.id == id }
+        if (self != null) {
+            val idx = customCategories.indexOf(self)
+            customCategories[idx] = self.copy(name = n)
+        } else {
+            categoryRenames[id] = n
+        }
+        save()
+    }
+
+    /**
+     * 删除分类。
+     *
+     * 内置分类是**软删除**（只进 [hiddenCategories]）：应用本身不动，也不会被卸载，
+     * 只是资源库里不再出这张卡；这些应用会落到「其他」卡（[CATEGORY_OTHER]）里。
+     * 自建分类直接从表里移走，同时把指向它的手动归类清掉，免得留下悬空 id。
+     */
+    fun deleteCategory(id: String) {
+        if (id == CATEGORY_OTHER) return
+        val self = customCategories.firstOrNull { it.id == id }
+        if (self != null) {
+            customCategories.remove(self)
+            categoryOverride.entries.filter { it.value == id }.map { it.key }
+                .forEach { categoryOverride.remove(it) }
+        } else {
+            if (!hiddenCategories.contains(id)) hiddenCategories.add(id)
+        }
+        categoryRenames.remove(id)
+        save()
+    }
+
+    /** 已删除/已不存在的分类 id 归到「其他」 */
+    fun normalizeCategory(id: String): String =
+        if (categoryList().any { it.first == id }) id else CATEGORY_OTHER
+
+    /** 把内置分类的删除记录清空（自建分类不受影响） */
+    fun restoreBuiltinCategories() {
+        hiddenCategories.clear()
+        save()
+    }
+
+    // ── 应用查找索引 ──
+    // 以前每次都是 `apps.firstOrNull {...}` 线性扫一遍：主屏几十个图标 × 上百个应用，
+    // 每次重组就上万次字符串比较（homeTokens 里又是嵌套调用，量级再翻一倍），
+    // 是中低端机上「回桌面 / 拖动图标卡一下」的主要来源之一。改成一次性建表 O(1) 查。
+    private val appIndex = HashMap<String, AppInfo>(256)
+    private var appIndexDirty = true
+
+    /** 应用列表被整表替换（扫包完成后调用），索引随之失效 */
+    fun replaceApps(list: List<AppInfo>) {
+        apps.clear()
+        apps.addAll(list)
+        appIndexDirty = true
+    }
 
     /** 按 AppInfo.id 查找。主用户 id 仍是纯包名，旧存档无需迁移 */
-    fun appOf(key: String): AppInfo? = apps.firstOrNull { it.id == key }
+    fun appOf(key: String): AppInfo? {
+        // size 变化也要重建：addHome / 首次扫描都会往列表里追加
+        if (appIndexDirty || appIndex.size != apps.size) {
+            appIndex.clear()
+            apps.forEach { appIndex[it.id] = it }
+            appIndexDirty = false
+        }
+        return appIndex[key]
+    }
 
     // ── 通知角标 ──
     /** 图标上要显示的数字；关闭角标或无未读时为 0 */
@@ -505,20 +762,29 @@ object DuoState {
     }
 
     fun recentApps(count: Int = 10): List<AppInfo> {
+        // 先建 id→AppInfo 的表。旧实现是「每条使用记录都把全部应用扫一遍」，
+        // 上百条记录 × 几百个应用 = 每算一次几万次字符串比较；而搜索页每次
+        // 重组（每敲一个字）都会调它一次，输入手感就是这么被拖慢的。
         val available = visibleApps()
-        val sorted = usage.entries
-            .sortedWith(compareByDescending<Map.Entry<String, UsageRec>> { it.value.last }
-                .thenByDescending { it.value.count })
-            .mapNotNull { e -> available.firstOrNull { it.id == e.key } }
-            .distinctBy { it.id }
-            .take(count)
-            .toMutableList()
-        if (sorted.size < count) {
+        val byId = HashMap<String, AppInfo>(available.size * 2)
+        available.forEach { byId[it.id] = it }
+        val out = ArrayList<AppInfo>(count)
+        val seen = HashSet<String>(count * 2)
+        val ordered = usage.entries.sortedWith(
+            compareByDescending<Map.Entry<String, UsageRec>> { it.value.last }
+                .thenByDescending { it.value.count }
+        )
+        for (e in ordered) {
+            if (out.size >= count) break
+            val app = byId[e.key] ?: continue
+            if (seen.add(app.id)) out.add(app)
+        }
+        if (out.size < count) {
             available.sortedBy { it.label }.forEach {
-                if (sorted.size < count && sorted.none { a -> a.id == it.id }) sorted.add(it)
+                if (out.size < count && seen.add(it.id)) out.add(it)
             }
         }
-        return sorted
+        return out
     }
 
     // ── 主屏顺序 ──
@@ -527,26 +793,303 @@ object DuoState {
      * 先按 homeOrder 排，再把没排过的应用/文件夹补到末尾。
      */
     fun homeTokens(): List<String> {
-        val apps = homeApps
+        // 用 Set 判断「是否还活着 / 是否已排过」：以前是 List 上的 contains，
+        // 应用多的时候这里是 O(n²)，而它每次排版（layoutHome）都会被调用。
+        // 注意 appTokens 必须保持顺序（列表本身是 LinkedHashSet 的插入序来源）。
+        val appTokens = homeApps
             .filter { !hidden.contains(it) && appOf(it) != null }
             .map { "app:$it" }
         val folderTokens = folders.map { "folder:${it.id}" }
-        val alive = (apps + folderTokens).toSet()
-        val out = homeOrder.filter { alive.contains(it) }.toMutableList()
-        apps.forEach { if (!out.contains(it)) out.add(it) }
-        folderTokens.forEach { if (!out.contains(it)) out.add(it) }
-        return out
+        val widgetTokens = homeWidgets.map { "widget:$it" }
+        val alive = HashSet<String>(appTokens.size + folderTokens.size + widgetTokens.size)
+        alive.addAll(appTokens)
+        alive.addAll(folderTokens)
+        alive.addAll(widgetTokens)
+        val out = LinkedHashSet<String>(alive.size * 2)
+        homeOrder.forEach { if (alive.contains(it)) out.add(it) }
+        appTokens.forEach { out.add(it) }
+        folderTokens.forEach { out.add(it) }
+        widgetTokens.forEach { out.add(it) }
+        return out.toList()
     }
 
-    /** 拖拽排序：把主屏第 [from] 个条目移动到第 [to] 个位置 */
-    fun moveHome(from: Int, to: Int) {
-        if (from == to) return
-        val list = homeTokens().toMutableList()
-        if (from !in list.indices || to !in list.indices) return
-        val token = list.removeAt(from)
-        list.add(to, token)
-        homeOrder.clear(); homeOrder.addAll(list)
+    /**
+     * 主屏小组件占几行。Android 侧一格按 70dp 算（provider 的 minHeight = 70×行数 − 30），
+     * 所以 4×2 的小组件 minHeight≈110 → 2 行，4×4 的≈250 → 4 行。
+     * 换算结果夹在 1~4 行：太小放不下内容，太大会把整页占满。
+     */
+    fun rowsFromMinHeight(minHeightDp: Int): Int {
+        val raw = ((minHeightDp + 30) / 70f).toInt()
+        return raw.coerceIn(1, 4)
+    }
+
+    /** 主屏某个小组件实际占几行（添加时写入，缺失则按 2 行兜底） */
+    fun widgetRowsOf(key: String): Int = (widgetRowMap[key] ?: 2).coerceIn(1, 4)
+
+    /**
+     * 主屏小组件占几列。4×2 的 provider minWidth≈250 → 4 列，4×1 的≈110 → 2 列。
+     *
+     * 以前小组件一律「吃满整行」，于是 4×2 的组件被拉成一整行、内容挤在中间，
+     * 而且左右怎么拖都在原地（列坐标被强制成 0）。按声明列数摆放之后，
+     * 半行宽的小组件就能左右移动了。
+     */
+    fun colsFromMinWidth(minWidthDp: Int): Int {
+        val raw = ((minWidthDp + 30) / 70f).toInt()
+        return raw.coerceIn(2, 6)
+    }
+
+    fun widgetColsOf(key: String): Int = (widgetColMap[key] ?: 4).coerceIn(2, 6)
+
+    /** 主屏网格底部固定留白（底部页码 / 搜索那一条） */
+    const val GRID_BOTTOM_PAD_DP = 76f
+
+    /**
+     * 主屏网格顶部要空出的高度（dp）。**唯一口径**：MainActivity 算页数、
+     * HomePage 排版都调这里，不能各算一套。
+     *
+     * 两种情况不需要为「时间 + 电量」整块让位：
+     *  • 状态块和侧栏在同一条纵向通道上（同一侧）——网格横向本来就避开了那条通道；
+     *  • 横屏时挖孔在侧边，顶部只要一点点呼吸位。
+     *
+     * 旧逻辑恒取 `cutoutPadding + 64`（默认 152dp），在平板横屏上能吃掉近三成屏幕，
+     * 表现出来就是「最上面白白空着一排，图标和小组件都放不进去」。
+     */
+    fun gridTopGapDp(landscape: Boolean, systemTopDp: Float = this.systemTopDp): Float {
+        val statusTopPad = if (statusRight) statusTop else maxOf(statusTop, 64)
+        val scale = statusScale.coerceIn(0.55f, 1.8f)
+        val statusH = (18f * 1.35f + 6f + 50f) * scale
+        val statusDrawTop = (statusTopPad - 20f).coerceAtLeast(2f)
+        // 状态块画在侧栏通道里，且与侧栏同侧
+        val statusInLane = showSidebar && (sidebarLeft != statusRight)
+        // 顶部只避开真实的状态栏 / 挖孔：拿得到系统 inset 就用它，拿不到（隐藏状态栏、
+        // 极老设备）才退回经验值。以前这里写死 88+24≈112dp，竖屏设备光这一段就吃掉
+        // 小半排高度，第一行图标看着明显靠下。
+        val inset = if (systemTopDp > 0.5f) systemTopDp else if (landscape) 16f else 40f
+        // [cutoutPadding] 语义已改为「在自动避让之外再额外留多少」，默认 0。
+        // 末尾这 12dp 是给「左上角挖孔」留的：有些设备 displayCutout 只报个很小的矩形，
+        // 甚至完全不报，图标上沿贴着算出来的高度时仍会被孔压住一点（Titan 2 Elite 实测），
+        // 所以再固定下移 12dp —— 视觉上只差一点点，但正好躲开孔。
+        val safeTop = inset + cutoutPadding.coerceIn(0, 120) + 12f
+        if (!showDuoStatus) return safeTop
+        // 状态块和侧栏同侧：网格横向本来就避开了那条通道，顶部与状态块顶端对齐即可
+        if (statusInLane) return maxOf(safeTop, statusDrawTop)
+        // 状态块横在网格上方（与侧栏不同侧）：不让位就会压住第一行，必须让开
+        return maxOf(safeTop, statusDrawTop + statusH + 6f)
+    }
+
+    /**
+     * 每页实际行数：设置值为主，**屏幕还空得下一整行时自动补 1 行**（最多补 1 行、总数封顶 8）。
+     * 补 1 行是为了吃掉「顶部留白收窄后多出来的那一排」，而不是把设置彻底接管：
+     * 设置调大仍然有效，用户想更松散随时可以调回去。
+     */
+    fun effectiveHomeRows(screenHeightDp: Int, landscape: Boolean): Int {
+        val avail = screenHeightDp - gridTopGapDp(landscape) - GRID_BOTTOM_PAD_DP
+        // 单行高度：图标 + 文字标签 + 最小行距（宁可算紧一点，也别让最后一行被裁掉）
+        val rowUnit = 54f * iconScale.coerceIn(0.7f, 1.4f) + 18f + 6f
+        if (avail <= 0f || rowUnit <= 0f) return homeRows
+        val fit = (avail / rowUnit).toInt()
+        return fit.coerceIn(homeRows, minOf(homeRows + 1, 8))
+    }
+
+    // ── 主屏自由摆放（绝对格子坐标）──
+
+    /**
+     * 主屏上一个条目的落位：第 [page] 页、第 [row] 行、第 [col] 列，
+     * 占 [rowSpan] 行 × [colSpan] 列。图标 / 文件夹恒为 1×1，小组件按 provider 声明。
+     */
+    data class HomePlacement(
+        val token: String,
+        val page: Int,
+        val row: Int,
+        val col: Int,
+        val rowSpan: Int,
+        val colSpan: Int
+    )
+
+    /** 某个 token 占几行：小组件按 provider 声明换算，其余恒为 1 行 */
+    fun tokenRowSpan(token: String, rows: Int = homeRows): Int =
+        if (token.startsWith("widget:"))
+            widgetRowsOf(token.removePrefix("widget:")).coerceAtMost(rows.coerceAtLeast(1))
+        else 1
+
+    /** 某个 token 占几列：小组件按 provider 声明换算，其余恒为 1 列 */
+    fun tokenColSpan(token: String, cols: Int = homeColumns): Int =
+        if (token.startsWith("widget:"))
+            widgetColsOf(token.removePrefix("widget:")).coerceAtMost(cols.coerceAtLeast(1))
+        else 1
+
+    /** 兼容旧调用：等价于 [tokenRowSpan] */
+    fun tokenSpan(token: String, rows: Int = homeRows): Int = tokenRowSpan(token, rows)
+
+    /**
+     * 主屏实际排版：**唯一口径**（MainActivity 算页数、HomePage 画格子都必须调它）。
+     *
+     * 两段式：
+     *  ① 先落 [homeSlots] 里有手动坐标的条目（校验越界 / 与已落位的重叠，不合法就退回 ②）；
+     *  ② 其余条目按 homeOrder 顺序"流式"填进最靠前的空位。
+     *
+     * 占用按**矩形**算（行 × 列）：图标 1×1，小组件 = provider 声明的 4×2 之类。
+     * 这样小组件只占半行，左右也能挪；不再像以前那样强制吃满整行、列坐标恒为 0。
+     */
+    fun layoutHome(cols: Int = homeColumns, rows: Int = homeRows): List<List<HomePlacement>> {
+        val c = cols.coerceIn(1, 12)
+        val r = rows.coerceIn(1, 12)
+        val tokens = homeTokens()
+        val occ = HashMap<Int, Array<BooleanArray>>()
+
+        fun grid(p: Int): Array<BooleanArray> = occ.getOrPut(p) { Array(r) { BooleanArray(c) } }
+
+        fun fitsAt(p: Int, row: Int, col: Int, rowSpan: Int, colSpan: Int): Boolean {
+            if (p < 0 || row < 0 || col < 0) return false
+            if (row + rowSpan > r || col + colSpan > c) return false
+            val g = grid(p)
+            for (dr in 0 until rowSpan) for (dc in 0 until colSpan) {
+                if (g[row + dr][col + dc]) return false
+            }
+            return true
+        }
+
+        fun take(p: Int, row: Int, col: Int, rowSpan: Int, colSpan: Int) {
+            val g = grid(p)
+            for (dr in 0 until rowSpan) for (dc in 0 until colSpan) g[row + dr][col + dc] = true
+        }
+
+        fun firstFree(p: Int, rowSpan: Int, colSpan: Int): Pair<Int, Int>? {
+            for (row in 0..(r - rowSpan)) for (col in 0..(c - colSpan)) {
+                if (fitsAt(p, row, col, rowSpan, colSpan)) return row to col
+            }
+            return null
+        }
+
+        val placed = LinkedHashMap<String, HomePlacement>()
+
+        // ① 显式坐标
+        tokens.forEach { t ->
+            val raw = homeSlots[t] ?: return@forEach
+            val parts = raw.split(",")
+            if (parts.size < 3) return@forEach
+            val p = parts[0].toIntOrNull() ?: return@forEach
+            val row = parts[1].toIntOrNull() ?: return@forEach
+            val col = parts[2].toIntOrNull() ?: return@forEach
+            if (p < 0) return@forEach
+            val rs = tokenRowSpan(t, r)
+            val cs = tokenColSpan(t, c)
+            val rr = row.coerceIn(0, (r - rs).coerceAtLeast(0))
+            val cc = col.coerceIn(0, (c - cs).coerceAtLeast(0))
+            if (!fitsAt(p, rr, cc, rs, cs)) return@forEach
+            take(p, rr, cc, rs, cs)
+            placed[t] = HomePlacement(t, p, rr, cc, rs, cs)
+        }
+
+        // ② 流式补空位
+        var maxPage = placed.values.maxOfOrNull { it.page } ?: 0
+        tokens.forEach { t ->
+            if (placed.containsKey(t)) return@forEach
+            val rs = tokenRowSpan(t, r)
+            val cs = tokenColSpan(t, c)
+            var pg = 0
+            var spot: Pair<Int, Int>? = null
+            while (pg <= maxPage + 1) {
+                spot = firstFree(pg, rs, cs)
+                if (spot != null) break
+                pg++
+            }
+            if (spot == null) { pg = maxPage + 1; spot = 0 to 0 }
+            take(pg, spot.first, spot.second, rs, cs)
+            placed[t] = HomePlacement(t, pg, spot.first, spot.second, rs, cs)
+            if (pg > maxPage) maxPage = pg
+        }
+
+        val pages = MutableList(maxPage + 1) { mutableListOf<HomePlacement>() }
+        placed.values.forEach { pl -> if (pl.page in pages.indices) pages[pl.page].add(pl) }
+        pages.forEach { list -> list.sortWith(compareBy({ it.row }, { it.col })) }
+        return pages
+    }
+
+    /** 当前所有落位（便于按 token 查坐标） */
+    fun placements(cols: Int = homeColumns, rows: Int = homeRows): List<HomePlacement> =
+        layoutHome(cols, rows).flatten()
+
+    /**
+     * 把 [token] 放到第 [page] 页第 [row] 行第 [col] 列（左上角对齐，按它自己的行×列跨度占位）。
+     *
+     * 落位以手指为准：目标矩形里原有的条目要么跟它**交换**（1×1 对 1×1 时），
+     * 要么让位（清坐标、交给流式重排，不会丢）。小组件以前只认「整行都空」，
+     * 所以经常拖不到指定位置；现在按矩形判定，落到哪一行就是哪一行。
+     */
+    fun placeToken(
+        token: String,
+        page: Int,
+        row: Int,
+        col: Int,
+        cols: Int = homeColumns,
+        rows: Int = homeRows
+    ): Boolean {
+        val c = cols.coerceIn(1, 12)
+        val r = rows.coerceIn(1, 12)
+        val all = placements(c, r)
+        val moving = all.firstOrNull { it.token == token } ?: return false
+        if (page < 0) return false
+        val rs = tokenRowSpan(token, r)
+        val cs = tokenColSpan(token, c)
+        val rr = row.coerceIn(0, (r - rs).coerceAtLeast(0))
+        val cc = col.coerceIn(0, (c - cs).coerceAtLeast(0))
+        if (page == moving.page && rr == moving.row && cc == moving.col) return false
+
+        val blocked = all.filter {
+            it.token != token && it.page == page &&
+                    it.row < rr + rs && it.row + it.rowSpan > rr &&
+                    it.col < cc + cs && it.col + it.colSpan > cc
+        }
+
+        // 单格换单格：直接互换，观感最自然
+        val single = blocked.size == 1 && rs == 1 && cs == 1 &&
+                blocked[0].rowSpan == 1 && blocked[0].colSpan == 1
+        if (single) {
+            val oc = blocked[0]
+            val backRow = moving.row
+            val backCol = moving.col.coerceIn(0, c - 1)
+            homeSlots[oc.token] = "${moving.page},$backRow,$backCol"
+        } else {
+            blocked.forEach { homeSlots.remove(it.token) }
+        }
+
+        // 老坐标写着在目标区域里、实际被挤到别处的条目也要清掉，
+        // 否则 layoutHome 的显式坐标阶段会先一步把目标格占回去（小组件尤其明显）。
+        homeSlots.entries.toList().forEach { (t, raw) ->
+            if (t == token) return@forEach
+            val parts = raw.split(",")
+            if (parts.size < 3) return@forEach
+            val p = parts[0].toIntOrNull() ?: return@forEach
+            val rw = parts[1].toIntOrNull() ?: return@forEach
+            val cl = parts[2].toIntOrNull() ?: return@forEach
+            val trs = tokenRowSpan(t, r)
+            val tcs = tokenColSpan(t, c)
+            if (p == page && rw < rr + rs && rw + trs > rr && cl < cc + cs && cl + tcs > cc) {
+                homeSlots.remove(t)
+            }
+        }
+
+        homeSlots[token] = "$page,$rr,$cc"
         save()
+        return true
+    }
+
+    /** 清掉所有手动坐标，主屏回到自动流式排列（列数 / 行数大改后可用） */
+    fun clearHomeSlots() {
+        if (homeSlots.isEmpty()) return
+        homeSlots.clear()
+        save()
+    }
+
+    /** 存档瘦身：条目已不在主屏（被移除 / 隐藏 / 卸载）时，顺手删掉它的坐标 */
+    private fun pruneHomeSlots() {
+        if (homeSlots.isEmpty()) return
+        // 应用列表还没扫描完时 homeTokens() 里一个 app token 都没有，
+        // 这时做"清理"会把所有坐标当成失效删光（重装/冷启动阶段尤其危险）。
+        if (!appLoadDone || apps.isEmpty()) return
+        val alive = homeTokens().toSet()
+        homeSlots.keys.toList().forEach { if (it !in alive) homeSlots.remove(it) }
     }
 
     fun addHome(pkg: String) {
@@ -556,6 +1099,139 @@ object DuoState {
         if (homeOrder.contains(token)) { homeOrder.remove(token); homeOrder.add(token) }
         homeSeeded = true
         save()
+    }
+
+    /**
+     * 把系统小组件加到主屏**第一屏左上角**（第 0 页第 0 行）。
+     *
+     * 齐老师 2026-11-18：新加的小组件必须在左上角、一眼看得见，加完还可以拖到任意位置。
+     * 所以这里：① 把 token 排到 homeOrder 最前；② 给它写死坐标 (0,0)；
+     * ③ 原来占着它那几行的条目，能往下挪就整体下移，挪不动就清掉坐标交给自动排布
+     * （不会丢，只是重新流式排一次）。
+     */
+    fun addHomeWidget(appWidgetId: Int, minWidthDp: Int = 0, minHeightDp: Int = 0) {
+        val key = appWidgetId.toString()
+        if (!homeWidgets.contains(key)) homeWidgets.add(key)
+        if (minHeightDp > 0) widgetRowMap[key] = rowsFromMinHeight(minHeightDp)
+        if (minWidthDp > 0) widgetColMap[key] = colsFromMinWidth(minWidthDp)
+        val token = "widget:$key"
+        val base = homeTokens().filter { it != token }
+        homeOrder.clear()
+        homeOrder.add(token)
+        homeOrder.addAll(base)
+        // 新小组件按自己的行×列跨度钉在第一屏 (0,0)
+        val rs = tokenRowSpan(token, homeRows)
+        val cs = tokenColSpan(token, homeColumns)
+        homeSlots.entries.toList().forEach { (t, raw) ->
+            if (t == token) return@forEach
+            val parts = raw.split(",")
+            if (parts.size < 3) { homeSlots.remove(t); return@forEach }
+            val p = parts[0].toIntOrNull() ?: 0
+            val row = parts[1].toIntOrNull() ?: 0
+            val col = parts[2].toIntOrNull() ?: 0
+            if (p != 0 || row >= rs || col >= cs) return@forEach
+            // 原来压在这块区域里的条目：能整体下移就下移，放不下就交给自动排布
+            val trs = tokenRowSpan(t, homeRows)
+            val nr = row + rs
+            if (nr + trs <= homeRows) homeSlots[t] = "0,$nr,$col" else homeSlots.remove(t)
+        }
+        homeSlots[token] = "0,0,0"
+        homeSeeded = true
+        save()
+    }
+
+    /** 补齐历史数据里没有记行数的小组件（老版本加的），避免一直按 2 行占位 */
+    fun ensureWidgetRows(appWidgetId: Int, minHeightDp: Int) {
+        val key = appWidgetId.toString()
+        if (!homeWidgets.contains(key)) return
+        val want = rowsFromMinHeight(minHeightDp)
+        if (widgetRowMap[key] != want) { widgetRowMap[key] = want; save() }
+    }
+
+    /** 同 [ensureWidgetRows]，顺便把列跨度也补上（老存档只有行数） */
+    fun ensureWidgetSize(appWidgetId: Int, minWidthDp: Int, minHeightDp: Int) {
+        val key = appWidgetId.toString()
+        if (!homeWidgets.contains(key)) return
+        var dirty = false
+        val wantRows = rowsFromMinHeight(minHeightDp)
+        if (widgetRowMap[key] != wantRows) { widgetRowMap[key] = wantRows; dirty = true }
+        val wantCols = colsFromMinWidth(minWidthDp)
+        if (widgetColMap[key] != wantCols) { widgetColMap[key] = wantCols; dirty = true }
+        if (dirty) save()
+    }
+
+    fun removeHomeWidget(appWidgetId: Int) {
+        val key = appWidgetId.toString()
+        homeWidgets.remove(key)
+        homeOrder.remove("widget:$key")
+        widgetRowMap.remove(key)
+        widgetColMap.remove(key)
+        save()
+    }
+
+    fun isHomeWidget(appWidgetId: Int): Boolean = homeWidgets.contains(appWidgetId.toString())
+
+    /**
+     * 把主屏小组件整体挪到相邻一屏（[dir] = -1 上一屏 / +1 下一屏）。
+     * 拖拽手势只在当前一屏内起作用，跨屏靠这个补上。
+     *
+     * 坐标模型下不需要再猜插入点：把页号改掉、在目标页找一个空位即可。
+     */
+    fun moveHomeWidgetPage(
+        appWidgetId: Int,
+        dir: Int,
+        cols: Int = homeColumns,
+        rows: Int = homeRows
+    ): Boolean = moveTokenToPage("widget:$appWidgetId", dir, cols, rows)
+
+    /**
+     * 把任意主屏条目（图标 / 文件夹 / 小组件）整块挪到相邻一屏。
+     *
+     * 坐标模型下这件事变得直接：把它的页号 +1 / −1，在该页找一个空位放进去。
+     * 拖动只在当前页内生效，跨屏靠边缘松手或菜单调用这里补上。
+     */
+    fun moveTokenToPage(
+        token: String,
+        dir: Int,
+        cols: Int = homeColumns,
+        rows: Int = homeRows
+    ): Boolean {
+        if (dir == 0) return false
+        val c = cols.coerceIn(1, 12)
+        val r = rows.coerceIn(1, 12)
+        val pages = layoutHome(c, r)
+        val from = pages.indexOfFirst { list -> list.any { it.token == token } }
+        if (from < 0) return false
+        val target = from + dir
+        // 往左不能小于 0；往右最多新建一页（否则会一路建出一堆空页）
+        if (target < 0 || target > pages.size) return false
+        val rs = tokenRowSpan(token, r)
+        val cs = tokenColSpan(token, c)
+
+        fun freeSpot(): Pair<Int, Int>? {
+            val list = pages.getOrNull(target) ?: return 0 to 0
+            val used = Array(r) { BooleanArray(c) }
+            list.forEach { p ->
+                for (dr in 0 until p.rowSpan) for (dc in 0 until p.colSpan) {
+                    val rr = p.row + dr
+                    val cc = p.col + dc
+                    if (rr in 0 until r && cc in 0 until c) used[rr][cc] = true
+                }
+            }
+            for (row in 0..(r - rs)) for (col in 0..(c - cs)) {
+                var free = true
+                for (dr in 0 until rs) for (dc in 0 until cs) {
+                    if (used[row + dr][col + dc]) { free = false }
+                }
+                if (free) return row to col
+            }
+            return null
+        }
+
+        val spot = freeSpot() ?: return false
+        homeSlots[token] = "$target,${spot.first},${spot.second}"
+        save()
+        return true
     }
 
     /** 设置页「批量添加」专用：一次改完再写盘，避免逐个 addHome 反复序列化整份配置 */
@@ -611,10 +1287,6 @@ object DuoState {
 
     fun setSidebar(items: List<SidebarItem>) {
         sidebar.clear(); sidebar.addAll(items); save()
-    }
-
-    fun setWidgets(items: List<WidgetItem>) {
-        widgets.clear(); widgets.addAll(items); save()
     }
 
     // ── 文件夹 ──

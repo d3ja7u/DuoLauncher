@@ -150,7 +150,6 @@ object AppRepository {
 
         // 按「包名 + 用户」去重：两个微信包名相同但属于不同用户，必须都保留
         val result = out.distinctBy { it.id }.sortedWith(compareBy(collator) { it.label })
-        android.util.Log.d("DuoApps", "loaded ${result.size} apps, profiles=${profilesSeen.size}, clones=${result.count { it.isClone }}")
         result
     }
 

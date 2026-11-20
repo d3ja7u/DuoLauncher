@@ -5,176 +5,204 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DuoLauncher 匿名统计</title>
 <style>
-:root{color-scheme:light dark}
-body{font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:760px;margin:40px auto;padding:0 20px}
-h1{font-size:22px;margin-bottom:4px}
-.sub{opacity:.65;font-size:13px;margin-bottom:24px}
-.src{display:inline-block;font-size:12px;padding:3px 9px;border-radius:20px;border:1px solid rgba(128,128,128,.35);margin-bottom:20px}
-.src.ok{border-color:#2e9e5b;color:#2e9e5b}
-.src.warn{border-color:#d08a1d;color:#d08a1d}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:28px}
-.card{border:1px solid rgba(128,128,128,.3);border-radius:14px;padding:16px}
-.card b{display:block;font-size:28px;line-height:1.2;margin-bottom:4px}
-.card span{font-size:12px;opacity:.65}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:24px}
-th,td{text-align:left;padding:7px 8px;border-bottom:1px solid rgba(128,128,128,.2)}
-th{font-size:12px;opacity:.6;font-weight:600}
-h2{font-size:16px;margin:26px 0 8px}
-code{background:rgba(128,128,128,.15);padding:2px 5px;border-radius:4px}
-.msg{font-size:13px;padding:10px 12px;border-radius:10px;background:rgba(208,138,29,.12);margin-bottom:16px;display:none}
-button{font:inherit;font-size:13px;padding:8px 14px;border-radius:10px;border:1px solid rgba(128,128,128,.4);background:transparent;cursor:pointer}
-button.mini{font-size:12px;padding:3px 10px;margin:0 0 20px 8px;vertical-align:top}
-footer{margin-top:36px;font-size:12px;opacity:.6}
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;padding:24px 20px 40px;background:#0b0d12;color:#e8ecf3;
+font:14px/1.6 -apple-system,system-ui,"PingFang SC",sans-serif}
+h1{font-size:18px;margin:0 0 6px;font-weight:600}
+.sub{color:#8b95a7;font-size:12px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+.card{background:#151a23;border:1px solid #232b38;border-radius:12px;padding:14px 16px}
+.k{color:#8b95a7;font-size:12px}
+.v{font-size:26px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.bar{display:flex;align-items:center;gap:12px;margin:0 0 14px;flex-wrap:wrap}
+button,.bar>a{font:inherit;font-size:13px;padding:7px 14px;border-radius:9px;border:1px solid #2c3543;
+background:#1a212c;color:#e8ecf3;cursor:pointer;text-decoration:none;display:inline-block}
+button:hover,.bar>a:hover{background:#222b38}
+#msg{color:#e0913f;font-size:12px}
+table{width:100%;border-collapse:collapse;background:#151a23;border:1px solid #232b38;
+border-radius:12px;overflow:hidden;margin-bottom:16px}
+th,td{padding:8px 14px;text-align:left;font-size:13px;border-bottom:1px solid #1e2531;
+font-variant-numeric:tabular-nums}
+th{color:#8b95a7;font-weight:500;background:#11161e}
+tr:last-child td{border-bottom:0}
+.empty{color:#6b7688;font-size:12px;padding:10px 14px}
+h2{font-size:15px;margin:24px 0 4px;font-weight:600;color:#cdd7e5}
+.sub2{color:#8b95a7;font-size:12px;margin-bottom:10px}
+.dev{background:#151a23;border:1px solid #232b38;border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.dh{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:5px}
+.did{font-weight:600;font-size:13.5px;letter-spacing:.4px;font-variant-numeric:tabular-nums}
+.tag{font-size:11px;color:#9fb0c8;background:#1c2532;border:1px solid #2a3444;border-radius:6px;padding:1px 7px}
+.dm{color:#8b95a7;font-size:12px;margin-bottom:7px}
+.tk{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px}
+.tk b{font-weight:600;color:#e8ecf3}
+.tk i{font-style:normal;font-size:11px;color:#7f8b9e}
+.arw{color:#4d5a6e}
+.up{color:#63c08c;font-size:11px}
+#more{margin:2px 0 6px}
+footer{margin-top:30px;font-size:12px;color:#7f8b9e}
 </style>
 </head>
 <body>
 <h1>DuoLauncher 匿名统计</h1>
-<div class="sub">仅统计随机匿名 ID 的数量，不采集设备标识、IP、位置或任何个人信息 · <span id="updated">已停止自动刷新，点「立即刷新」查看最新</span></div>
-<div class="src" id="src">正在连接…</div>
-<button id="btn-refresh" class="mini">立即刷新</button>
-<div class="msg" id="msg"></div>
-<div class="cards" id="cards"></div>
-<h2>版本分布</h2><table id="versions"></table>
-<h2>界面语言</h2><table id="langs"></table>
-<h2>最近 30 天</h2><table id="days"></table>
-<div id="selftest" style="display:none;margin-bottom:20px">
-  <button id="btn-test">云端连通性自检（写入一条 test 记录）</button>
-  <span id="test-result" style="font-size:12px;opacity:.7;margin-left:10px"></span>
+<div class="sub" id="sub">只统计随机匿名 ID 与通用机型名，不采集唯一标识、IP、位置或任何个人信息</div>
+<div class="grid">
+<div class="card"><div class="k">累计设备</div><div class="v" id="devices">-</div></div>
+<div class="card"><div class="k">累计上报</div><div class="v" id="pings">-</div></div>
+<div class="card"><div class="k">7 日活跃</div><div class="v" id="a7">-</div></div>
+<div class="card"><div class="k">30 日活跃</div><div class="v" id="a30">-</div></div>
 </div>
+<div class="bar"><button id="btn">立即刷新</button><a href="./admin">后台管理</a><span id="msg"></span></div>
+<table><thead><tr><th>版本</th><th>设备数</th><th>上报次数</th></tr></thead><tbody id="ver"></tbody></table>
+<table><thead><tr><th>界面语言</th><th>设备数</th></tr></thead><tbody id="langs"></tbody></table>
+<table><thead><tr><th>Android 版本</th><th>设备数</th></tr></thead><tbody id="apis"></tbody></table>
+<table><thead><tr><th>设备机型</th><th>设备数</th></tr></thead><tbody id="models"></tbody></table>
+<table><thead><tr><th>日期</th><th>活跃设备</th><th>上报次数</th></tr></thead><tbody id="days"></tbody></table>
+<h2>设备明细</h2>
+<div class="sub2">共 <b id="devn">-</b> 台 · 按最近活跃排序 · 只显示匿名 ID 前 8 位，机型为通用型号名，无法对应到具体设备或人</div>
+<div id="devs"></div>
+<button id="more">展开全部</button>
 <footer>关闭统计：启动器 设置 → 隐私与统计 → 匿名使用统计。原始数据可用 <code>/export</code> 备份。</footer>
-
-<!-- 官方云服务 SDK：CDN 形态（本项目无 npm 构建步骤） -->
-<script src="https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js"></script>
-<script src="./cloud-config.js"></script>
 <script>
-(function () {
-  var cfg = window.publicConfig;
-  var cloud = null;
-
-  function showMsg(text) {
-    var el = document.getElementById('msg');
-    el.textContent = text;
-    el.style.display = text ? 'block' : 'none';
-  }
-
-  // 初始化：endpoint / oauthRelayBaseUrl / publishableKey 全部来自 publicConfig
-  if (cfg && cfg.endpoint && cfg.publishableKey && window.WorkBuddyCloud) {
-    try {
-      cloud = WorkBuddyCloud.createWorkBuddyCloud({
-        endpoint: cfg.endpoint,
-        oauthRelayBaseUrl: cfg.oauthRelayBaseUrl,
-        publishableKey: cfg.publishableKey
-      });
-    } catch (e) {
-      showMsg('云服务初始化失败：' + e.message + '；已切换到本地数据。');
-    }
-  } else if (!window.WorkBuddyCloud) {
-    showMsg('云服务 SDK 加载失败，已切换到本地数据。请检查网络后刷新。');
-  }
-
-  function table(el, head, rows) {
+var T = null;
+function fill(id, v) { document.getElementById(id).textContent = v }
+function rows(el, data, cols, empty) {
+  if (!data.length) {
     document.getElementById(el).innerHTML =
-      '<tr>' + head.map(function (x) { return '<th>' + x + '</th>'; }).join('') + '</tr>' +
-      (rows.length ? rows.map(function (r) {
-        return '<tr>' + r.map(function (x) { return '<td>' + (x == null ? '' : x) + '</td>'; }).join('') + '</tr>';
-      }).join('') : '<tr><td colspan="9">暂无数据</td></tr>');
+      '<tr><td colspan="' + cols + '" class="empty">' + empty + '</td></tr>';
+    return;
   }
-
-  function render(d, from) {
-    var src = document.getElementById('src');
-    src.className = 'src ' + (from === 'cloud' ? 'ok' : 'warn');
-    src.textContent = from === 'cloud' ? '数据来源：云服务数据库' : '数据来源：本地 SQLite（云服务未启用或不可用）';
-    document.getElementById('cards').innerHTML = [
-      ['累计安装设备', d.devices], ['近 7 天活跃', d.active_7d],
-      ['近 30 天活跃', d.active_30d], ['累计上报次数', d.pings]
-    ].map(function (x) {
-      return '<div class="card"><b>' + (x[1] || 0) + '</b><span>' + x[0] + '</span></div>';
-    }).join('');
-    table('versions', ['版本', '设备数'], (d.versions || []).map(function (x) { return [x.app || '未知', x.devices]; }));
-    table('langs', ['语言', '设备数'], (d.langs || []).map(function (x) { return [x.lang || '未知', x.devices]; }));
-    table('days', ['日期', '活跃设备', '上报次数'], (d.days || []).map(function (x) { return [x.day, x.devices, x.pings]; }));
-    var u = document.getElementById('updated');
-    if (u && d.generated_at) u.textContent = '更新于 ' + d.generated_at;
+  document.getElementById(el).innerHTML = data.map(function (r) {
+    return '<tr>' + r.map(function (c) { return '<td>' + (c == null ? '-' : c) + '</td>' }).join('') + '</tr>';
+  }).join('');
+}
+// 版本号倒序（1.5.16 排在 1.5.9 前面）
+function cmpVer(a, b) {
+  var x = String(a).split('.'), y = String(b).split('.');
+  for (var i = 0; i < Math.max(x.length, y.length); i++) {
+    var p = parseInt(x[i] || '0', 10) || 0, q = parseInt(y[i] || '0', 10) || 0;
+    if (p !== q) return p - q;
   }
-
-  // 云端聚合：stats_summary() 只返回聚合数字，不暴露任何匿名 ID
-  async function fromCloud() {
-    var res = await cloud.database.rpc('stats_summary');
-    if (res.error) throw new Error(res.error.message || 'RPC 调用失败');
-    var d = res.data;
-    if (Array.isArray(d)) d = d[0];
-    if (d && d.stats_summary) d = d.stats_summary;
-    if (!d || typeof d.devices === 'undefined') throw new Error('云端返回格式异常');
-    return d;
-  }
-
-  // 本地 SQLite 兜底（自托管 / 云服务额度用尽 / 网络异常时仍可查看）
-  async function fromLocal(bust) {
-    var r = await fetch('./stats' + (bust ? '?t=' + Date.now() : ''), { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  }
-
-  async function load(bust) {
-    var btn = document.getElementById('btn-refresh');
-    if (btn) btn.disabled = true;
-    try {
-      if (cloud) {
-        try {
-          render(await fromCloud(), 'cloud');
-          showMsg('');
-          return;
-        } catch (e) {
-          showMsg('云端读取失败：' + e.message + '；已切换到本地数据。');
-        }
-      }
-      try {
-        render(await fromLocal(bust), 'local');
-      } catch (e) {
-        showMsg('本地数据也读取失败：' + e.message);
-      }
-    } finally {
-      if (btn) btn.disabled = false;
-    }
-  }
-
-  // 部署验证入口：仅 ?selftest=1 时显示，避免公开页面被随意写入
-  if (new URLSearchParams(location.search).get('selftest') === '1') {
-    document.getElementById('selftest').style.display = 'block';
-    document.getElementById('btn-test').onclick = async function () {
-      var out = document.getElementById('test-result');
-      if (!cloud) { out.textContent = '云服务未启用'; return; }
-      out.textContent = '写入中…';
-      var row = {
-        anon_id: 'web-selftest-' + Math.random().toString(36).slice(2, 14),
-        app: '1.5.6', code: 143, lang: 'zh', api: 33, kind: 'test'
-      };
-      try {
-        var res = await cloud.database.from('stats_pings').insert(row).select();
-        if (res.error) throw new Error(res.error.message || '写入被拒绝');
-        out.textContent = '写入成功，正在读回…';
-        var d = await fromCloud();
-        render(d, 'cloud');
-        out.textContent = '读回成功：累计 ' + d.pings + ' 次上报 / ' + d.devices + ' 台设备';
-      } catch (e) {
-        out.textContent = '失败：' + e.message;
-      }
-    };
-  }
-
-  // ── 刷新策略 ───────────────────────────────────────────────────────────────
-  // 接收端已迁到自托管（stats.d3ja7u.top），云端看板只留作历史查阅：
-  // 不再自动轮询（每次刷新都是一次计费聚合），只在点「立即刷新」时请求一次。
-  function refresh(bustCache) {
-    return load(bustCache);
-  }
-
-  document.getElementById('btn-refresh').addEventListener('click', function () {
-    refresh(true);
+  return 0;
+}
+// 版本分布：以后端聚合为准，再用设备明细补齐。
+// 之所以要补：服务端如果对版本表做了截断（旧版本就是这么丢的 1.5.16），
+// 明细里还在跑的版本仍然会被列出来，不至于「有设备却看不到版本」。
+function versionsOf(d) {
+  var map = {}, cnt = {};
+  (d.versions || []).forEach(function (v) {
+    if (!v.app) return;
+    map[v.app] = { app: v.app, devices: v.devices || 0, n: v.n };
   });
-
-  refresh(false);
-})();
+  (d.device_list || []).forEach(function (x) {
+    if (!x.ver) return;
+    cnt[x.ver] = (cnt[x.ver] || 0) + 1;
+    if (!map[x.ver]) map[x.ver] = { app: x.ver, devices: 0, n: undefined };
+  });
+  Object.keys(cnt).forEach(function (a) { if (map[a]) map[a].devices = cnt[a]; });
+  return Object.keys(map).map(function (k) { return map[k] })
+    .sort(function (a, b) { return cmpVer(b.app, a.app) });
+}
+function render(d) {
+  fill('devices', d.devices); fill('pings', d.pings);
+  fill('a7', d.active_7d); fill('a30', d.active_30d);
+  rows('ver', versionsOf(d).map(function (x) { return [x.app, x.devices, x.n] }), 3, '暂无数据');
+  rows('langs', (d.langs || []).map(function (x) { return [langName(x.lang), x.devices] }), 2, '暂无数据');
+  rows('apis', (d.apis || []).map(function (x) { return [androName(x.api), x.devices] }), 2, '暂无数据');
+  rows('models', (d.models || []).map(function (x) { return [esc(x.model), x.devices] }), 2, '暂无数据');
+  rows('days', (d.days || []).map(function (x) { return [x.day, x.devices, x.pings] }), 3, '暂无数据');
+  renderDevs(d.device_list || []);
+  document.getElementById('sub').textContent =
+    '只统计随机匿名 ID 与通用机型名，不采集唯一标识、IP 或个人信息 · 更新于 ' + (d.generated_at || '—') +
+    ' · 页面可见时每 10 分钟自动刷新';
+}
+function p2(n) { return n < 10 ? '0' + n : '' + n }
+function fmt(ts) {
+  if (!ts) return '-';
+  var t = new Date(ts * 1000), now = new Date();
+  var s = p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + ' ' + p2(t.getHours()) + ':' + p2(t.getMinutes());
+  return t.getFullYear() === now.getFullYear() ? s : (t.getFullYear() + '-' + s);
+}
+function ago(ts) {
+  if (!ts) return '-';
+  var s = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+  if (s < 120) return '刚刚';
+  if (s < 3600) return Math.floor(s / 60) + ' 分钟前';
+  if (s < 86400) return Math.floor(s / 3600) + ' 小时前';
+  if (s < 86400 * 7) return Math.floor(s / 86400) + ' 天前';
+  return fmt(ts);
+}
+var DEVS = [], EXP = false;
+function renderDevs(list) {
+  DEVS = list;
+  var n = list.length, show = EXP ? n : Math.min(n, 20), h = '';
+  document.getElementById('devn').textContent = n;
+  for (var i = 0; i < show; i++) {
+    var d = list[i], track = (d.track || []).map(function (t, j) {
+      var lb = t.kind === 'upgrade' ? '<span class="up">升级</span>'
+        : (j === 0 && t.kind === 'install' ? '<span class="up">装机</span>' : '');
+      return (j ? '<span class="arw">→</span>' : '') + '<b>' + t.app + '</b> <i>' + fmt(t.ts) + '</i>' + lb;
+    }).join('');
+    h += '<div class="dev"><div class="dh"><span class="did">' + d.id + '</span>'
+      + (d.model ? '<span class="tag" title="设备机型">' + esc(d.model) + '</span>' : '')
+      + '<span class="tag">' + androShort(d.api) + '</span>'
+      + '<span class="tag">' + langName(d.lang) + '</span>'
+      + (d.ver ? '<span class="tag">' + d.ver + '</span>' : '') + '</div>'
+      + '<div class="dm">首次 ' + fmt(d.first) + ' · 最近 ' + ago(d.last) + ' · 共 ' + d.pings + ' 次上报</div>'
+      + '<div class="tk">' + (track || '<i>无版本记录</i>') + '</div></div>';
+  }
+  document.getElementById('devs').innerHTML = h || '<div class="empty">暂无数据</div>';
+  var b = document.getElementById('more');
+  b.style.display = n > 20 ? 'inline-block' : 'none';
+  b.textContent = EXP ? '收起' : '展开全部（' + n + ' 台）';
+}
+document.getElementById('more').onclick = function () { EXP = !EXP; renderDevs(DEVS) };
+var LANG = { zh: '简体中文', en: 'English', ja: '日本語', in: '印尼语', ko: '한국어', ru: 'Русский', es: 'Español', fr: 'Français', de: 'Deutsch', pt: 'Português', ar: 'العربية', tr: 'Türkçe', vi: 'Tiếng Việt', th: 'ไทย', hi: 'हिन्दी' };
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>\"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] }) }
+function langName(k) { return LANG[k] || k || '-' }
+var ANDROID = { 36: '16', 35: '15', 34: '14', 33: '13', 32: '12L', 31: '12', 30: '11', 29: '10', 28: '9', 27: '8.1', 26: '8' };
+function androName(n) {
+  if (!n) return 'API -';
+  if (ANDROID[n]) return 'Android ' + ANDROID[n] + '（API ' + n + '）';
+  if (n >= 33) return 'Android ' + (n - 20) + '（API ' + n + '）';
+  return 'API ' + n;
+}
+function androShort(n) {
+  if (!n) return '-';
+  if (ANDROID[n]) return 'Android ' + ANDROID[n];
+  if (n >= 33) return 'Android ' + (n - 20);
+  return 'API ' + n;
+}
+function load() {
+  clearTimeout(T);
+  var btn = document.getElementById('btn');
+  if (btn) btn.disabled = true;
+  // 口令：优先地址栏，其次本机记住的（同一浏览器打开过一次就自动带上）
+  var sc = '';
+  try { sc = new URLSearchParams(location.search).get('sharecode') || ''; } catch (e) { sc = '' }
+  if (sc) { try { localStorage.setItem('duo_sc', sc); } catch (e) {} }
+  else { try { sc = localStorage.getItem('duo_sc') || ''; } catch (e) { sc = '' } }
+  fetch('./stats?t=' + Date.now() + (sc ? '&sharecode=' + encodeURIComponent(sc) : ''), { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })
+    .then(function (d) { render(d); document.getElementById('msg').textContent = ''; schedule(); })
+    .catch(function (e) {
+      document.getElementById('msg').textContent = e.message.indexOf('403') >= 0
+        ? '口令无效或缺失，请在地址后加 ?sharecode=…'
+        : '读取失败：' + e.message;
+      schedule();
+    })
+    .then(function () { if (btn) btn.disabled = false; });
+}
+// 只在页面可见时计时；后台标签页 0 请求（自托管几乎无成本，云托管按次计费）
+function schedule() {
+  clearTimeout(T);
+  if (document.visibilityState === 'visible') T = setTimeout(load, 600000);
+}
+document.getElementById('btn').onclick = load;
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') load(); else clearTimeout(T);
+});
+load();
 </script>
 </body>
 </html>

@@ -363,7 +363,6 @@ private fun readStatus(ctx: Context, use24h: Boolean): DuoStatus {
  * 只跑一个 readStatus，避免秒级广播把跨进程查询堆成并发。
  */
 private object StatusBus {
-    private const val TICK_MS = 30_000L
     /** RSSI_CHANGED 每秒都来，合并为最多每 10 秒一次完整查询 */
     private const val RSSI_GAP_MS = 10_000L
 
@@ -500,8 +499,12 @@ private object StatusBus {
             )
         }
         ticker = scope.launch {
+            // 对齐到下一个整分再刷。状态栏显示的是「时:分」，没必要固定 30 秒轮询一次
+            // （每轮都要跨进程查电量和两路信号），改成整分对齐后唤醒次数减半，
+            // 时间照样不会滞后（系统 ACTION_TIME_TICK 也在这时到达）。
             while (isActive) {
-                delay(TICK_MS)
+                val nowMs = System.currentTimeMillis()
+                delay((60_000L - nowMs % 60_000L).coerceIn(200L, 60_000L))
                 refresh(0L)
             }
         }

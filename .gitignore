@@ -28,3 +28,7 @@ tools/stats-server/data/
 # 自托管统计编排（含阿里云 AK/SK 与看板令牌，只在本地保留，切勿提交）
 selfhost-aliyun/
 selfhost-ikuai/
+
+# 本地临时文件
+.tmp_*
+__pycache__/

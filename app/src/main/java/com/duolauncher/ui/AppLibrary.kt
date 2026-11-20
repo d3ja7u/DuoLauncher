@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -54,7 +55,7 @@ import com.duolauncher.R
 import com.duolauncher.util.Lang
 import com.duolauncher.data.AppInfo
 import com.duolauncher.data.AppRepository
-import com.duolauncher.data.CATEGORY_LIST
+import com.duolauncher.data.CATEGORY_OTHER
 import com.duolauncher.data.DuoState
 import com.duolauncher.data.categoryName
 import kotlinx.coroutines.delay
@@ -78,7 +79,7 @@ import kotlinx.coroutines.launch
  * 切换方式：右上角图标按钮；或在顶部**下拉**（列表已到顶时继续往下拖）也可来回切。
  * 列表视图里屏幕上不会再有文件夹卡，从第一个字母开始铺满。
  *
- * 点击分类卡第 4 格（或卡片空白处）→ 弹出「窗口」（FolderWindow）展示该分类全部应用。
+ * 点击分类卡第 4 格（或卡片空白处）→ 弹出「窗口」（FolderIosWindow，与主屏文件夹同一套样式）展示该分类全部应用。
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -103,9 +104,19 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean =
     val textColor = glassTextColor(dark)
     val subColor = glassSubTextColor(dark)
 
-    val groups = if (DuoState.smartCategory) {
-        CATEGORY_LIST.map { it.first to all.filter { a -> DuoState.categoryOf(a) == it.first } }
-            .filter { it.second.isNotEmpty() }
+    // 分类卡：按运行时的分类表来（内置可改名/可删，用户在设置里自建的追加在后面）。
+    // 分类被删掉后，原本挂在它下面的应用不能凭空消失，统一收进「其他」卡。
+    val groups: List<Pair<String, List<AppInfo>>> = if (DuoState.smartCategory) {
+        val cats = DuoState.categoryList()
+        val known = cats.map { it.first }.toHashSet()
+        val grouped = all.groupBy { DuoState.categoryOf(it) }
+        buildList {
+            cats.forEach { (id, _) ->
+                grouped[id]?.takeIf { it.isNotEmpty() }?.let { add(id to it) }
+            }
+            val orphans = all.filter { DuoState.categoryOf(it) !in known }
+            if (orphans.isNotEmpty()) add(CATEGORY_OTHER to orphans)
+        }
     } else {
         listOf("all" to all)
     }
@@ -113,7 +124,6 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean =
     // ── 字母列表（iOS 样式）：列表视图专用，从第一个字母开始铺满整屏 ──
     val sections = remember(all) { buildLetterSections(all) }
     val letters = remember(sections) { sections.map { it.first } }
-    val cardRows = remember(groups) { groups.chunked(3) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     // 切换到任一视图都回到顶部
@@ -148,11 +158,22 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean =
     }
     // 顶部下拉（内容已到顶再往下拖）切换视图，阈值 58dp
     val pullThreshold = with(LocalDensity.current) { 58.dp.toPx() }
+    // 卡片列数跟着可用宽度走：手机 3 列、折叠屏/小平板 4 列、大平板 5 列。
+    // iPad 资源库也是「卡片尺寸基本固定、宽屏两侧留白」，所以这里同时给内容加宽度上限，
+    // 否则平板上每张分类卡会被 weight 拉成三四百 dp 的巨大方块（图标跟着一起放大）。
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val maxContentW = 728.dp
+    val columns = when {
+        screenWidthDp >= 620 -> 5
+        screenWidthDp >= 460 -> 4
+        else -> 3
+    }
+    val cardRows = remember(groups, columns) { groups.chunked(columns) }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         // 虚化背景改由 MainActivity 根层级（pager 之外）统一渲染，这里不再画，
         // 因为 HorizontalPager 内部的大图在某些情况下不绘制，会导致清晰壁纸透出
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxHeight().widthIn(max = maxContentW).fillMaxWidth()) {
             Spacer(Modifier.height(DuoState.cutoutPadding.coerceAtLeast(52).dp))
 
             // ── 顶部：透明搜索行 + 分类管理（去掉白底胶囊，浮在模糊壁纸上）──
@@ -276,7 +297,7 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean =
                         Lang.s(R.string.search_results, result.size), fontSize = 12.sp, color = subColor,
                         modifier = Modifier.padding(start = 6.dp, bottom = 10.dp)
                     )
-                    AppGrid(result, nav, dark)
+                    AppGrid(result, nav, dark, columns)
                     if (result.isEmpty()) {
                         Text(
                             Lang.s(R.string.no_match_apps), fontSize = 14.sp, color = subColor,
@@ -336,7 +357,8 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean =
                                         onOpenFolder = { openCat = cat to list }
                                     )
                                 }
-                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                                // 不满一行时补空位，保证各行列宽一致（末尾留白，不被拉宽）
+                                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     } else {
@@ -386,9 +408,8 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean =
 
     // ── 分类「窗口」：点卡片展开 ──
     openCat?.let { (cat, list) ->
-        FolderWindow(
-            title = if (cat == "all") Lang.s(R.string.all_apps) else categoryName(cat),
-            subtitle = Lang.s(R.string.app_count, list.size),
+        FolderIosWindow(
+            name = if (cat == "all") Lang.s(R.string.all_apps) else categoryName(cat),
             apps = list,
             dark = dark,
             onDismiss = { openCat = null },
@@ -519,11 +540,11 @@ private fun RowScope.FolderClusterCell(
 }
 
 @Composable
-private fun AppGrid(list: List<AppInfo>, nav: Nav, dark: Boolean) {
+private fun AppGrid(list: List<AppInfo>, nav: Nav, dark: Boolean, columns: Int = 4) {
     val ctx = LocalContext.current
     val size = (48 * DuoState.iconScale).dp
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        list.chunked(4).forEach { row ->
+        list.chunked(columns).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 row.forEach { app ->
                     AppIconCell(
@@ -535,7 +556,7 @@ private fun AppGrid(list: List<AppInfo>, nav: Nav, dark: Boolean) {
                         onLongClick = { nav.showAppMenu(app, "library") }
                     )
                 }
-                repeat(4 - row.size) { Spacer(Modifier.width(size + 14.dp)) }
+                repeat(columns - row.size) { Spacer(Modifier.width(size + 14.dp)) }
             }
         }
     }

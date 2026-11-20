@@ -288,36 +288,49 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         runCatching { ctx.contentResolver.registerContentObserver(uri, false, obs) }
         onDispose { runCatching { ctx.contentResolver.unregisterContentObserver(obs) } }
     }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    // 页面是否在前台（RESUMED）：退到后台就停掉下面的轮询，别为看不见的界面耗电
+    var screenResumed by remember {
+        mutableStateOf(
+            lifecycleOwner.lifecycle.currentState
+                .isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        )
+    }
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    screenResumed = true
+                    phoneGranted = phonePermissionGranted(ctx)
+                    accEnabled = ScreenOff.isEnabled(ctx)
+                    accReady = ScreenOff.isReady()
+                    adminReady = ScreenOff.isAdminActive(ctx)
+                    badgeAccess = DuoNotificationListener.hasAccess(ctx)
+                    // 从「安装未知来源应用」设置页返回：授权通过就接着下载
+                    val waiting = pendingRelease
+                    if (waiting != null) {
+                        pendingRelease = null
+                        if (ApkUpdater.canInstall(ctx)) startDownload(waiting)
+                        else dlState = ApkUpdater.State.Failed(Lang.s(R.string.err_install_permission))
+                    }
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> screenResumed = false
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     // 服务绑定是异步的：用户拨完开关回到这里时可能还没连上，也可能几秒后才连上。
-    // 设置页可见期间轻量轮询（只是读一个静态字段，几乎无开销），文案随之自动纠正。
-    LaunchedEffect(Unit) {
+    // 前台期间轻量轮询（只是读一个静态字段，几乎无开销），文案随之自动纠正。
+    LaunchedEffect(screenResumed) {
+        if (!screenResumed) return@LaunchedEffect
         while (true) {
             accReady = ScreenOff.isReady()
             accEnabled = ScreenOff.isEnabled(ctx)
             adminReady = ScreenOff.isAdminActive(ctx)
             kotlinx.coroutines.delay(1_500L)
         }
-    }
-    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                phoneGranted = phonePermissionGranted(ctx)
-                accEnabled = ScreenOff.isEnabled(ctx)
-                accReady = ScreenOff.isReady()
-                adminReady = ScreenOff.isAdminActive(ctx)
-                badgeAccess = DuoNotificationListener.hasAccess(ctx)
-                // 从「安装未知来源应用」设置页返回：授权通过就接着下载
-                val waiting = pendingRelease
-                if (waiting != null) {
-                    pendingRelease = null
-                    if (ApkUpdater.canInstall(ctx)) startDownload(waiting)
-                    else dlState = ApkUpdater.State.Failed(Lang.s(R.string.err_install_permission))
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val packs = remember { IconPacks.listPacks(ctx) }
     LazyColumn(
@@ -361,7 +374,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
                         onClick = { open("sidebar") })
                     SettingSliderRow(Lang.s(R.string.cutout_padding), "${DuoState.cutoutPadding} dp", DuoState.cutoutPadding.toFloat(),
-                        40f..180f, dark) { DuoState.cutoutPadding = it.toInt(); DuoState.save() }
+                        0f..120f, dark) { DuoState.cutoutPadding = it.toInt(); DuoState.save() }
                     SettingSliderRow(Lang.s(R.string.home_icon_size), "${"%.1f".format(DuoState.iconScale)}×", DuoState.iconScale,
                         0.7f..1.4f, dark) { DuoState.iconScale = it; DuoState.save() }
                     SettingSliderRow(Lang.s(R.string.sidebar_icon_size), "${"%.1f".format(DuoState.sidebarIconScale)}×", DuoState.sidebarIconScale,
@@ -428,6 +441,17 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         Lang.s(R.string.auto_add_new_apps_desc),
                         DuoState.autoAddNewApps, dark
                     ) { DuoState.autoAddNewApps = it; DuoState.save() }
+                    SettingToggle(
+                        Lang.s(R.string.show_app_library),
+                        Lang.s(R.string.show_app_library_desc),
+                        DuoState.showLibrary, dark
+                    ) { DuoState.showLibrary = it; DuoState.save() }
+                    SettingRow(
+                        Lang.s(R.string.add_system_widget),
+                        Lang.s(R.string.add_system_widget_desc),
+                        dark,
+                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                    ) { nav.addHomeWidget() }
                 }
             }
         }
@@ -650,16 +674,6 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         Lang.s(R.string.swipe_right_search_desc),
                         DuoState.gestureSearch, dark
                     ) { on -> DuoState.gestureSearch = on; DuoState.save() }
-                    SettingToggle(
-                        Lang.s(R.string.show_bottom_left),
-                        Lang.s(R.string.show_bottom_left_desc),
-                        DuoState.showBottomLeft, dark
-                    ) { DuoState.showBottomLeft = it; DuoState.save() }
-                    SettingToggle(
-                        Lang.s(R.string.show_bottom_right),
-                        Lang.s(R.string.show_bottom_right_desc),
-                        DuoState.showBottomRight, dark
-                    ) { DuoState.showBottomRight = it; DuoState.save() }
                 }
             }
         }
@@ -903,9 +917,6 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         if (statsIdPreview.isBlank()) Lang.s(R.string.stats_anon_id_none) else "$statsIdPreview…",
                         dark
                     )
-                    SettingRow(Lang.s(R.string.stats_view), Lang.s(R.string.stats_view_desc), dark,
-                        trailing = { Icon(Icons.Filled.OpenInNew, null, tint = glassSubTextColor(dark)) },
-                        onClick = { UpdateChecker.openInBrowser(ctx, InstallStats.STATS_PAGE) })
                 }
             }
             Text(
@@ -1515,29 +1526,118 @@ private fun AppPickerDialog(
     }
 }
 
-/** 分类管理：逐应用指定分类 */
+/** 待改名 / 待新建的输入框目标：id 为空表示新建 */
+private data class CategoryNameEdit(val id: String?, val initial: String)
+
+/**
+ * 分类管理：
+ * ① 分类本身——新建、改名、删除；
+ * ② 逐应用指定分类。
+ *
+ * 内置分类删除是软删除（只不再显示，不碰应用），该分类下的应用会落到资源库的「其他」卡；
+ * 自建分类删除后，原本手动归到它下面的应用会回到跟随智能分类。
+ */
 @Composable
 private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<AppInfo?>(null) }
+    var nameEdit by remember { mutableStateOf<CategoryNameEdit?>(null) }
+    var deleting by remember { mutableStateOf<String?>(null) }
+    var dupWarning by remember { mutableStateOf(false) }
+    val cats = DuoState.categoryList()
     val apps = DuoState.apps.filter { it.packageName != DuoState.selfPackage }
         .filter { query.isBlank() || it.label.contains(query, true) || it.packageName.contains(query, true) }
 
-    SubPageFrame(Lang.s(R.string.edit_app_category), dark, onBack) {
-        GlassCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(42.dp), radius = 14.dp, level = 0.85f, dark = dark) {
-            Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
-                if (query.isEmpty()) Text(Lang.s(R.string.search_apps), fontSize = 13.sp, color = glassSubTextColor(dark))
-                BasicTextField(
-                    query, { query = it }, singleLine = true,
-                    textStyle = TextStyle(fontSize = 14.sp, color = glassTextColor(dark)),
-                    cursorBrush = SolidColor(glassBlue), modifier = Modifier.fillMaxWidth()
+    SubPageFrame(Lang.s(R.string.manage_categories), dark, onBack) {
+        // 分类和应用列表放进**同一个** LazyColumn：原来上半段固定 240dp 内部滚动、
+        // 下半段再挂一个列表，两块互不相干，手机上下面那块被压得只剩一两行，翻不动。
+        // 现在整页一条滚动，滑到底自然就是「为应用指定分类」那一段。
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item(key = "newCat") {
+                GlassPrimaryButton(
+                    Lang.s(R.string.new_category), dark,
+                    { dupWarning = false; nameEdit = CategoryNameEdit(null, "") },
+                    Modifier.fillMaxWidth()
                 )
             }
-        }
-        Spacer(Modifier.height(10.dp))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)) {
+
+            items(cats, key = { "cat_" + it.first }) { (id, name) ->
+                GlassCard(Modifier.fillMaxWidth().height(52.dp), radius = 14.dp, level = 0.8f, dark = dark) {
+                    Row(
+                        Modifier.fillMaxSize().padding(start = 14.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            name, fontSize = 14.sp, color = glassTextColor(dark),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            Lang.s(R.string.app_count, DuoState.categoryAppCount(id)),
+                            fontSize = 11.sp, color = glassSubTextColor(dark)
+                        )
+                        IconButton(
+                            onClick = { dupWarning = false; nameEdit = CategoryNameEdit(id, name) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Filled.Edit, Lang.s(R.string.rename_category),
+                                tint = glassSubTextColor(dark), modifier = Modifier.size(17.dp))
+                        }
+                        IconButton(onClick = { deleting = id }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Filled.Delete, Lang.s(R.string.delete_category),
+                                tint = Color(0xFFFF3B30).copy(alpha = 0.9f), modifier = Modifier.size(17.dp))
+                        }
+                    }
+                }
+            }
+
+            // 内置分类删掉后还能一键找回：它们只是不再显示，数据一直都在
+            if (DuoState.hiddenCategories.isNotEmpty()) {
+                item(key = "restore") {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { DuoState.restoreBuiltinCategories() }
+                            .padding(horizontal = 8.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Restore, null, tint = glassBlue, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            Lang.s(R.string.restore_deleted_categories, DuoState.hiddenCategories.size),
+                            fontSize = 12.sp, color = glassBlue
+                        )
+                    }
+                }
+            }
+
+            item(key = "hint") {
+                Text(
+                    Lang.s(R.string.cat_assign_hint),
+                    fontSize = 12.sp, color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 4.dp, top = 12.dp, bottom = 2.dp)
+                )
+            }
+
+            item(key = "search") {
+                GlassCard(Modifier.fillMaxWidth().height(42.dp), radius = 14.dp, level = 0.85f, dark = dark) {
+                    Box(Modifier.fillMaxSize().padding(horizontal = 14.dp), contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) Text(Lang.s(R.string.search_apps), fontSize = 13.sp, color = glassSubTextColor(dark))
+                        BasicTextField(
+                            query, { query = it }, singleLine = true,
+                            textStyle = TextStyle(fontSize = 14.sp, color = glassTextColor(dark)),
+                            cursorBrush = SolidColor(glassBlue), modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
             items(apps, key = { it.id }) { app ->
-                GlassCard(Modifier.fillMaxWidth().height(60.dp).padding(vertical = 5.dp), radius = 16.dp, level = 0.8f, dark = dark) {
+                GlassCard(Modifier.fillMaxWidth().height(58.dp), radius = 16.dp, level = 0.8f, dark = dark) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Image(rememberDrawablePainter(rememberAppIcon(app)), null, Modifier.size(34.dp).clip(squircle(24)))
                         Spacer(Modifier.width(12.dp))
@@ -1559,13 +1659,70 @@ private fun CategoryEditorScreen(dark: Boolean, onBack: () -> Unit) {
         }
     }
 
+    // 新建 / 改名
+    nameEdit?.let { target ->
+        var name by remember(target) { mutableStateOf(target.initial) }
+        DuoDialog(
+            if (target.id == null) Lang.s(R.string.new_category) else Lang.s(R.string.rename_category),
+            dark,
+            onDismiss = { nameEdit = null; dupWarning = false }
+        ) {
+            BasicTextField(
+                name, { name = it; dupWarning = false }, singleLine = true,
+                textStyle = TextStyle(fontSize = 15.sp, color = glassTextColor(dark)),
+                cursorBrush = SolidColor(glassBlue),
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(glassTextColor(dark).copy(alpha = 0.12f)).padding(10.dp)
+            )
+            if (dupWarning) {
+                Text(
+                    Lang.s(R.string.cat_dup_name), fontSize = 11.sp, color = Color(0xFFFF3B30),
+                    modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            MenuRow(Icons.Filled.Check, Lang.s(R.string.save), dark = dark) {
+                val n = name.trim()
+                when {
+                    n.isEmpty() -> Unit
+                    DuoState.isDuplicateCategoryName(n, target.id) -> dupWarning = true
+                    target.id == null -> { DuoState.addCategory(n); nameEdit = null }
+                    else -> { DuoState.renameCategory(target.id, n); nameEdit = null }
+                }
+            }
+            MenuRow(Icons.Filled.Close, Lang.s(R.string.cancel), dark = dark) {
+                nameEdit = null; dupWarning = false
+            }
+        }
+    }
+
+    // 删除确认
+    deleting?.let { id ->
+        DuoDialog(
+            Lang.s(R.string.delete_category), dark,
+            onDismiss = { deleting = null }
+        ) {
+            Text(
+                Lang.s(R.string.delete_category_confirm, DuoState.categoryDisplayName(id)),
+                fontSize = 13.sp, color = glassSubTextColor(dark),
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+            Spacer(Modifier.height(10.dp))
+            MenuRow(Icons.Filled.Delete, Lang.s(R.string.delete_category), danger = true, dark = dark) {
+                DuoState.deleteCategory(id)
+                deleting = null
+            }
+            MenuRow(Icons.Filled.Close, Lang.s(R.string.cancel), dark = dark) { deleting = null }
+        }
+    }
+
     editing?.let { app ->
         DuoDialog(Lang.s(R.string.cat_of_app, app.label), dark, onDismiss = { editing = null }) {
             MenuRow(Icons.Filled.AutoAwesome, Lang.s(R.string.follow_smart_category), dark = dark) {
                 DuoState.setCategory(app.id, null); editing = null
             }
-            CATEGORY_LIST.forEach { (id, nameRes) ->
-                MenuRow(Icons.Filled.Category, Lang.s(nameRes), dark = dark) {
+            DuoState.categoryList().forEach { (id, name) ->
+                MenuRow(Icons.Filled.Category, name, dark = dark) {
                     DuoState.setCategory(app.id, id); editing = null
                 }
             }

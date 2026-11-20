@@ -5,9 +5,11 @@
 
 ## 采集什么
 
-启动器只发送：**随机生成的匿名 ID**、应用版本号 / versionCode、界面语言、Android API 等级、上报类型（首次安装 / 版本升级 / 每日活跃）。
+启动器只发送：**随机生成的匿名 ID**、应用版本号 / versionCode、界面语言、Android API 等级、通用机型名（Build.MODEL，如 Titan 2 Elite）、上报类型（首次安装 / 版本升级 / 每日活跃）。
 
-**不发送、不存储**：IP 地址、设备型号、序列号、IMEI、Android ID、广告 ID、账号、通讯录、位置、已安装应用列表。服务端访问日志也刻意去掉了客户端 IP，只保留请求路径。
+**不发送、不存储**：IP 地址、序列号、IMEI、Android ID、广告 ID、账号、通讯录、位置、已安装应用列表。服务端访问日志也刻意去掉了客户端 IP，只保留请求路径。
+
+机型是通用型号名，同型号设备大量存在，不含唯一标识，无法对应到具体设备或个人。
 
 匿名 ID 是本地随机 UUID，卸载重装或用户在设置里关闭统计后重新开启都会生成新的，不与任何身份关联。
 
@@ -27,7 +29,7 @@
 | 部件 | 说明 |
 |---|---|
 | 应用 | `DuoLauncher 匿名统计`（`wbapp_XbUMmu9mtBzj4MwApgfuiT`），已激活，`normal` / `assigned` |
-| 数据表 | `stats_pings`：`anon_id / app / code / lang / api / kind / created_at`，带格式与枚举 CHECK 约束 |
+| 数据表 | `stats_pings`：`anon_id / app / code / lang / api / model / kind / created_at`，带格式与枚举 CHECK 约束 |
 | 权限 | 已开启 RLS；`anon`、`authenticated` 只允许 `INSERT` 和 `SELECT`，**没有** UPDATE / DELETE 策略 |
 | 聚合 | `stats_summary()` 只返回聚合数字与分布，看板拿不到任何原始匿名 ID |
 | 看板 | `index.html` 使用官方 CDN SDK，从 `cloud-config.js` 的 `publicConfig` 初始化；云端失败自动回退本地 `/stats` |
@@ -40,14 +42,52 @@
 
 | 端点 | 用途 |
 |---|---|
-| `POST /ping` | 上报（也兼容 `/api/ping`），body 见 `server.py` 顶部注释 |
-| `GET /` | 统计看板（云端优先，本地兜底）；`?selftest=1` 显示云端连通性自检按钮 |
-| `GET /cloud-config.js` | 看板用的 `publicConfig` |
-| `GET /stats` | 本地 SQLite 聚合 JSON |
+| `POST /ping` | 上报（也兼容 `/api/ping`），body 见 `server.py` 顶部注释。**永远不加访问口令** |
+| `GET /` | 统计看板（深色单页，直接读本地 `/stats`） |
+| `GET /stats` | 聚合 JSON：总量 / 版本分布 / 语言 / Android 版本 / 机型 / 每日 / 设备明细 |
 | `GET /export` | 原始记录 JSONL，用于备份或自行分析 |
 | `GET /health` | 健康检查，含 `cloud` 开关状态 |
 
 服务端对同一匿名 ID 在 60 秒内的重复上报只更新活跃时间、不重复计数。
+
+### 版本分布不要截断
+
+`/stats` 的 `versions` 返回**全部**版本（按版本号倒序，每行含「设备数」和「上报次数」）。早期实现加了 `LIMIT 8`，结果刚发布的新版本因为上报次数少被挤出榜单——设备明明在跑 1.5.16，页面上却看不到。看板端也做了兜底：即使服务端给的 `versions` 不全，也会用 `device_list` 里的当前版本补齐。
+
+### 自托管时的读接口口令
+
+家里自托管可以用 `SHARECODE` 给「看板 + 明细」加一道门槛，上报端点不受影响：
+
+```bash
+SHARECODE=你的口令 docker compose up -d      # 访问 /?sharecode=你的口令
+```
+
+`SHARECODE` 和 `ADMIN_PASSWORD` 是两个不同的口令，别混用：
+
+| 变量 | 作用范围 | 用在哪 |
+| --- | --- | --- |
+| `SHARECODE` | `/stats`、`/export` 数据接口 | 看板地址 `/?sharecode=…`，页面脚本会自动带上 |
+| `ADMIN_PASSWORD` | `/admin`、`/admin/export`、`/admin/import`、`/admin/purge` | 数据管理后台，手工输入 |
+
+说明几点：
+
+- `/`、`/index.html`、`/admin` 页面本身不含数据，**不加口令也能打开**；缺口令时页面给出提示。
+- 口令里带 `#` 时，浏览器会把 `#` 之后当成 URL 片段丢弃，地址里必须写成 `%23`（`?sharecode=abc%23`）。看板口令建议避开 `#`。
+- `/ping` 上报端点永远不校验口令，已发布客户端不受影响。
+- 两个变量留空（默认）就都不校验。托管云服务不需要设，平台自带分享码。
+
+### 部署时别漏了 `index.html`
+
+看板有两个版本，别混：
+
+| 来源 | 内容 | 何时生效 |
+| --- | --- | --- |
+| 同目录 `index.html` | 完整看板：立即刷新、后台管理入口、版本/语言/Android/机型/每日、**设备明细（装机→升级轨迹）** | 文件存在时**优先** |
+| `server.py` 内联 `HTML` | 精简版：只有汇总表和简单表格，**没有明细、没有按钮** | 只有 `index.html` 缺失时兜底 |
+
+所以自托管容器里必须同时放 `server.py` 和 `index.html`（本项目用 tar.gz 一起打包），否则线上会退回精简版，看起来像"页面少了一半功能"。改完 `index.html` 要重新打包部署才生效。
+
+另外，看板会把口令记在浏览器 `localStorage`（键名 `duo_sc`）：带着 `?sharecode=…` 打开过一次之后，同一个浏览器再直接敲裸域名也能看到数据；换浏览器或清缓存就要重新带一次。
 
 ## 本地运行 / 验证
 
@@ -60,7 +100,7 @@ CLOUD_MODE=off python3 server.py       # 纯本地模式
 ```bash
 curl http://127.0.0.1:3000/health
 curl -X POST http://127.0.0.1:3000/ping -H 'Content-Type: application/json' \
-  -d '{"v":1,"id":"selftest-0001","app":"1.5.6","code":143,"lang":"zh","api":33,"kind":"test"}'
+  -d '{"v":1,"id":"selftest-0001","app":"1.5.6","code":143,"lang":"zh","api":33,"model":"Titan 2 Elite","kind":"test"}'
 curl http://127.0.0.1:3000/stats
 ```
 
@@ -119,7 +159,7 @@ stats.example.com:8443 {
 | 家里 Cloudflare Tunnel | `https://stats.你的域名/ping` | `https://stats.你的域名/` |
 | 家里端口映射 | `https://stats.你的域名:8443/ping` | `https://stats.你的域名:8443/` |
 
-自托管时**不需要** `sharecode` 参数。地址留空则完全不上报。客户端不需要升级，改地址即可切换后端。
+自托管的**上报地址**不需要 `sharecode`（`/ping` 不加锁）；只有**看板地址**在设了 `SHARECODE` 时要带上 `?sharecode=…`。地址留空则完全不上报。客户端不需要升级，改地址即可切换后端。
 
 ### 托管云服务上更新本目录
 
@@ -135,7 +175,7 @@ stats.example.com:8443 {
 KEY=$(python3 -c "import json;print(json.load(open('cloud-config.json'))['publishableKey'])")
 EP=$(python3 -c "import json;print(json.load(open('cloud-config.json'))['endpoint'])")
 curl -s -H "x-wb-webapp-access-key: $KEY" -H "Origin: $EP" \
-  "$EP/.cloud/database/rest/stats_pings?select=anon_id,app,code,lang,api,kind,created_at&order=created_at.asc&limit=1000" \
+  "$EP/.cloud/database/rest/stats_pings?select=anon_id,app,code,lang,api,model,kind,created_at&order=created_at.asc&limit=1000" \
   -o /tmp/rows.json
 ```
 

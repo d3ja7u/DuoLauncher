@@ -16,7 +16,9 @@ import java.util.UUID
  * 可关闭的匿名使用统计。
  *
  * 设计原则：
- * - 只发「随机匿名 ID + 版本 + 界面语言 + Android API + 上报类型」，不含任何设备标识、位置、
+ * - 只发「随机匿名 ID + 版本 + 界面语言 + Android API + 设备机型名 + 上报类型」，
+ *   机型仅取 Build.MODEL 这一通用型号名（如 Titan 2 Elite），同型号设备海量，
+ *   不含序列号 / IMEI / Android ID / 广告 ID 等任何唯一标识，也不含位置、
  *   通讯录、已安装应用列表；服务端也不落盘 IP。
  * - 匿名 ID 单独存一份 SharedPreferences，**不进 DuoState 的备份**，避免导入别人的备份后串号。
  * - 开关关闭时立即删除本地匿名 ID；再次打开会生成全新的 ID，无法与之前关联。
@@ -33,6 +35,8 @@ object InstallStats {
     private const val PREF = "duo_stats_v1"
     private const val K_ID = "anon_id"
     private const val K_VER = "last_version"
+    /** 上次成功上报的「版本名#versionCode」，换包但版本名不变时也能识别出变化 */
+    private const val K_STAMP = "last_stamp"
     private const val K_LAST = "last_ping"
     private const val DAY = 24 * 60 * 60 * 1000L
     private const val TAG = "DuoStats"
@@ -69,6 +73,20 @@ object InstallStats {
         else @Suppress("DEPRECATION") ctx.resources.configuration.locale.language
     }.getOrDefault(Lang.get(ctx)).take(8)
 
+    /**
+     * 设备机型名（仅 Build.MODEL，如 "Titan 2 Elite"、"SM-S918B"）。
+     * 只取通用型号名，绝不含序列号 / IMEI / Android ID 等唯一标识。
+     * 机型是聚合维度：同型号有海量设备，不构成对个人设备的唯一识别。
+     */
+    private fun deviceModel(): String = runCatching {
+        (Build.MODEL ?: "").trim()
+            // 去掉控制字符，压缩空白，避免畸形机型名破坏 JSON / 看板
+            .map { if (it.isISOControl() || it.isWhitespace()) ' ' else it }
+            .joinToString("")
+            .replace(Regex(" +"), " ")
+            .take(48)
+    }.getOrDefault("")
+
     private fun nextKind(ctx: Context): String {
         val ver = UpdateChecker.currentVersion(ctx)
         val last = runCatching { sp(ctx).getString(K_VER, "") ?: "" }.getOrDefault("")
@@ -89,8 +107,15 @@ object InstallStats {
         if (url.isBlank()) return
         if (!url.startsWith("https://", true) && !url.startsWith("http://", true)) return
         val kind = nextKind(ctx)
-        val last = runCatching { sp(ctx).getLong(K_LAST, 0L) }.getOrDefault(0L)
-        if (!force && kind == "heartbeat" && System.currentTimeMillis() - last < DAY) return
+        val p = sp(ctx)
+        val last = runCatching { p.getLong(K_LAST, 0L) }.getOrDefault(0L)
+        // 版本名或 versionCode 有变化（装了新包）就立刻上报一次，不必等满 24 小时；
+        // 否则同版本名换包时，机型这类新字段要拖到第二天才补得上。
+        val stamp = UpdateChecker.currentVersion(ctx) + "#" + versionCode(ctx)
+        val lastStamp = runCatching { p.getString(K_STAMP, "") ?: "" }.getOrDefault("")
+        if (!force && stamp == lastStamp && kind == "heartbeat" &&
+            System.currentTimeMillis() - last < DAY
+        ) return
         CoroutineScope(Dispatchers.IO).launch {
             send(ctx.applicationContext, url, kind)
         }
@@ -107,6 +132,7 @@ object InstallStats {
             .put("code", versionCode(ctx))
             .put("lang", language(ctx))
             .put("api", Build.VERSION.SDK_INT)
+            .put("model", deviceModel())
             .put("kind", kind)
             .toString()
 
@@ -127,6 +153,7 @@ object InstallStats {
                 p.edit()
                     .putLong(K_LAST, System.currentTimeMillis())
                     .putString(K_VER, ver)
+                    .putString(K_STAMP, "$ver#${versionCode(ctx)}")
                     .apply()
             } else {
                 Log.d(TAG, "report returned HTTP $code")

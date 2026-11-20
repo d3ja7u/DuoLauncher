@@ -17,6 +17,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,9 +54,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import android.graphics.drawable.Drawable
 import com.duolauncher.R
 import com.duolauncher.util.Lang
@@ -278,7 +277,13 @@ fun ActionIconCell(
     }
 }
 
-/** 主屏文件夹单元格：玻璃方块内叠加最多 4 个应用图标，下方显示文件夹名 */
+/**
+ * 主屏文件夹单元格：玻璃方块内叠 3×3 迷你图标（最多 9 个），下方显示文件夹名。
+ *
+ * 迷你图标用 `offset` 绝对定位，不能再靠 padding：`size()` 写在链最外层时，
+ * padding 是从自身尺寸里"内缩"，第 2 格之后 padding 已经大于图标尺寸，
+ * 内容被压成 0 —— 这就是「文件夹里只看得见第一个应用、看着像没更新」的原因。
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FolderCell(
@@ -291,7 +296,7 @@ fun FolderCell(
     onLongClick: () -> Unit = {}
 ) {
     val wobbleAngle = rememberWobble(wobble)
-    val apps = folder.apps.mapNotNull { DuoState.appOf(it) }.take(4)
+    val apps = folder.apps.mapNotNull { DuoState.appOf(it) }.take(9)
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -315,21 +320,25 @@ fun FolderCell(
                 if (apps.isEmpty()) {
                     Icon(Icons.Filled.Folder, null, tint = glassTextColor(dark), modifier = Modifier.size(size * 0.42f))
                 } else {
-                    val mini = (size * 0.40f)
-                    val off = (size * 0.16f)
-                    for ((i, app) in apps.withIndex()) {
-                        val row = i / 2
-                        val col = i % 2
-                        Image(
-                            painter = rememberDrawablePainter(rememberAppIcon(app)),
-                            contentDescription = app.label,
-                            modifier = Modifier
-                                .size(mini)
-                                .clip(squircle(18))
-                                .align(Alignment.TopStart)
-                                .then(if (row == 0) Modifier.padding(top = off) else Modifier.padding(top = size * 0.52f))
-                                .then(if (col == 0) Modifier.padding(start = off) else Modifier.padding(start = size * 0.52f))
-                        )
+                    // 3×3 迷你网格：整块占方块 74%，单格再留一点空隙
+                    val inner = size * 0.74f
+                    val cellW = inner / 3f
+                    val mini = cellW * 0.88f
+                    val inset = (cellW - mini) / 2f
+                    Box(Modifier.size(inner)) {
+                        apps.forEachIndexed { i, app ->
+                            val r = i / 3
+                            val c = i % 3
+                            Image(
+                                painter = rememberDrawablePainter(rememberAppIcon(app)),
+                                contentDescription = app.label,
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .offset(x = cellW * c + inset, y = cellW * r + inset)
+                                    .size(mini)
+                                    .clip(squircle(16))
+                            )
+                        }
                     }
                 }
             }
@@ -627,124 +636,6 @@ fun GlassPrimaryButton(text: String, dark: Boolean, onClick: () -> Unit, modifie
     ) { Text(text, fontSize = 14.sp) }
 }
 
-/**
- * iOS 风格「窗口」：点资源库分类卡 / 主屏文件夹后展开的浮窗。
- *
- * 居中一块小尺寸玻璃卡（宽 ≈ 屏宽 84%，最宽 372dp；高度随行数，最多 4 行后内部滚动）：
- * 标题 + 应用数 + 关闭按钮，下面是 4 列应用网格，底部可挂操作行。
- *
- * 玻璃效果：Android 12+ 走系统窗口级背景模糊（FLAG_BLUR_BEHIND + blurBehindRadius），
- * 底板半透明让背后的桌面/资源库虚化成磨砂；不支持模糊的机器自动退回近乎不透明的底板，
- * 避免背后的图标透上来叠成一片字。
- */
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun FolderWindow(
-    title: String,
-    subtitle: String? = null,
-    apps: List<AppInfo>,
-    dark: Boolean,
-    onDismiss: () -> Unit,
-    onLaunch: (AppInfo) -> Unit,
-    onLongClick: (AppInfo) -> Unit = {},
-    footer: (@Composable ColumnScope.() -> Unit)? = null
-) {
-    val iconSize = 50.dp
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        val blurOn = rememberDialogBlurBehind(radiusDp = 30f, dim = 0.16f)
-        val shape = RoundedCornerShape(30.dp)
-        val base = if (dark) Color(0xFF141926) else Color(0xFFF5F7FC)
-        // 有窗口模糊时底板可以偏透（透出磨砂背景），没有模糊就必须近乎不透明
-        val baseAlpha = if (blurOn) 0.80f else 0.97f
-        val rows = ((apps.size + 3) / 4).coerceIn(1, 4)
-        val rowH = 72.dp
-        val vGap = 12.dp
-        val gridH = rowH * rows + vGap * (rows - 1)
-
-        // 点窗口外的空白处 = 返回（不再放 X 按钮）
-        BoxWithConstraints(
-            Modifier.fillMaxSize()
-                .background(if (blurOn) Color.Transparent else Color(0x44000000))
-                .pointerInput(Unit) { detectTapGestures { onDismiss() } },
-            contentAlignment = Alignment.Center
-        ) {
-            val winW = minOf(maxWidth * 0.84f, 372.dp)
-            Box(
-                Modifier.width(winW)
-                    .clip(shape)
-                    .background(base.copy(alpha = baseAlpha))
-                    .border(1.dp, Color.White.copy(alpha = if (dark) 0.18f else 0.80f), shape)
-                    // 吃掉窗口内部的点击，避免穿透到遮罩把窗口关掉
-                    .pointerInput(Unit) { detectTapGestures { } }
-            ) {
-                Box(
-                    Modifier.matchParentSize().background(
-                        Brush.verticalGradient(
-                            listOf(Color.White.copy(alpha = if (dark) 0.07f else 0.50f), Color.Transparent),
-                            endY = 160f
-                        )
-                    )
-                )
-                Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 14.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                title, fontSize = 20.sp, fontWeight = FontWeight.Bold,
-                                color = glassTextColor(dark), maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (subtitle != null) {
-                                Text(
-                                    subtitle, fontSize = 11.sp,
-                                    color = glassSubTextColor(dark),
-                                    modifier = Modifier.padding(top = 1.dp)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(10.dp))
-
-                    if (apps.isEmpty()) {
-                        Box(
-                            Modifier.fillMaxWidth().height(rowH),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(Lang.s(R.string.no_apps_here), fontSize = 13.sp, color = glassSubTextColor(dark))
-                        }
-                    } else {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(4),
-                            modifier = Modifier.fillMaxWidth().height(gridH),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
-                            verticalArrangement = Arrangement.spacedBy(vGap)
-                        ) {
-                            items(apps, key = { it.id }) { app ->
-                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                    AppIconCell(
-                                        app = app,
-                                        size = iconSize,
-                                        dark = dark,
-                                        showLabel = true,
-                                        onClick = { onLaunch(app) },
-                                        onLongClick = { onLongClick(app) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if (footer != null) {
-                        Spacer(Modifier.height(6.dp))
-                        Column(Modifier.fillMaxWidth()) { footer() }
-                    }
-                }
-            }
-        }
-    }
-}
 
 /**
  * 给 Dialog 窗口挂上系统级背景模糊（玻璃磨砂）。
@@ -776,6 +667,182 @@ private fun crossWindowBlurEnabled(ctx: Context): Boolean {
     val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager ?: return false
     return runCatching { wm.isCrossWindowBlurEnabled }.getOrDefault(false)
 }
+
+/**
+ * iOS 风格文件夹窗口：主屏点开文件夹、资源库点开分类卡都用这一个。
+ *
+ *  - 文件夹名在**框外左上角**（粗体 + 阴影），框内不显示「N 个应用」；
+ *  - 一排 4 个、一页最多 4 行（16 个），**第一页填满才出第二页，右滑切换**（不再上下滑）；
+ *    底部小圆点指示当前页；
+ *  - 面板比背景更深：半透明深色底 + 系统窗口级背景模糊（Android 12+），
+ *    不支持模糊的机器自动加深底色，避免背后的图标透上来。
+ *
+ * [dark] = true（桌面文件夹 / 暗色主题）走黑面板 + 白字；
+ * false（亮色资源库）走浅玻璃底 + 深字，避免在浅色页面上突兀。
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun FolderIosWindow(
+    name: String,
+    apps: List<AppInfo>,
+    dark: Boolean = true,
+    onDismiss: () -> Unit,
+    onLaunch: (AppInfo) -> Unit,
+    onLongClick: (AppInfo) -> Unit = {}
+) {
+    val shape = RoundedCornerShape(34.dp)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        val blurOn = rememberDialogBlurBehind(radiusDp = 44f, dim = 0.28f)
+        BoxWithConstraints(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    if (blurOn) Color.Transparent
+                    else Color.Black.copy(alpha = if (dark) 0.40f else 0.18f)
+                )
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+            contentAlignment = Alignment.Center
+        ) {
+            val winW = minOf(maxWidth * 0.88f, 386.dp)
+            val iconSize = 54.dp
+            val cellH = 82.dp
+            val vGap = 12.dp
+            // 最多 4 行；横屏 / 小屏再按可用高度收，保证窗口始终完整露出
+            val totalRows = ((apps.size + 3) / 4).coerceAtLeast(1)
+            val roomFor = (((maxHeight * 0.58f) + vGap) / (cellH + vGap)).toInt()
+            val visibleRows = minOf(totalRows, roomFor.coerceIn(1, 4))
+            val gridH = cellH * visibleRows + vGap * (visibleRows - 1)
+            // 横向分页：一页 4 列 × visibleRows 行，第一页填满才出现第二页
+            val perPage = 4 * visibleRows
+            val pageCount = if (apps.isEmpty()) 1 else (apps.size + perPage - 1) / perPage
+            val pagerState = rememberPagerState(pageCount = { pageCount })
+
+            val panelColor = if (dark) Color.Black else Color(0xFFF5F7FC)
+            val panelAlpha = if (blurOn) (if (dark) 0.34f else 0.80f)
+            else (if (dark) 0.70f else 0.97f)
+            val txt = if (dark) Color.White else glassTextColor(false)
+            val subTxt = if (dark) Color.White.copy(alpha = 0.62f) else glassSubTextColor(false)
+
+            Column(Modifier.width(winW)) {
+                // 文件夹名：框外左上角
+                Text(
+                    text = name,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = txt,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(
+                        shadow = if (dark)
+                            Shadow(Color(0xAA000000), androidx.compose.ui.geometry.Offset(0f, 2f), 8f)
+                        else null
+                    ),
+                    modifier = Modifier.padding(start = 12.dp, bottom = 10.dp)
+                )
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        // 比背景更深的一层：有模糊时仍保留明显压暗，避免和壁纸糊成一片
+                        .background(panelColor.copy(alpha = panelAlpha))
+                        .border(1.dp, Color.White.copy(alpha = if (dark) 0.14f else 0.75f), shape)
+                        // 吃掉框内点击，别穿透到遮罩把窗口关掉
+                        .pointerInput(Unit) { detectTapGestures { } }
+                ) {
+                    if (apps.isEmpty()) {
+                        Box(
+                            Modifier.fillMaxWidth().height(cellH),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(Lang.s(R.string.no_apps_here), fontSize = 13.sp, color = subTxt)
+                        }
+                    } else {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(gridH)
+                            ) { page ->
+                                val from = page * perPage
+                                val to = minOf(from + perPage, apps.size)
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(vGap)
+                                ) {
+                                    for (r in 0 until visibleRows) {
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .height(cellH),
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            for (c in 0 until 4) {
+                                                val idx = from + r * 4 + c
+                                                Box(
+                                                    Modifier
+                                                        .weight(1f)
+                                                        .fillMaxHeight(),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (idx < to) {
+                                                        val app = apps[idx]
+                                                        AppIconCell(
+                                                            app = app,
+                                                            size = iconSize,
+                                                            dark = dark,
+                                                            showLabel = true,
+                                                            onWallpaper = dark,
+                                                            onClick = { onLaunch(app) },
+                                                            onLongClick = { onLongClick(app) }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 页面指示点：超过一页才显示，跟随当前页
+                            if (pageCount > 1) {
+                                Spacer(Modifier.height(10.dp))
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    repeat(pageCount) { i ->
+                                        val active = i == pagerState.currentPage
+                                        Box(
+                                            Modifier
+                                                .size(if (active) 7.dp else 5.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    if (active) txt else txt.copy(alpha = 0.28f)
+                                                )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 /**
  * 首次启动的一次性匿名统计告知。

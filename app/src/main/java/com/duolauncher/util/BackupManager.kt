@@ -130,7 +130,9 @@ object BackupManager {
             sidebarCount = state.optJSONArray("sidebar")?.length() ?: 0,
             folderCount = state.optJSONArray("folders")?.length() ?: 0,
             hiddenCount = state.optJSONArray("hidden")?.length() ?: 0,
-            widgetCount = state.optJSONArray("widgets")?.length() ?: 0
+            // 小组件数量取主屏（homeWg）。老备份里可能只有已下线的 "widgets" 字段，兜底读它
+            widgetCount = state.optJSONArray("homeWg")?.length()
+                ?: state.optJSONArray("widgets")?.length() ?: 0
         )
     }.getOrNull()
 

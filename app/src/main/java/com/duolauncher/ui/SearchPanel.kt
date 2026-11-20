@@ -89,8 +89,12 @@ fun SearchPanel(
     val subColor = glassSubTextColor(dark)
     val all = DuoState.visibleApps()
     val recents = DuoState.recentApps(DuoState.recentCount)
-    val results = if (query.isBlank()) emptyList() else all.filter {
-        it.label.contains(query, ignoreCase = true) || it.packageName.contains(query, ignoreCase = true)
+    // 输入框每敲一个字都会重组：过滤结果按「关键字 + 应用表」缓存，重组时不再整表扫一遍
+    val results = remember(query, all) {
+        if (query.isBlank()) emptyList() else all.filter {
+            it.label.contains(query, ignoreCase = true) ||
+                it.packageName.contains(query, ignoreCase = true)
+        }
     }
     val iconSize = (48 * DuoState.iconScale).dp
 
@@ -112,11 +116,16 @@ fun SearchPanel(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 输入变化 / 授权变化时检索通讯录；ContentResolver 查询放 IO，避免输入卡顿
+    // 输入变化 / 授权变化时检索通讯录；ContentResolver 查询放 IO，避免输入卡顿。
+    // 加 200ms 防抖：连着打字时旧实现每个字符都发起一次通讯录查询，结果回来又各触发一次
+    // 重组，输入越久越顿、也白白多跑几次跨进程查询。
     LaunchedEffect(query, contactsGranted, DuoState.searchContacts) {
-        contactHits = if (DuoState.searchContacts && contactsGranted && query.isNotBlank())
-            withContext(Dispatchers.IO) { Contacts.search(ctx, query) }
-        else emptyList()
+        if (!(DuoState.searchContacts && contactsGranted && query.isNotBlank())) {
+            contactHits = emptyList()
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(200)
+        contactHits = withContext(Dispatchers.IO) { Contacts.search(ctx, query) }
     }
 
     /**

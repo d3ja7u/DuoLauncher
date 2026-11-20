@@ -19,6 +19,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -35,6 +36,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -50,13 +52,16 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -93,9 +98,19 @@ fun HomePage(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var editMode by remember { mutableStateOf(false) }
+    /** 长按主屏空白弹出的菜单（编辑主屏幕 / 设置） */
     var sidebarMenu by remember { mutableStateOf<SidebarItem?>(null) }
     var showHomeMenu by remember { mutableStateOf(false) }
+    /** 左下角菜单「添加应用到主屏幕」打开的应用选择器 */
+    var appPickerOpen by remember { mutableStateOf(false) }
     var openFolder by remember { mutableStateOf<FolderItem?>(null) }
+    /** 长按文件夹图标弹出的编辑菜单（重命名 / 解散） */
+    var folderMenu by remember { mutableStateOf<FolderItem?>(null) }
+    /** 文件夹改名对话框 */
+    var folderRename by remember { mutableStateOf<FolderItem?>(null) }
+    /** 长按主屏系统小组件后弹出的菜单（值为该小组件的 AppWidget id） */
+    var widgetMenu by remember { mutableStateOf<Int?>(null) }
+    val widgetBridge = LocalWidgetBridge.current
     /** 编辑态点「-」后待确认移除的应用 */
     var removeTarget by remember { mutableStateOf<AppInfo?>(null) }
 
@@ -111,17 +126,26 @@ fun HomePage(
     val sbAvail = 430f - 14f - (sidebarItemN - 1).coerceAtLeast(0) * sbGapF
     val sbMaxByH = if (sidebarItemN > 0) sbAvail / sidebarItemN else sidebarBaseSize
     val sidebarIconSize = minOf(sidebarBaseSize, sbMaxByH).dp
-    val cellWidth = homeIconSize + 14.dp
     val sidebarWidth = sidebarIconSize + 24.dp
     val sidebarGap = 10.dp
     val lane = sidebarGap + sidebarWidth
-    // ── 主屏拖拽排序（长按拿起 → 拖动 → 松手落位）──
+    // ── 主屏拖拽（长按拿起 → 拖到任意一格 → 松手落位）──
     val haptic = LocalHapticFeedback.current
-    var dragIndex by remember { mutableStateOf<Int?>(null) }        // 当前页内的拖动下标
-    var hoverIndex by remember { mutableStateOf<Int?>(null) }       // 当前页内的落点下标
-    var dragFromRect by remember { mutableStateOf(Rect.Zero) }      // 拿起时图标在根坐标系的位置
+    /** 正在拖动的条目 token（app:xxx / folder:xxx / widget:id），null = 没在拖 */
+    val dragTokenState = remember { mutableStateOf<String?>(null) }
+    var dragToken by dragTokenState
+    /** 拖动中的落点（行, 列）；允许是空白格 —— 这就是"拖到任意位置" */
+    // 用 State 对象暴露给落点高亮，让它在绘制/局部重组阶段才读：
+    // 以前 hoverCell 是在网格作用域里读的，每跨一格就把几十个图标全部重组一遍。
+    val hoverCellState = remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var hoverCell by hoverCellState
+    var dragFromRect by remember { mutableStateOf(Rect.Zero) }      // 拿起时条目在根坐标系的位置
     var dragDelta by remember { mutableStateOf(Offset.Zero) }       // 累计拖动位移
     var dragFinger by remember { mutableStateOf(Offset.Zero) }       // 手指在根坐标系的位置
+    // 手指在左右边缘带里「停留」的起点（毫秒）；0 表示不在边缘带里。
+    // 只有真的停一会儿再松手才算「拖到边缘翻屏」，顺手划过时仍然正常落格 ——
+    // 否则想把图标/小组件放到第一列或最后一列，手指刚贴边就被判成翻屏了。
+    var edgeDwellStart by remember { mutableStateOf(0L) }
     var pageOrigin by remember { mutableStateOf(Offset.Zero) }      // 本页在根坐标系的原点
     val statusTopPad = if (DuoState.statusRight) DuoState.statusTop
     else maxOf(DuoState.statusTop, 64)
@@ -131,9 +155,13 @@ fun HomePage(
     val statusScale = DuoState.statusScale.coerceIn(0.55f, 1.8f)
     // 状态块真实高度：时间(≈1.35×字号) + 6dp 间距 + 徽标 50dp
     val statusHeight = (18f * 1.35f + 6f + 50f) * statusScale
-    val topGap = if (DuoState.showDuoStatus)
-        maxOf(DuoState.cutoutPadding.coerceAtLeast(64) + 64f, statusTopPad + statusHeight + 10f).dp
-    else (DuoState.cutoutPadding.coerceAtLeast(64) + 24f).dp
+    val cfg = LocalConfiguration.current
+    val landscape = cfg.screenWidthDp > cfg.screenHeightDp
+    // 顶部留白走 DuoState 的唯一口径：状态块和侧栏同侧时不再为它整块让位；
+    // 系统状态栏 / 挖孔高度由 MainActivity 的 windowInsets 监听写入 DuoState
+    // （取「状态栏高度」与「挖孔包围盒下沿」的较大值，角部挖孔也不会压住第一行），
+    // 这样第一行图标贴着屏幕顶部、只避开挖孔，不再白空一大截。
+    val topGap = DuoState.gridTopGapDp(landscape).dp
     val leftSide = DuoState.sidebarLeft
     // 侧栏改为垂直居中（见下方 GlassCard 的 align）：框始终在屏幕竖直中线，
     // 应用数量少时整条偏短、居中；数量多时对称变长，不再贴顶或贴底。
@@ -151,14 +179,14 @@ fun HomePage(
     var sbCardHPx by remember { mutableStateOf(0) }
     val density = LocalDensity.current
 
-    // 主屏条目：按 DuoState.homeTokens() 的统一顺序（应用与文件夹可混排，支持拖拽排序）
-    val entries: List<HomeEntry> = DuoState.homeTokens().mapNotNull { token ->
-        when {
-            token.startsWith("app:") -> DuoState.appOf(token.removePrefix("app:"))?.let { HomeEntry.App(it) }
-            token.startsWith("folder:") -> DuoState.folderOf(token.removePrefix("folder:"))
-                ?.let { HomeEntry.Folder(it) }
-            else -> null
-        }
+    // 主屏条目：按 DuoState.homeTokens() 的统一顺序（应用 / 文件夹 / 系统小组件可混排）
+    fun entryOf(token: String): HomeEntry? = when {
+        token.startsWith("app:") -> DuoState.appOf(token.removePrefix("app:"))?.let { HomeEntry.App(it) }
+        token.startsWith("folder:") -> DuoState.folderOf(token.removePrefix("folder:"))
+            ?.let { HomeEntry.Folder(it) }
+        token.startsWith("widget:") -> token.removePrefix("widget:").toIntOrNull()
+            ?.let { HomeEntry.Widget(it) }
+        else -> null
     }
 
     Box(
@@ -193,7 +221,14 @@ fun HomePage(
                         }
                     },
                     onLongPress = {
-                        if (!DuoState.dragging) nav.openSettings()
+                        // 主屏菜单的唯一入口：长按空白处。左下角那个菜单键已经去掉，
+                        // 但菜单内容一项没少（编辑、添加应用、加小组件、搜索、设置、壁纸）。
+                        // 延后一拍再判：长按图标会先把 DuoState.dragging 置为 true，
+                        // 这里等一下就不会把菜单和图标拖拽同时触发。
+                        scope.launch {
+                            kotlinx.coroutines.delay(80)
+                            if (!DuoState.dragging) showHomeMenu = true
+                        }
                     }
                 )
             }
@@ -295,206 +330,402 @@ fun HomePage(
                 }
             }
     ) {
-        // ── 主屏：顶部状态指示让位 + 图标网格（N 行 × M 列，不滚动，左右翻页）──
-        // 行数 / 列数均由「主屏图标列数 / 行数」设置决定，单页容量 = 列数 × 行数
-        val homeCols = DuoState.homeColumns
-        val homeRows = DuoState.homeRows
-        val perPage = homeCols * homeRows
-        val pageStart = homePageIndex * perPage
-        val pageEntries = entries.drop(pageStart).take(perPage)
-        val pageRows = pageEntries.chunked(homeCols)
-        // 只在当前这页的成员变化时重建，避免残留上一轮（排序前）的旧矩形导致落点错位
-        val cellRects = remember(pageEntries) { mutableStateMapOf<Int, Rect>() }
+        // ── 主屏：绝对格子网格（N 行 × M 列，不滚动，左右翻页）──
+        // 行数 / 列数由设置决定；落位走 DuoState.layoutHome（与 MainActivity 同一口径）。
+        // 每个条目都落在具体的一格上，拖到任意一格（**包括原本空着的格**）就放在那里；
+        // 没有手动坐标的条目按顺序自动补空位，老存档的观感与以前一致。
+        val homeCols = DuoState.homeColumns.coerceAtLeast(1)
+        val homeRows = DuoState.effectiveHomeRows(cfg.screenHeightDp, landscape)
+        // 版本号做键：拖动时 hoverCell 变化、翻页、状态栏刷新都不会重算排版
+        val layoutPages = remember(DuoState.homeLayoutVersion, homeCols, homeRows) {
+            DuoState.layoutHome(homeCols, homeRows)
+        }
+        val pagePlacements = layoutPages.getOrElse(homePageIndex) { emptyList() }
+        val rowGapDp = 16f * iconScale
+        // 拖动时手指进入左右边缘这一带、并**停留**一下再松手，才整块挪到相邻一屏。
+        // 带子收窄到 14dp（只有真拖出屏幕边缘才会碰到），外加 450ms 停留判定：
+        // 以前只要在 28dp 内松手就算翻屏，于是「想放到第一列/最边上」永远被判成翻屏，
+        // 表现就是条目怎么都贴不到屏幕边上、小组件还会莫名跑到前一屏。
+        val screenWidthPx = with(density) { cfg.screenWidthDp.dp.toPx() }
+        val edgeFlipPx = with(density) { 14.dp.toPx() }
+        val edgeDwellMs = 450L
+
+        /** 手指移动时维护「是否在边缘带里、从何时开始」 */
+        fun trackEdge(x: Float) {
+            val inEdge = x <= edgeFlipPx || x >= screenWidthPx - edgeFlipPx
+            if (inEdge) {
+                if (edgeDwellStart == 0L) edgeDwellStart = System.currentTimeMillis()
+            } else edgeDwellStart = 0L
+        }
+        // token → 该条目在屏幕上的矩形（拿起位置 / 悬浮层定位）
+        val cellRects = remember(homePageIndex) { HashMap<String, Rect>() }
+        // 网格几何：由渲染层实测后写回，用来把手指位置换算成「第几行第几列」。
+        // 现在图标和小组件都按**绝对格子坐标**摆放（小组件还能只占半行），
+        // 所以落点必须用统一的格子宽 / 行距算，不能再靠"逐行矩形"反推。
+        var gridOrigin by remember { mutableStateOf(Offset.Zero) }
+        var cellWpx by remember { mutableStateOf(0f) }
+        var rowPitchPx by remember { mutableStateOf(0f) }
+
+        /** 手指位置 → (行, 列)，都夹在网格范围内 */
+        fun cellAt(pos: Offset): Pair<Int, Int>? {
+            if (cellWpx <= 0f || rowPitchPx <= 0f) return null
+            val lx = pos.x - gridOrigin.x
+            val ly = pos.y - gridOrigin.y
+            val col = (lx / cellWpx).toInt().coerceIn(0, homeCols - 1)
+            val row = (ly / rowPitchPx).toInt().coerceIn(0, homeRows - 1)
+            return row to col
+        }
+
+        /**
+         * 拖动落点：按条目**可视左上角**的位置换算，并夹在网格内。
+         *
+         * 光按手指位置算对小组件很不友好：4×2 的组件，手指通常停在它中间，
+         * 结果落点被算到手指那一行，组件就"跳"下去半截；再加上夹取边界，
+         * 往最下面拖时经常落不到位。改成跟左上角走以后，拖到哪就落在哪，
+         * 和拖图标的手感一致。
+         */
+        fun cellForDrop(token: String): Pair<Int, Int>? {
+            if (cellWpx <= 0f || rowPitchPx <= 0f) return null
+            val rs = DuoState.tokenRowSpan(token, homeRows)
+            val cs = DuoState.tokenColSpan(token, homeCols)
+            // 稍微往内收 0.35 格：小图标≈手指位置，大组件≈它自己的左上角
+            val anchor = dragFromRect.topLeft + dragDelta +
+                    Offset(cellWpx * 0.35f, rowPitchPx * 0.35f)
+            val lx = anchor.x - gridOrigin.x
+            val ly = anchor.y - gridOrigin.y
+            val col = (lx / cellWpx).toInt().coerceIn(0, (homeCols - cs).coerceAtLeast(0))
+            val row = (ly / rowPitchPx).toInt().coerceIn(0, (homeRows - rs).coerceAtLeast(0))
+            return row to col
+        }
+
+        fun beginDrag(token: String, offsetInBox: Offset) {
+            val r = cellRects[token] ?: Rect.Zero
+            dragToken = token
+            hoverCell = null
+            dragFromRect = r
+            dragDelta = Offset.Zero
+            dragFinger = r.topLeft + offsetInBox
+            edgeDwellStart = 0L
+            DuoState.dragging = true
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        }
+
+        /** 落位后如果条目被挪到了别的屏，跟过去，别让用户觉得"拖了一下它不见了" */
+        fun followToken(token: String) {
+            val at = DuoState.layoutHome(homeCols, homeRows)
+                .indexOfFirst { list -> list.any { it.token == token } }
+            if (at >= 0 && at != homePageIndex) nav.goPage(at)
+        }
+
+        /** 松手落位：图标 / 文件夹 / 小组件共用一套（[onTap] = 没拖动时当作长按） */
+        fun finishDrag(moved: Boolean, onTap: () -> Unit) {
+            val token = dragToken ?: return
+            val cell = hoverCell
+            val fingerX = dragFinger.x
+            val edgeHeld = edgeDwellStart != 0L &&
+                    System.currentTimeMillis() - edgeDwellStart >= edgeDwellMs
+            edgeDwellStart = 0L
+            dragToken = null
+            hoverCell = null
+            dragDelta = Offset.Zero
+            DuoState.dragging = false
+            if (!moved) { onTap(); return }
+            when {
+                // 拖到边缘并停留够了：整块挪到相邻一屏；只是顺手划过就落到边格
+                fingerX <= edgeFlipPx && edgeHeld -> {
+                    if (!DuoState.moveTokenToPage(token, -1, homeCols, homeRows)) onTap()
+                    else nav.goPage((homePageIndex - 1).coerceAtLeast(0))
+                }
+                fingerX >= screenWidthPx - edgeFlipPx && edgeHeld -> {
+                    if (!DuoState.moveTokenToPage(token, 1, homeCols, homeRows)) onTap()
+                    else nav.goPage(homePageIndex + 1)
+                }
+                // 落在某行某列（空白格也算）：直接放到那一格，目标格已有条目则交换
+                cell != null -> {
+                    // 落在文件夹上：把应用塞进文件夹（iOS 手感），不要再走「同格交换」
+                    val targetToken = pagePlacements.firstOrNull {
+                        it.row == cell.first && it.col == cell.second && it.token != token
+                    }?.token
+                    val folderToken = targetToken?.takeIf { it.startsWith("folder:") }
+                    if (folderToken != null && token.startsWith("app:")) {
+                        val folderId = folderToken.removePrefix("folder:")
+                        val folderName = DuoState.folderOf(folderId)?.name.orEmpty()
+                        DuoState.addAppToFolder(folderId, token.removePrefix("app:"))
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        nav.toast(Lang.s(R.string.toast_app_in_folder, folderName))
+                    } else {
+                        val ok = DuoState.placeToken(
+                            token, homePageIndex, cell.first, cell.second, homeCols, homeRows
+                        )
+                        if (ok) followToken(token) else onTap()
+                    }
+                }
+                else -> onTap()
+            }
+        }
+
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(start = gridStart, end = gridEnd, top = topGap, bottom = 76.dp)
+                .padding(
+                    start = gridStart, end = gridEnd, top = topGap,
+                    bottom = DuoState.GRID_BOTTOM_PAD_DP.dp
+                )
         ) {
-            Column(
-                Modifier.fillMaxWidth().fillMaxHeight(),
-                // 满整页行数时均分铺满（顶部到底部）；不满页则从顶部顺排，避免图标被拉开
-                verticalArrangement = if (pageRows.size >= homeRows) Arrangement.SpaceEvenly
-                else Arrangement.spacedBy(16.dp * iconScale)
+            // ── 绝对格子坐标排版 ──
+            // 每个条目自己算左上角 + 宽高：图标 1×1，小组件按 provider 声明的「几行几列」。
+            // 以前是按行走 Row、小组件独占整行，于是 4×2 的组件被拉成一整行、左右拖不动；
+            // 现在列坐标是真实生效的，第一行贴顶、最后一行贴底，半行宽的小组件也能左右挪。
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { gridOrigin = it.positionInRoot() }
             ) {
-                pageRows.forEachIndexed { rowIdx, row ->
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.Top
+                val cellW = maxWidth / homeCols
+                val rowH = ((maxHeight - rowGapDp.dp * (homeRows - 1)) / homeRows)
+                    .coerceAtLeast(1.dp)
+                val pitchY = rowH + rowGapDp.dp
+                SideEffect {
+                    cellWpx = with(density) { cellW.toPx() }
+                    rowPitchPx = with(density) { pitchY.toPx() }
+                }
+
+                pagePlacements.forEach { pl ->
+                    val token = pl.token
+                    val entry = entryOf(token) ?: return@forEach
+                    // 注意：这里**不要**读 hoverCell / dragDelta 这类逐帧变化的 State，
+                    // 否则拖动时整个网格（几十个图标 + 小组件）会不停重组。
+                    // 落点提示抽到了 DropHighlight 里，只重组它自己。
+                    val isDragging = dragToken == token
+
+                    Box(
+                        Modifier
+                            .offset(cellW * pl.col, pitchY * pl.row)
+                            .size(
+                                cellW * pl.colSpan,
+                                rowH * pl.rowSpan + rowGapDp.dp * (pl.rowSpan - 1)
+                            )
+                            .zIndex(if (isDragging) 20f else 0f)
+                            .onGloballyPositioned { cellRects[token] = it.boundsInRoot() }
+                            .graphicsLayer {
+                                if (isDragging) {
+                                    translationX = dragDelta.x
+                                    translationY = dragDelta.y
+                                    val s = if (entry is HomeEntry.Widget) 1.02f else 1.06f
+                                    scaleX = s; scaleY = s
+                                    alpha = 0.94f
+                                } else {
+                                    translationX = 0f; translationY = 0f
+                                    scaleX = 1f; scaleY = 1f; alpha = 1f
+                                }
+                            }
                     ) {
-                        row.forEachIndexed { colIdx, entry ->
-                            val idx = rowIdx * homeCols + colIdx            // 页内下标
-                            val gIdx = pageStart + idx               // 全局下标
-                            Box(
-                                Modifier
-                                    .onGloballyPositioned { cellRects[idx] = it.boundsInRoot() }
-                                    .graphicsLayer { alpha = if (dragIndex == idx) 0.25f else 1f }
-                                    .pointerInput(gIdx, entry) {
-                                        // 自己实现「长按拿起 → 拖动 → 松手落位」：
-                                        // 不能用 detectDragGesturesAfterLongPress —— 图标自带的
-                                        // combinedClickable 会在 Main pass 消费掉 down，
-                                        // 而系统的长按判定一看到"已被消费"就直接取消，永远拖不起来。
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                            val slop = viewConfiguration.touchSlop
-                                            var lifted = false
-                                            var escaped = false
-                                            var done = false
-                                            withTimeoutOrNull(
-                                                viewConfiguration.longPressTimeoutMillis
-                                            ) {
-                                                while (true) {
-                                                    val ev = awaitPointerEvent()
-                                                    val ch = ev.changes
-                                                        .firstOrNull { it.id == down.id } ?: break
-                                                    if (!ch.pressed) { lifted = true; break }
-                                                    if ((ch.position - down.position)
-                                                            .getDistance() > slop
-                                                    ) { escaped = true; break }
-                                                }
-                                                done = true
-                                            }
-                                            if (!done && !lifted && !escaped) {
-                                                // 长按成立 → 拿起
-                                                val r = cellRects[idx] ?: Rect.Zero
-                                                dragIndex = idx
-                                                hoverIndex = idx
-                                                dragFromRect = r
-                                                dragDelta = Offset.Zero
-                                                dragFinger = r.topLeft + down.position
-                                                DuoState.dragging = true
-                                                haptic.performHapticFeedback(
-                                                    HapticFeedbackType.LongPress
-                                                )
-                                                var moved = false
-                                                try {
-                                                    while (true) {
-                                                        // 用 Initial pass 先拿到事件并立刻消费，
-                                                        // 免得外面的翻页/下滑手势把拖拽抢走
-                                                        val ev = awaitPointerEvent(
-                                                            PointerEventPass.Initial
-                                                        )
-                                                        val ch = ev.changes
-                                                            .firstOrNull { it.id == down.id } ?: break
-                                                        if (!ch.pressed) { ch.consume(); break }
-                                                        val d = ch.positionChangeIgnoreConsumed()
-                                                        ch.consume()
-                                                        if (d == Offset.Zero) continue
-                                                        dragDelta += d
-                                                        dragFinger += d
-                                                        if (dragDelta.getDistance() > slop) moved = true
-                                                        cellRects.entries
-                                                            .firstOrNull {
-                                                                it.value.contains(dragFinger)
-                                                            }?.let { hoverIndex = it.key }
-                                                    }
-                                                } finally {
-                                                    DuoState.dragging = false
-                                                }
-                                                val from = idx
-                                                val to = hoverIndex
-                                                dragIndex = null
-                                                hoverIndex = null
-                                                dragDelta = Offset.Zero
-                                                if (moved) {
-                                                    if (to != null && to != from) {
-                                                        DuoState.moveHome(
-                                                            pageStart + from, pageStart + to
-                                                        )
-                                                    }
-                                                } else {
-                                                    // 长按后没拖动就松手 → 当作长按，弹菜单
-                                                    when (entry) {
-                                                        is HomeEntry.App ->
-                                                            nav.showAppMenu(entry.app, "home")
-                                                        is HomeEntry.Folder ->
-                                                            openFolder = entry.folder
-                                                    }
-                                                }
-                                            }
-                                        }
+                        when (entry) {
+                            is HomeEntry.Widget -> {
+                                val wId = entry.appWidgetId
+                                HomeSystemWidget(
+                                    appWidgetId = wId,
+                                    dark = dark,
+                                    modifier = Modifier.fillMaxSize(),
+                                    // 编辑态按下就拿起，跟拖图标一样跟手（不用再等长按）
+                                    immediateDrag = editMode,
+                                    onLongPress = { lx, ly -> beginDrag(token, Offset(lx, ly)) },
+                                    onDrag = { dx, dy ->
+                                        dragDelta += Offset(dx, dy)
+                                        dragFinger += Offset(dx, dy)
+                                        hoverCell = cellForDrop(token)
+                                        trackEdge(dragFinger.x)
+                                    },
+                                    onRelease = { moved -> finishDrag(moved) { widgetMenu = wId } },
+                                    onCancel = {
+                                        dragToken = null; hoverCell = null
+                                        dragDelta = Offset.Zero
+                                        DuoState.dragging = false
                                     }
-                            ) {
-                                // 落点高亮
-                                if (dragIndex != null && dragIndex != idx && hoverIndex == idx) {
+                                )
+
+                                // 编辑模式：盖一层 Compose 手势 + 删除角标。
+                                // 这条路径完全不经过 AppWidgetHostView 的触摸分发
+                                // （长按要跨 View/Compose 两套事件体系，实机上并不可靠），
+                                // 按住直接就能拖，保证「总能移动、总能删」。
+                                if (editMode) {
+                                    // 只画边框：拖动交给下面的 WidgetGestureBox（immediateDrag），
+                                    // 这里再加一层 pointerInput 会把触摸全吃掉，反而拖不动。
                                     Box(
-                                        Modifier.matchParentSize().padding(2.dp)
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(Color.White.copy(alpha = 0.16f))
+                                        Modifier
+                                            .matchParentSize()
                                             .border(
-                                                1.5.dp, Color.White.copy(alpha = 0.55f),
+                                                1.dp, Color.White.copy(alpha = 0.35f),
                                                 RoundedCornerShape(18.dp)
                                             )
                                     )
-                                }
-                                when (entry) {
-                                    is HomeEntry.App -> {
-                                        val app = entry.app
-                                        AppIconCell(
-                                            app = app,
-                                            size = homeIconSize,
-                                            showLabel = true,
-                                            onWallpaper = true,
-                                            wobble = editMode,
-                                            // 编辑态左上角显示 iOS 风格「-」，点它弹移除确认
-                                            onMinusClick = if (editMode) ({ removeTarget = app }) else null,
-                                            onClick = {
-                                                if (editMode) nav.showAppMenu(app, "home")
-                                                else AppRepository.launch(ctx, app.id)
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(6.dp)
+                                            .size(26.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xD91C1C1E))
+                                            .clickable {
+                                                runCatching { widgetBridge?.host?.deleteAppWidgetId(wId) }
+                                                DuoState.removeHomeWidget(wId)
                                             },
-                                            // 长按交给上面的拖拽手势：拿起→拖动；长按不动→松手时弹菜单
-                                            onLongClick = {}
-                                        )
-                                    }
-                                    is HomeEntry.Folder -> {
-                                        FolderCell(
-                                            folder = entry.folder,
-                                            size = homeIconSize,
-                                            onWallpaper = true,
-                                            wobble = editMode,
-                                            onClick = { openFolder = entry.folder },
-                                            onLongClick = {}
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Close, Lang.s(R.string.remove),
+                                            tint = Color.White, modifier = Modifier.size(15.dp)
                                         )
                                     }
                                 }
                             }
+
+                            else -> {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                                    Box(
+                                        Modifier
+                                            .graphicsLayer { alpha = if (isDragging) 0.25f else 1f }
+                                            .pointerInput(token) {
+                                                awaitEachGesture {
+                                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                                    val slop = viewConfiguration.touchSlop
+                                                    var lifted = false
+                                                    var escaped = false
+                                                    var done = false
+                                                    withTimeoutOrNull(
+                                                        viewConfiguration.longPressTimeoutMillis
+                                                    ) {
+                                                        while (true) {
+                                                            val ev = awaitPointerEvent()
+                                                            val ch = ev.changes.firstOrNull {
+                                                                it.id == down.id
+                                                            } ?: break
+                                                            if (!ch.pressed) { lifted = true; break }
+                                                            if ((ch.position - down.position)
+                                                                    .getDistance() > slop
+                                                            ) { escaped = true; break }
+                                                        }
+                                                        done = true
+                                                    }
+                                                    if (!done && !lifted && !escaped) {
+                                                        // 长按成立 → 拿起，之后可以拖到任意一格
+                                                        beginDrag(token, down.position)
+                                                        var moved = false
+                                                        try {
+                                                            while (true) {
+                                                                // Initial pass 先取事件并立刻消费，
+                                                                // 免得外面翻页 / 下滑手势把拖拽抢走
+                                                                val ev = awaitPointerEvent(
+                                                                    PointerEventPass.Initial
+                                                                )
+                                                                val ch = ev.changes.firstOrNull {
+                                                                    it.id == down.id
+                                                                } ?: break
+                                                                if (!ch.pressed) { ch.consume(); break }
+                                                                val d = ch.positionChangeIgnoreConsumed()
+                                                                ch.consume()
+                                                                if (d == Offset.Zero) continue
+                                                                dragDelta += d
+                                                                dragFinger += d
+                                                                if (dragDelta.getDistance() > slop)
+                                                                    moved = true
+                                                                hoverCell = cellForDrop(token)
+                                                                trackEdge(dragFinger.x)
+                                                            }
+                                                        } finally {
+                                                            DuoState.dragging = false
+                                                        }
+                                                        finishDrag(moved) {
+                                                            when (entry) {
+                                                                is HomeEntry.App ->
+                                                                    nav.showAppMenu(entry.app, "home")
+                                                                // 长按文件夹 = 编辑（重命名 / 解散），
+                                                                // 和 iOS 一致：打开看内容只是轻点
+                                                                is HomeEntry.Folder ->
+                                                                    folderMenu = entry.folder
+                                                                is HomeEntry.Widget -> Unit
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                    ) {
+                                        when (entry) {
+                                            is HomeEntry.App -> {
+                                                val app = entry.app
+                                                AppIconCell(
+                                                    app = app,
+                                                    size = homeIconSize,
+                                                    showLabel = true,
+                                                    onWallpaper = true,
+                                                    wobble = editMode,
+                                                    // 编辑态左上角显示 iOS 风格「-」，点它弹移除确认
+                                                    onMinusClick = if (editMode)
+                                                        ({ removeTarget = app }) else null,
+                                                    onClick = {
+                                                        if (editMode)
+                                                            nav.showAppMenu(app, "home")
+                                                        else AppRepository.launch(ctx, app.id)
+                                                    },
+                                                    onLongClick = {}
+                                                )
+                                            }
+                                            is HomeEntry.Folder -> FolderCell(
+                                                folder = entry.folder,
+                                                size = homeIconSize,
+                                                onWallpaper = true,
+                                                wobble = editMode,
+                                                // 编辑态轻点也进编辑菜单（此时用户想改的是文件夹本身）
+                                                onClick = {
+                                                    if (editMode) folderMenu = entry.folder
+                                                    else openFolder = entry.folder
+                                                },
+                                                onLongClick = {}
+                                            )
+                                            is HomeEntry.Widget -> Unit
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        repeat(homeCols - row.size) { Spacer(Modifier.width(cellWidth)) }
                     }
                 }
+
+                // 落点高亮：只有一个，按当前 hoverCell 定位（只重组它自己）
+                DropHighlight(
+                    hover = hoverCellState,
+                    dragging = dragTokenState,
+                    cellW = cellW, rowH = rowH, pitchY = pitchY, gap = rowGapDp.dp,
+                    homeCols = homeCols, homeRows = homeRows
+                )
             }
         }
 
         // ── 拖动中的悬浮图标（画在网格之上）──
-        val draggedIdx = dragIndex
-        if (draggedIdx != null) {
-            val dragged = pageEntries.getOrNull(draggedIdx)
-            if (dragged != null) {
-                Box(
-                    Modifier
-                        .offset {
-                            IntOffset(
-                                (dragFromRect.left + dragDelta.x - pageOrigin.x).roundToInt(),
-                                (dragFromRect.top + dragDelta.y - pageOrigin.y).roundToInt()
-                            )
-                        }
-                        .zIndex(20f)
-                        .graphicsLayer { scaleX = 1.06f; scaleY = 1.06f }
-                ) {
-                    when (dragged) {
-                        is HomeEntry.App -> {
-                            val app = dragged.app
-                            AppIconCell(
-                                app = app, size = homeIconSize, showLabel = true,
-                                onWallpaper = true,
-                                onClick = {}, onLongClick = {}
-                            )
-                        }
-                        is HomeEntry.Folder -> FolderCell(
-                            folder = dragged.folder, size = homeIconSize,
-                            onWallpaper = true, onClick = {}, onLongClick = {}
+        val draggedEntry = dragToken?.let { entryOf(it) }
+        if (draggedEntry != null && draggedEntry !is HomeEntry.Widget) {
+            Box(
+                Modifier
+                    .offset {
+                        IntOffset(
+                            (dragFromRect.left + dragDelta.x - pageOrigin.x).roundToInt(),
+                            (dragFromRect.top + dragDelta.y - pageOrigin.y).roundToInt()
                         )
                     }
+                    .zIndex(20f)
+                    .graphicsLayer { scaleX = 1.06f; scaleY = 1.06f }
+            ) {
+                when (draggedEntry) {
+                    is HomeEntry.App -> AppIconCell(
+                        app = draggedEntry.app, size = homeIconSize, showLabel = true,
+                        onWallpaper = true,
+                        onClick = {}, onLongClick = {}
+                    )
+                    is HomeEntry.Folder -> FolderCell(
+                        folder = draggedEntry.folder, size = homeIconSize,
+                        onWallpaper = true, onClick = {}, onLongClick = {}
+                    )
+                    is HomeEntry.Widget -> Unit
                 }
             }
         }
@@ -642,60 +873,27 @@ fun HomePage(
             }
         }
 
-        // ── 底部：页面指示点 + 编辑入口 + 搜索 ──
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (DuoState.showBottomLeft) {
-            GlassCard(modifier = Modifier.size(34.dp), radius = 17.dp, level = DuoState.glassLevel, dark = dark) {
-                Box(
-                    Modifier.fillMaxSize().clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null
-                    ) { showHomeMenu = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        if (editMode) Icons.Filled.Check else Icons.Filled.MoreHoriz,
-                        Lang.s(R.string.home_menu), tint = glassTextColor(dark), modifier = Modifier.size(18.dp)
+        // ── 底部：只剩页面指示点 ──
+        // 左下角的菜单键和右下角的搜索键已经去掉：菜单项全部并入「长按主屏空白」的菜单，
+        // 搜索走「主屏右滑」（设置里可开关）或资源库。底部就干净了，也不挡壁纸。
+        if (pageDots && homePageCount > 1) {
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 18.dp, vertical = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                repeat(homePageCount) { i ->
+                    Box(
+                        Modifier
+                            .size(if (i == homePageIndex) 7.dp else 6.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (i == homePageIndex) glassTextColor(dark).copy(alpha = 0.9f)
+                                else glassTextColor(dark).copy(alpha = 0.35f)
+                            )
                     )
                 }
-            }
-            }
-            Spacer(Modifier.weight(1f))
-            // 只有一页主屏时不画指示点（去掉负一屏后单页很常见）
-            if (pageDots && homePageCount > 1) {
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    repeat(homePageCount) { i ->
-                        Box(
-                            Modifier
-                                .size(if (i == homePageIndex) 7.dp else 6.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (i == homePageIndex) glassTextColor(dark).copy(alpha = 0.9f)
-                                    else glassTextColor(dark).copy(alpha = 0.35f)
-                                )
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            if (DuoState.showBottomRight) {
-            GlassCard(modifier = Modifier.size(34.dp), radius = 17.dp, level = DuoState.glassLevel, dark = dark) {
-                Box(
-                    Modifier.fillMaxSize().clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null
-                    ) { nav.openSearch() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Search, Lang.s(R.string.search), tint = glassTextColor(dark), modifier = Modifier.size(18.dp))
-                }
-            }
             }
         }
     }
@@ -711,16 +909,47 @@ fun HomePage(
         )
     }
 
-    // 文件夹展开
-    openFolder?.let { folder ->
+    // 文件夹展开（iOS 风格：只是「看一眼里面有什么」，改名/解散在长按菜单里）
+    openFolder?.let { cached ->
+        // 用 id 重新取一次：openFolder 存的是打开那一刻的实例，
+        // 窗口开着时又移出了应用的话，直接用旧实例会导致列表不刷新
+        val folder = DuoState.folderOf(cached.id) ?: cached
         FolderOpenDialog(
             folder = folder,
             dark = dark,
             onDismiss = { openFolder = null },
             onLaunch = { app -> AppRepository.launch(ctx, app.id); openFolder = null },
-            onRename = { name -> DuoState.renameFolder(folder.id, name) },
-            onRemoveApp = { pkg -> DuoState.removeAppFromFolder(folder.id, pkg) },
-            onDelete = { DuoState.deleteFolder(folder.id); openFolder = null }
+            onRemoveApp = { pkg -> DuoState.removeAppFromFolder(folder.id, pkg) }
+        )
+    }
+
+    // 长按文件夹图标：编辑菜单
+    folderMenu?.let { folder ->
+        DuoDialog(
+            title = folder.name,
+            dark = dark,
+            onDismiss = { folderMenu = null }
+        ) {
+            MenuRow(Icons.Filled.Edit, Lang.s(R.string.rename_folder), dark = dark) {
+                folderMenu = null
+                folderRename = folder
+            }
+            MenuRow(Icons.Filled.Delete, Lang.s(R.string.disband_folder), danger = true, dark = dark) {
+                folderMenu = null
+                DuoState.deleteFolder(folder.id)
+            }
+        }
+    }
+
+    folderRename?.let { folder ->
+        FolderRenameDialog(
+            initial = folder.name,
+            dark = dark,
+            onDismiss = { folderRename = null },
+            onConfirm = { name ->
+                DuoState.renameFolder(folder.id, name)
+                folderRename = null
+            }
         )
     }
 
@@ -748,15 +977,57 @@ fun HomePage(
         }
     }
 
-    // 主屏左下角菜单
+    // 长按主屏空白：编辑主屏幕 / 打开设置
+
+    // 主屏系统小组件：长按后弹菜单。位置可以直接拖动调整；跨屏拖不动时
+    // （拖拽只在当前屏内有效）用这两个菜单项挪到相邻一屏。
+    widgetMenu?.let { wId ->
+        val wToken = "widget:$wId"
+        // 与网格排版用同一口径算页（含手动坐标 + 自动补行），否则「上一屏/下一屏」会跳错
+        val gridCols = DuoState.homeColumns
+        val gridRows = DuoState.effectiveHomeRows(cfg.screenHeightDp, landscape)
+        val allPages = DuoState.layoutHome(gridCols, gridRows)
+        val wPage = allPages.indexOfFirst { list -> list.any { it.token == wToken } }
+        DuoDialog(
+            title = Lang.s(R.string.system_widget),
+            dark = dark,
+            onDismiss = { widgetMenu = null }
+        ) {
+            if (wPage > 0) {
+                MenuRow(Icons.Filled.KeyboardArrowLeft, Lang.s(R.string.move_prev_screen), dark = dark) {
+                    DuoState.moveHomeWidgetPage(wId, -1, gridCols, gridRows)
+                    widgetMenu = null
+                }
+            }
+            // 往右总是可以：目标屏放不下就自动新建一屏（坐标模型下不会"挤不进去"）
+            if (wPage >= 0) {
+                MenuRow(Icons.Filled.KeyboardArrowRight, Lang.s(R.string.move_next_screen), dark = dark) {
+                    DuoState.moveHomeWidgetPage(wId, 1, gridCols, gridRows)
+                    widgetMenu = null
+                }
+            }
+            MenuRow(Icons.Filled.Delete, Lang.s(R.string.remove), danger = true, dark = dark) {
+                runCatching { widgetBridge?.host?.deleteAppWidgetId(wId) }
+                DuoState.removeHomeWidget(wId)
+                widgetMenu = null
+            }
+        }
+    }
+
+    // 主屏菜单（长按空白处弹出）
     if (showHomeMenu) {
         DuoDialog(title = Lang.s(R.string.home_screen), dark = dark, onDismiss = { showHomeMenu = false }) {
             MenuRow(
                 if (editMode) Icons.Filled.Check else Icons.Filled.Edit,
                 if (editMode) Lang.s(R.string.done_edit) else Lang.s(R.string.edit_home), dark = dark
             ) { editMode = !editMode; showHomeMenu = false }
+            // 以前只是跳到 App 资源库，用户还得再长按图标找「添加到主屏幕」，很容易以为没生效。
+            // 现在直接弹一个可搜索的应用选择器，点一下就加到桌面。
             MenuRow(Icons.Filled.AddToHomeScreen, Lang.s(R.string.add_app_to_home), dark = dark) {
-                showHomeMenu = false; nav.goLibrary()
+                showHomeMenu = false; appPickerOpen = true
+            }
+            MenuRow(Icons.Filled.Widgets, Lang.s(R.string.add_system_widget), dark = dark) {
+                showHomeMenu = false; nav.addHomeWidget()
             }
             MenuRow(Icons.Filled.Tune, Lang.s(R.string.launcher_settings), dark = dark) {
                 showHomeMenu = false; nav.openSettings()
@@ -766,11 +1037,96 @@ fun HomePage(
             }
         }
     }
+
+    // 「添加应用到主屏幕」：直接选应用，点一下加到桌面（不再跳资源库）
+    if (appPickerOpen) {
+        HomeAppPickerDialog(
+            dark = dark,
+            onDismiss = { appPickerOpen = false },
+            onPick = { app ->
+                DuoState.addHome(app.id)
+                nav.toast(Lang.s(R.string.toast_app_added_home, app.label))
+            }
+        )
+    }
 }
 
 private sealed class HomeEntry {
     data class App(val app: AppInfo) : HomeEntry()
     data class Folder(val folder: FolderItem) : HomeEntry()
+    /** 主屏上的安卓系统小组件（AppWidget），独占一整行 */
+    data class Widget(val appWidgetId: Int) : HomeEntry()
+}
+
+/**
+ * 主屏系统小组件：宽度吃满整行，高度**严格等于它占的格子行数**。
+ *
+ * 以前高度取 provider 的 minHeight（还夹到 120~340dp），跟分页里预留的行数各算一套，
+ * 于是出现「占了两行、实际画出来一大一小」的错位：小组件比格子高就顶出去，
+ * 比格子矮就留一大片空白。现在高度由行数算出，并把真实尺寸通过
+ * `updateAppWidgetSize` 告知 provider，自适应的小组件才会按整行排版。
+ */
+@Composable
+private fun HomeSystemWidget(
+    appWidgetId: Int,
+    dark: Boolean,
+    modifier: Modifier = Modifier,
+    immediateDrag: Boolean = false,
+    onLongPress: (Float, Float) -> Unit,
+    onDrag: (Float, Float) -> Unit,
+    onRelease: (Boolean) -> Unit,
+    onCancel: () -> Unit
+) {
+    // 宽高不再自己算：父容器已经按「占几行」给了精确的行槽，这里量出来报给 provider，
+    // 保证「看到的大小 == 告诉系统的大小」，自适应小组件（日历、天气）才会正确排版。
+    BoxWithConstraints(modifier.clipToBounds()) {
+        val w = maxWidth.value.toInt().coerceAtLeast(1)
+        val h = maxHeight.value.toInt().coerceAtLeast(1)
+        SystemWidgetCardDraggable(
+            appWidgetId = appWidgetId,
+            dark = dark,
+            modifier = Modifier.fillMaxSize(),
+            sizeDp = IntSize(w, h),
+            immediateDrag = immediateDrag,
+            onLongPress = onLongPress,
+            onDrag = onDrag,
+            onRelease = onRelease,
+            onCancel = onCancel
+        )
+    }
+}
+
+/**
+ * 落点提示（半透明方框）。
+ *
+ * 参数收的是 State 而不是值：拖动时 hoverCell 每跨一格都会变，
+ * 如果让调用方（网格作用域）读值，整个主屏几十个图标都会重组一遍。
+ * 在这里读，重组范围就只有这一个方框。
+ */
+@Composable
+private fun DropHighlight(
+    hover: androidx.compose.runtime.State<Pair<Int, Int>?>,
+    dragging: androidx.compose.runtime.State<String?>,
+    cellW: Dp,
+    rowH: Dp,
+    pitchY: Dp,
+    gap: Dp,
+    homeCols: Int,
+    homeRows: Int
+) {
+    val hc = hover.value ?: return
+    val token = dragging.value ?: return
+    val rs = DuoState.tokenRowSpan(token, homeRows)
+    val cs = DuoState.tokenColSpan(token, homeCols)
+    Box(
+        Modifier
+            .offset(cellW * hc.second, pitchY * hc.first)
+            .size(cellW * cs, rowH * rs + gap * (rs - 1))
+            .padding(2.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.16f))
+            .border(1.5.dp, Color.White.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
+    )
 }
 
 /** 音乐胶囊高度：顶部定位与「侧栏避让胶囊」共用这一个值，改一处两处同步 */
@@ -868,7 +1224,12 @@ private fun MusicSpectrum(playing: Boolean, color: Color) {
     }
 }
 
-/** 点击文件夹后展开的「窗口」：网格展示应用，底部支持重命名 / 解散 */
+/**
+ * 点击文件夹后展开的「窗口」——**只用于查看**（iOS 那种：看一眼里面有什么，点图标直接启动）。
+ *
+ * 改名 / 解散属于编辑操作，放在「长按文件夹图标」弹出的菜单里，
+ * 不再挤在这个窗口底部，免得每次打开文件夹都像进了编辑页。
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FolderOpenDialog(
@@ -876,38 +1237,64 @@ private fun FolderOpenDialog(
     dark: Boolean,
     onDismiss: () -> Unit,
     onLaunch: (AppInfo) -> Unit,
-    onRename: (String) -> Unit,
-    onRemoveApp: (String) -> Unit,
-    onDelete: () -> Unit
+    onRemoveApp: (String) -> Unit
 ) {
-    var editingName by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf(folder.name) }
+    /** 长按文件夹内的图标 → 待确认「移出文件夹」 */
+    var removeTarget by remember { mutableStateOf<AppInfo?>(null) }
     val apps = folder.apps.mapNotNull { DuoState.appOf(it) }
-    FolderWindow(
-        title = folder.name,
-        subtitle = Lang.s(R.string.folder_apps_count, apps.size),
+    // iOS 风格：名字在框外左上角、不显示应用数、框内 4 列分页（满了右滑下一页）
+    FolderIosWindow(
+        name = folder.name,
         apps = apps,
-        dark = dark,
         onDismiss = onDismiss,
         onLaunch = onLaunch,
-        onLongClick = { onRemoveApp(it.id) },
-        footer = {
-            if (editingName) {
-                BasicTextField(
-                    name, { name = it }, singleLine = true,
-                    textStyle = TextStyle(fontSize = 15.sp, color = glassTextColor(dark)),
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                        .background(glassTextColor(dark).copy(alpha = 0.12f)).padding(10.dp)
-                )
-                Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GlassPrimaryButton(Lang.s(R.string.save_name), dark, { onRename(name); editingName = false })
-                    GlassPrimaryButton(Lang.s(R.string.cancel), dark, { name = folder.name; editingName = false })
-                }
-            } else {
-                MenuRow(Icons.Filled.Edit, Lang.s(R.string.rename_folder), dark = dark) { editingName = true }
-                MenuRow(Icons.Filled.Delete, Lang.s(R.string.disband_folder), danger = true, dark = dark) { onDelete() }
-            }
-        }
+        onLongClick = { removeTarget = it }
     )
+
+    removeTarget?.let { app ->
+        DuoDialog(
+            title = Lang.s(R.string.remove_from_folder),
+            dark = dark,
+            onDismiss = { removeTarget = null }
+        ) {
+            Text(
+                Lang.s(R.string.remove_from_folder_confirm, app.label),
+                fontSize = 13.sp, color = glassSubTextColor(dark)
+            )
+            Spacer(Modifier.height(12.dp))
+            MenuRow(Icons.Filled.Delete, Lang.s(R.string.remove_from_folder), danger = true, dark = dark) {
+                onRemoveApp(app.id)
+                removeTarget = null
+            }
+            MenuRow(Icons.Filled.Close, Lang.s(R.string.cancel), dark = dark) { removeTarget = null }
+        }
+    }
+}
+
+/** 文件夹改名：只弹一个输入框，保存即改名 */
+@Composable
+private fun FolderRenameDialog(
+    initial: String,
+    dark: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember(initial) { mutableStateOf(initial) }
+    DuoDialog(title = Lang.s(R.string.rename_folder), dark = dark, onDismiss = onDismiss) {
+        BasicTextField(
+            name, { name = it }, singleLine = true,
+            textStyle = TextStyle(fontSize = 15.sp, color = glassTextColor(dark)),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(glassTextColor(dark)),
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                .background(glassTextColor(dark).copy(alpha = 0.12f)).padding(12.dp)
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GlassPrimaryButton(Lang.s(R.string.save_name), dark, {
+                val n = name.trim()
+                if (n.isNotEmpty()) onConfirm(n) else onDismiss()
+            })
+            GlassPrimaryButton(Lang.s(R.string.cancel), dark, onDismiss)
+        }
+    }
 }

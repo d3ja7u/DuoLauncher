@@ -11,7 +11,8 @@ class Nav(
     val openSidebarEditor: () -> Unit,
     val openCategoryEditor: () -> Unit,
     val openHiddenEditor: () -> Unit,
-    val openWidgetPicker: () -> Unit,
+    /** 添加系统小组件到主屏幕 */
+    val addHomeWidget: () -> Unit,
     val showAppMenu: (AppInfo, String) -> Unit,
     val showCategoryPicker: (AppInfo) -> Unit,
     val goPage: (Int) -> Unit,

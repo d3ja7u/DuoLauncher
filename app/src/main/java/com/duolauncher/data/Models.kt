@@ -2,10 +2,19 @@ package com.duolauncher.data
 
 import android.graphics.drawable.Drawable
 import android.os.UserHandle
+import androidx.compose.runtime.Immutable
 import com.duolauncher.R
 import com.duolauncher.util.Lang
 
-/** 一个已安装、可启动的应用（可来自主用户，也可来自克隆 / 工作资料） */
+/**
+ * 一个已安装、可启动的应用（可来自主用户，也可来自克隆 / 工作资料）。
+ *
+ * `@Immutable` 不是装饰：所有字段都是 val，AppInfo 实例一旦生成就不再变（图标包 /
+ * 单独换图标都会整表替换列表）。没有这个注解时，`Drawable` 是 Compose 眼里不稳定
+ * 的类型，编译器会把 AppInfo 判定为 unstable —— 于是每次父容器重组都把主屏每一格、
+ * 资源库每一项、搜索结果每一行的图标单元格全部重跑一遍。加上之后这些格子能正常跳过。
+ */
+@Immutable
 data class AppInfo(
     val label: String,
     val packageName: String,
@@ -38,17 +47,6 @@ data class SidebarItem(val type: String, val value: String) {
     }
 }
 
-/** 负一屏小组件：type = 内置类型 | system，extra = 系统小组件 id 或文本 */
-data class WidgetItem(val type: String, val extra: String = "") {
-    fun encode(): String = "$type\u001F$extra"
-    companion object {
-        fun decode(s: String): WidgetItem {
-            val p = s.split("\u001F", limit = 2)
-            return WidgetItem(p.getOrElse(0) { "clock" }, p.getOrElse(1) { "" })
-        }
-    }
-}
-
 data class UsageRec(var count: Int = 0, var last: Long = 0L)
 
 /** 主屏文件夹：包含若干应用，以叠加图标形式展示 */
@@ -72,6 +70,22 @@ data class FolderItem(
     }
 }
 
+/** 用户自建分类：id 形如 `u<时间戳>`，名称由用户输入 */
+data class CategoryDef(val id: String, val name: String) {
+    fun encode(): String = org.json.JSONObject().put("id", id).put("name", name).toString()
+    companion object {
+        fun decode(s: String): CategoryDef? = runCatching {
+            val o = org.json.JSONObject(s)
+            val id = o.optString("id", "")
+            val name = o.optString("name", "")
+            if (id.isBlank()) null else CategoryDef(id, name)
+        }.getOrNull()
+    }
+}
+
+/** 落在分类表之外的「孤儿」应用（分类被删掉后）统一归到这张卡 */
+const val CATEGORY_OTHER = "other"
+
 /** 分类表：id -> 名称字符串资源（存 id，切换语言后立即生效） */
 val CATEGORY_LIST: List<Pair<String, Int>> = listOf(
     "social" to R.string.cat_social,
@@ -85,9 +99,11 @@ val CATEGORY_LIST: List<Pair<String, Int>> = listOf(
     "system" to R.string.cat_system
 )
 
-fun categoryName(id: String): String = Lang.s(
-    CATEGORY_LIST.firstOrNull { it.first == id }?.second ?: R.string.cat_system
-)
+/**
+ * 分类显示名。查的是**运行时**分类表（[com.duolauncher.data.DuoState.categoryDisplayName]）：
+ * 内置分类可能被改名、自建分类的名字是用户输入的，都不能只查 strings.xml。
+ */
+fun categoryName(id: String): String = DuoState.categoryDisplayName(id)
 
 /** 智能分类：系统 category + 名称/包名关键词启发式 */
 fun guessCategory(label: String, packageName: String, systemCategory: Int): String {

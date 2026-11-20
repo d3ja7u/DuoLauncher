@@ -51,6 +51,17 @@ class DuoNotificationListener : NotificationListenerService() {
     /** 已读通知：key -> 标记已读时的计数。持久化，跨服务重连 / 进程重启有效 */
     private val readKeys = HashMap<String, Int>()
 
+    /**
+     * 用户句柄 → 用户序号。通知回调里每条通知都要算 key，而
+     * `UserManager.getSerialNumberForUser` 是跨进程调用；收 20 条通知就查 20 次。
+     * 同一用户的序号在进程生命周期内不会变，缓存起来即可。
+     */
+    private val userSerial = java.util.concurrent.ConcurrentHashMap<android.os.UserHandle, Long>()
+
+    /** 专辑封面缓存：同一首歌平繁回调（播放/暂停/进度）时不再重复解码大图 */
+    private var artKey: String = ""
+    private var artCache: Bitmap? = null
+
     // ── 音乐胶囊：监听系统媒体会话 ──
     private var mediaSessionManager: MediaSessionManager? = null
     private var mediaRegistered = false
@@ -274,8 +285,6 @@ class DuoNotificationListener : NotificationListenerService() {
         val meta = chosen.metadata
         val title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
         val artist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
-        val art: Bitmap? = meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-            ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
         val pkg = chosen.packageName ?: ""
         val act: PendingIntent? = chosen.sessionActivity
         val state = chosen.playbackState?.state
@@ -286,7 +295,41 @@ class DuoNotificationListener : NotificationListenerService() {
             PlaybackState.STATE_ERROR -> false
             else -> true
         }
+        // 播放器常常每秒刷新好几次 playbackState（进度），歌与播放状态都没变时
+        // 不要再新建 NowPlaying —— 那会让整个主屏（胶囊 + 频谱）反复重组、动画重启。
+        val cur = DuoState.nowPlaying
+        if (cur != null && cur.title == title && cur.artist == artist &&
+            cur.packageName == pkg && cur.playing == playing && cur.sessionActivity == act
+        ) return
+        val art: Bitmap? = artFor(meta, "$title|$artist")
         DuoState.nowPlaying = NowPlaying(title, artist, art, pkg, act, playing)
+    }
+
+    /**
+     * 专辑封面：降采样到 320px 以内，并按「歌名|歌手」缓存。
+     *
+     * 不少播放器把上千像素的原图塞进通知元数据，而胶囊上的封面只有几十 dp；
+     * 每次播放/暂停回调都取原图既不必要也占内存。缓存命中时连 getBitmap 都不再调用。
+     */
+    private fun artFor(meta: MediaMetadata?, key: String): Bitmap? {
+        if (key.isNotBlank() && key == artKey) return artCache
+        val raw = runCatching {
+            meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+        }.getOrNull() ?: return null
+        val maxEdge = maxOf(raw.width, raw.height)
+        val out = if (maxEdge > 320) runCatching {
+            val s = 320f / maxEdge
+            Bitmap.createScaledBitmap(
+                raw,
+                (raw.width * s).toInt().coerceAtLeast(1),
+                (raw.height * s).toInt().coerceAtLeast(1),
+                true
+            )
+        }.getOrDefault(raw) else raw
+        artKey = key
+        artCache = out
+        return out
     }
 
     private fun publish() {
@@ -295,7 +338,6 @@ class DuoNotificationListener : NotificationListenerService() {
             val pkg = k.substringBefore('|')
             agg[pkg] = (agg[pkg] ?: 0) + v
         }
-        android.util.Log.d("DuoNotif", "publish $agg")
         DuoState.setNotifCounts(agg)
     }
 
@@ -327,8 +369,11 @@ class DuoNotificationListener : NotificationListenerService() {
             if (Build.VERSION.SDK_INT < 29) return@runCatching -1L
             val uh = sbn.user ?: return@runCatching -1L
             if (uh == Process.myUserHandle()) return@runCatching -1L
-            val um = getSystemService(Context.USER_SERVICE) as? UserManager
-            um?.getSerialNumberForUser(uh) ?: -1L
+            // 按 UserHandle 缓存：序列号在进程生命周期内不会变，而通知回调是每条都走一遍
+            userSerial.getOrPut(uh) {
+                val um = getSystemService(Context.USER_SERVICE) as? UserManager
+                um?.getSerialNumberForUser(uh) ?: -1L
+            }
         }.getOrDefault(-1L)
         return if (serial > 0) "$pkg@$serial" else pkg
     }

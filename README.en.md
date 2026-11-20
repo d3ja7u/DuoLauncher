@@ -179,7 +179,7 @@ Import **replaces everything**; there is no per-item selection, so export your c
 | `INTERNET` | Update checks, in-place downloads and optional anonymous statistics | Optional; no business requests when both are disabled |
 | `BIND_APPWIDGET` | Host home screen widgets | Optional |
 
-Layouts and preferences are stored locally in `SharedPreferences`. There are no accounts and the app never reads or uploads personal content. **The only data that can leave the device is the opt-out anonymous usage statistic** (random ID + version + UI language + Android API level + report type): you are asked once on first launch, and Settings → Privacy and statistics can turn it off at any time, which immediately deletes the local anonymous ID. See [PRIVACY.md](PRIVACY.md) for details.
+Layouts and preferences are stored locally in `SharedPreferences`. There are no accounts and the app never reads or uploads personal content. **The only data that can leave the device is the opt-out anonymous usage statistic** (random ID + version + UI language + Android API level + device model name + report type): you are asked once on first launch, and Settings → Privacy and statistics can turn it off at any time, which immediately deletes the local anonymous ID. The model is only a generic model name (e.g. Titan 2 Elite), with no serial / IMEI / Android ID or other unique identifier. See [PRIVACY.md](PRIVACY.md) for details.
 
 ---
 
@@ -237,7 +237,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
-| 1.5.17 | Anonymous usage stats now use a self-hosted receiver for a more reliable path; the Privacy & statistics page no longer shows the endpoint address |
+| 1.6.0 | Long-press an empty area of the home screen to add apps or system widgets; icons and widgets can be placed freely, dragged into folders, or dragged to the screen edge to move to an adjacent screen; Manage Categories supports creating, renaming and deleting categories with restore; the App Library can be hidden in Settings; improved display on tablets and other large-screen devices |
 | 1.5.16 | Added a "backup sleep method" for double-tap-to-sleep with accessibility or device-admin schemes; improved how the desktop clock and tri-status badge choose black or white icons on dark wallpapers; fixed the backup method failing to enable and the accessibility prompt still appearing when it is enabled |
 | 1.5.15 | Further reduced power consumption and optimised overall app performance |
 | 1.5.14 | Added a "Sync lock-screen wallpaper" toggle in Settings → Wallpaper; when enabled the lock screen and home wallpaper switch together; improved home-screen scrolling and reduced power use |
@@ -309,7 +309,7 @@ Versions are compared segment by segment, so `1.3.10` is correctly newer than `1
 
 ### Anonymous usage statistics
 
-Only a random anonymous ID, app version, UI language and Android API level are sent — no device identifiers or personal content. Turn it off any time in Settings → Privacy and statistics (which immediately deletes the local ID). See [PRIVACY.md](PRIVACY.md) for details.
+Only a random anonymous ID, app version, UI language, Android API level, device model name (a generic model such as Titan 2 Elite) and report type are sent — no serial / IMEI / Android ID or other unique identifier, and no personal content. Turn it off any time in Settings → Privacy and statistics (which immediately deletes the local ID). See [PRIVACY.md](PRIVACY.md) for details.
 
 ---
 

@@ -2,6 +2,7 @@ package com.duolauncher
 
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -29,6 +30,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
@@ -76,6 +78,20 @@ class MainActivity : ComponentActivity() {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
+        // 顶部占用高度交给 DuoState 统一记录：取「状态栏高度」与「挖孔包围盒下沿」的较大值。
+        // 有的机型（Titan 2 Elite）挖孔开在左上角，statusBars.top 很小甚至为 0，
+        // 只按状态栏避让会让第一行图标被摄像头压住；取包围盒 bottom 才能整行让到孔下面。
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { v, insets ->
+            val barsTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val holeBottom = insets.displayCutout?.boundingRects?.maxOfOrNull { it.bottom } ?: 0
+            val cutTop = insets.getInsets(WindowInsetsCompat.Type.displayCutout()).top
+            DuoState.setSystemTopInset(
+                maxOf(barsTop, holeBottom, cutTop),
+                resources.displayMetrics.density
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(window.decorView)
         reloadApps()
 
         val filter = IntentFilter().apply {
@@ -134,6 +150,13 @@ class MainActivity : ComponentActivity() {
         InstallStats.reportIfAllowed(this)
     }
 
+    override fun onPause() {
+        // 配置写盘做了 250ms 合并（避免拖滑块时连续写盘），离开桌面时强制落一次，
+        // 保证用户切走 / 熄屏后改动不会停在合并窗口里。
+        com.duolauncher.data.DuoState.flush()
+        super.onPause()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME) || intent.action == Intent.ACTION_MAIN) {
@@ -179,8 +202,8 @@ class MainActivity : ComponentActivity() {
                     a.id == b.id && a.label == b.label && a.activityClass == b.activityClass
                 }
             if (!unchanged) {
-                DuoState.apps.clear()
-                DuoState.apps.addAll(list)
+                // 整表替换并让 appOf() 的查找索引失效（换新前是线性扫描，太贵）
+                DuoState.replaceApps(list)
             }
             DuoState.ensureDefaults()
             if (autoAddPkg != null && DuoState.autoAddNewApps) {
@@ -204,17 +227,25 @@ class MainActivity : ComponentActivity() {
         val dark = DuoState.darkGlass
         val wallpaper = rememberWallpaperBitmap()
 
-        // 主屏分页：单页容量必须和 HomePage 完全一致（列数 × 行数）。
-        // 之前写死 20，用户把列数调到 5 以上时，这里算出的页数比实际能放的多，
-        // 第一屏明明还有空位却多出一个空白页。
+        // 主屏分页：页数必须和 HomePage 用**同一个**分页函数算（含系统小组件占整行的情况），
+        // 否则会出现「第一屏没放满却多出空白页」。
         //
         // 搜索页**本身就是 pager 的一页**（贴在主屏第一页外侧），不再是盖在桌面上的
         // reveal 覆盖层：跟手拖动、fling 惯性、spring 吸附全部交给 HorizontalPager，
         // 与滑到 App 资源库完全是同一套物理和过渡，桌面整页平移也不会再露出图标/侧栏。
-        val perPage = (DuoState.homeColumns * DuoState.homeRows).coerceAtLeast(1)
-        val cellCount = DuoState.homeTokens().size
-        val homePageCount = ((cellCount + perPage - 1) / perPage).coerceAtLeast(1)
-        val totalPages = homePageCount + 2
+        // 每页行数取「设置值」与「屏幕实际排得下的行数」的较大者（见 effectiveHomeRows）：
+        // 平板横屏顶部留白收窄后能多排一行，这里必须和 HomePage 用完全相同的算法
+        val cfg = LocalConfiguration.current
+        val landscape = cfg.screenWidthDp > cfg.screenHeightDp
+        val gridRows = DuoState.effectiveHomeRows(cfg.screenHeightDp, landscape)
+        // 页数与 HomePage 同源：都用 layoutHome（含手动摆放坐标 + 自动流式排布）。
+        // 用版本号做键缓存，避免无关重组时反复重算整页占用矩阵。
+        val homePageCount = remember(DuoState.homeLayoutVersion, DuoState.homeColumns, gridRows) {
+            DuoState.layoutHome(DuoState.homeColumns, gridRows).size
+        }
+        // 「设置 → 主屏幕 → 显示 App 资源库」关掉时，pager 里不再有资源库这一页
+        val showLib = DuoState.showLibrary
+        val totalPages = homePageCount + 1 + (if (showLib) 1 else 0)
         /** 「真实页序号」沿用旧语义：主屏 0..homePageCount-1，资源库 homePageCount */
         val libraryPage = homePageCount
         /** 搜索页固定在 pager 一端，始终挨着主屏第一页（倒序时换到另一端） */
@@ -223,8 +254,26 @@ class MainActivity : ComponentActivity() {
             val a = actual.coerceIn(0, libraryPage)
             return if (DuoState.reversePages) libraryPage - a else a + 1
         }
-        val libraryPagerPage = toPagerPage(libraryPage)
+        /** 资源库页的 pager 下标；关闭显示时为 -1（不参与任何计算） */
+        val libraryPagerPage = if (showLib) toPagerPage(libraryPage) else -1
         val pagerState = rememberPagerState(initialPage = toPagerPage(0)) { totalPages }
+
+        /**
+         * 刚加到主屏的小组件：数据上它排在第一页第一个，但用户添加时往往停在别的页
+         * （比如刚从设置/资源库出来），不跟过去就会觉得「加完了屏幕上什么也没有 / 不在左上角」。
+         */
+        var jumpToWidgetKey by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(jumpToWidgetKey, totalPages) {
+            val key = jumpToWidgetKey ?: return@LaunchedEffect
+            delay(120)   // 等分页/布局吃到新的 homeTokens
+            val pages = DuoState.layoutHome(
+                DuoState.homeColumns,
+                DuoState.effectiveHomeRows(cfg.screenHeightDp, landscape)
+            )
+            val at = pages.indexOfFirst { page -> page.any { it.token == "widget:$key" } }
+            if (at >= 0) runCatching { pagerState.animateScrollToPage(toPagerPage(at)) }
+            jumpToWidgetKey = null
+        }
 
         var overlay by remember {
             mutableStateOf(if (Lang.consumeReopenSettings(ctx)) "settings" else null)
@@ -264,6 +313,8 @@ class MainActivity : ComponentActivity() {
         }
         val showLibraryBackdrop by remember(libraryPagerPage) {
             derivedStateOf {
+                // 资源库被隐藏时这一页根本不存在，不做任何计算
+                if (libraryPagerPage < 0) return@derivedStateOf false
                 val pos = pagerState.currentPage + pagerState.currentPageOffsetFraction
                 (1f - kotlin.math.abs(pos - libraryPagerPage)) > 0.01f
             }
@@ -279,6 +330,8 @@ class MainActivity : ComponentActivity() {
         var categoryTarget by remember { mutableStateOf<AppInfo?>(null) }
         var iconTarget by remember { mutableStateOf<AppInfo?>(null) }
         var folderTarget by remember { mutableStateOf<AppInfo?>(null) }
+        /** 主屏「添加小组件」：打开自带选择器（带预览和格子尺寸），不再走系统列表 */
+        var widgetPickerOpen by remember { mutableStateOf(false) }
 
         val widgetBridge = remember {
             WidgetBridge(
@@ -295,12 +348,13 @@ class MainActivity : ComponentActivity() {
         var pendingWidgetId by remember { mutableIntStateOf(-1) }
         val widgetManager = widgetBridge.manager
 
+        /** 绑定/配置流程走完：系统小组件一律落到主屏幕 */
         fun finishBind(id: Int) {
             val info = runCatching { widgetManager.getAppWidgetInfo(id) }.getOrNull()
             if (info != null) {
-                DuoState.widgets.add(WidgetItem("system", id.toString()))
-                DuoState.save()
-                toast(Lang.s(R.string.toast_widget_added))
+                DuoState.addHomeWidget(id, info.minWidth, info.minHeight)
+                jumpToWidgetKey = id.toString()
+                toast(Lang.s(R.string.toast_widget_added_home))
             } else toast(Lang.s(R.string.toast_widget_bind_fail))
         }
 
@@ -311,46 +365,37 @@ class MainActivity : ComponentActivity() {
             finishBind(pendingWidgetId)
         }
 
-        fun bindAndSave(id: Int, info: android.appwidget.AppWidgetProviderInfo) {
-            val allowed = runCatching { widgetManager.bindAppWidgetIdIfAllowed(id, info.provider) }.getOrDefault(false)
-            if (allowed) finishBind(id)
-            else {
+        /**
+         * 从自带选择器里直接添加：自己分配 id + 绑定，绕开系统的 ACTION_APPWIDGET_PICK。
+         * （系统那个列表没有尺寸/预览，加完才知道占多大，所以主屏改用自己的选择器。）
+         */
+        fun addWidgetFromPicker(info: AppWidgetProviderInfo) {
+            val id = runCatching { widgetBridge.host.allocateAppWidgetId() }.getOrNull()
+            if (id == null) { toast(Lang.s(R.string.toast_widget_picker_fail)); return }
+            pendingWidgetId = id
+            val allowed = runCatching {
+                widgetManager.bindAppWidgetIdIfAllowed(id, info.provider)
+            }.getOrDefault(false)
+            if (!allowed) {
+                // 没有绑定权限时退回系统授权流程（授权后会走 bindLauncher 的 finishBind）
                 runCatching {
                     bindLauncher.launch(
                         Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
                     )
-                }
+                }.onFailure { toast(Lang.s(R.string.toast_widget_picker_fail)) }
+                return
             }
-        }
-
-        val pickLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val id = result.data?.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidgetId) ?: pendingWidgetId
-            pendingWidgetId = id
-            val info = runCatching { widgetManager.getAppWidgetInfo(id) }.getOrNull()
-            if (info == null) {
-                toast(Lang.s(R.string.toast_widget_none))
-            } else if (info.configure != null) {
+            if (info.configure != null) {
                 runCatching {
                     configLauncher.launch(
                         Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE)
                             .setComponent(info.configure)
                             .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
                     )
-                }
-            } else bindAndSave(id, info)
-        }
-
-        fun startPickWidget() {
-            runCatching {
-                val id = widgetBridge.host.allocateAppWidgetId()
-                pendingWidgetId = id
-                pickLauncher.launch(
-                    Intent(AppWidgetManager.ACTION_APPWIDGET_PICK)
-                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                )
-            }.onFailure { toast(Lang.s(R.string.toast_widget_picker_fail)) }
+                }.onFailure { finishBind(id) }
+            } else finishBind(id)
         }
 
         // 注意：必须用 Compose 的 rememberCoroutineScope。
@@ -375,17 +420,32 @@ class MainActivity : ComponentActivity() {
                 openSidebarEditor = { leaveSearchIfNeeded(); settingsSub = "sidebar"; overlay = "settings" },
                 openCategoryEditor = { leaveSearchIfNeeded(); settingsSub = "cats"; overlay = "settings" },
                 openHiddenEditor = { leaveSearchIfNeeded(); settingsSub = "hidden"; overlay = "settings" },
-                openWidgetPicker = { startPickWidget() },
+                addHomeWidget = { widgetPickerOpen = true },
                 showAppMenu = { app, src -> menuApp = app; menuSource = src },
                 showCategoryPicker = { app -> categoryTarget = app },
                 goPage = { page ->
                     overlay = null
-                    val target = toPagerPage(page)
-                    uiScope.launch { runCatching { pagerState.animateScrollToPage(target) } }
+                    // 拖动落位可能刚刚新增了一屏，pager 的页数要等组合更新后才准；
+                    // 这里延后一拍并按"当下"的主屏页数重新算下标，避免被旧页数夹回到资源库页。
+                    uiScope.launch {
+                        delay(80)
+                        val count = DuoState.layoutHome(
+                            DuoState.homeColumns,
+                            DuoState.effectiveHomeRows(cfg.screenHeightDp, landscape)
+                        ).size.coerceAtLeast(1)
+                        val actual = page.coerceIn(0, count - 1)
+                        val idx = if (DuoState.reversePages) count - actual else actual + 1
+                        runCatching { pagerState.animateScrollToPage(idx) }
+                    }
                 },
                 goLibrary = {
-                    overlay = null
-                    uiScope.launch { runCatching { pagerState.animateScrollToPage(libraryPagerPage) } }
+                    if (DuoState.showLibrary) {
+                        overlay = null
+                        uiScope.launch { runCatching { pagerState.animateScrollToPage(libraryPagerPage) } }
+                    } else {
+                        // 资源库已在设置里关掉：直接告诉用户，别让点击看起来没反应
+                        ctx.toast(Lang.s(R.string.toast_library_hidden))
+                    }
                 },
                 toast = { msg -> ctx.toast(msg) }
             )
@@ -396,6 +456,16 @@ class MainActivity : ComponentActivity() {
             if (DuoState.hideStatusBar) controller.hide(WindowInsetsCompat.Type.statusBars())
             else controller.show(WindowInsetsCompat.Type.statusBars())
             controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
+        // 老版本加的小组件没有记录行数 / 列数，启动时按 provider 声明的尺寸补一次，
+        // 否则 4×4 的小组件仍会按 2 行占位、4×2 的仍会吃满整行（画不下、也挪不动）
+        LaunchedEffect(DuoState.homeWidgets.size) {
+            DuoState.homeWidgets.forEach { key ->
+                val id = key.toIntOrNull() ?: return@forEach
+                val info = runCatching { widgetManager.getAppWidgetInfo(id) }.getOrNull() ?: return@forEach
+                DuoState.ensureWidgetSize(id, info.minWidth, info.minHeight)
+            }
         }
 
         LaunchedEffect(homeSignal, totalPages) {
@@ -503,6 +573,17 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    if (widgetPickerOpen) {
+                        WidgetPickerDialog(
+                            dark = dark,
+                            onDismiss = { widgetPickerOpen = false },
+                            onPick = { info ->
+                                widgetPickerOpen = false
+                                addWidgetFromPicker(info)
+                            }
+                        )
+                    }
+
                     menuApp?.let { app ->
                         AppContextMenu(
                             app = app,
@@ -534,8 +615,8 @@ class MainActivity : ComponentActivity() {
                             MenuRow(Icons.Filled.AutoAwesome, Lang.s(R.string.follow_smart_category), dark = dark) {
                                 DuoState.setCategory(app.id, null); categoryTarget = null
                             }
-                            CATEGORY_LIST.forEach { (id, nameRes) ->
-                                MenuRow(Icons.Filled.Category, Lang.s(nameRes), dark = dark) {
+                            DuoState.categoryList().forEach { (id, name) ->
+                                MenuRow(Icons.Filled.Category, name, dark = dark) {
                                     DuoState.setCategory(app.id, id); categoryTarget = null
                                 }
                             }
