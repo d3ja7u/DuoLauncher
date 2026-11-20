@@ -392,7 +392,9 @@ object DuoState {
             lastSeenVersion = o.optString("updVer", "")
             statsEnabled = o.optBoolean("statOn", true)
             statsConsentShown = o.optBoolean("statConsent", false)
-            statsUrl = o.optString("statUrl", InstallStats.DEFAULT_URL)
+            // 上报地址不再从存档读：老存档里可能还是已停用的云服务地址，
+            // 升级后继续沿用会把新数据仍写进旧统计。地址只由 InstallStats.DEFAULT_URL 决定。
+            statsUrl = InstallStats.DEFAULT_URL
         }
     }
 
