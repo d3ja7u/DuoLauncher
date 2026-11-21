@@ -29,6 +29,9 @@ tools/stats-server/data/
 selfhost-aliyun/
 selfhost-ikuai/
 
+# 本地密钥（阿里云 AK/SK 等）：只留本地，任何情况下都不提交
+*.secrets.env
+
 # 本地临时文件
 .tmp_*
 __pycache__/
