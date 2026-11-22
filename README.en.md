@@ -37,8 +37,8 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 | **Multilingual UI** | Simplified Chinese, English and Japanese; follows the device language automatically, with a manual override in Settings |
 | **Clean start** | A fresh install leaves the home screen grid empty; you decide what goes on it |
 | **Settings backup** | Export / import a JSON file covering home layout, sidebar, folders, categories, icons, language and every other setting |
-| **Long-press to open Settings** | Long-press empty home area to jump straight into Launcher Settings — no need to tap the bottom-left menu first |
-| **Hide bottom icons** | The bottom-left settings icon and bottom-right search icon can be hidden in Settings → Home Screen & Gestures; after hiding, long-press still opens Settings and swipe-right on the leftmost page still opens Search |
+| **Long-press for the home menu** | Long-press an empty home area for Edit Home Screen / Add App / Add System Widget / Launcher Settings / Change Wallpaper |
+| **No bottom icons** | The bottom-left Settings and bottom-right Search icons are gone; Settings opens from long-press, Search from swipe-right on the leftmost page or a sidebar action |
 
 ---
 
@@ -46,18 +46,17 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 
 ### 2.1 Home screen
 
-- **A fresh install starts empty**: no app icons are placed on the home grid (the default sidebar is still there). To add one, tap `···` in the bottom-left → **Add App to Home**, or long-press an app in the App Library. Upgrading an existing setup never clears your icons.
+- **A fresh install starts empty**: no app icons are placed on the home grid (the default sidebar is still there). To add one, long-press an empty home area → **Add App to Home**, or long-press an app in the App Library. Upgrading an existing setup never clears your icons.
 - **Open an app**: tap its icon.
 - **Change page**: swipe left or right. By default, swiping right goes back one page; swiping right on the leftmost page opens Search (see Gestures).
 - **Move / reorder icons**: long-press and drag; the grid makes room automatically.
-- **Edit Home Screen**: tap `···` in the bottom-left → **Edit Home Screen**. Icons jiggle and an iOS-style `-` badge appears at their top-left. Tapping `-` offers **Remove from Home Screen / Uninstall / Cancel** — removing from the Home Screen only sends the icon back to the App Library and does **not** uninstall the app. Long-pressing an icon still opens the full menu (change icon / app info / uninstall). Tap the menu item again to exit.
-- **Home menu** (bottom-left `···`): Edit Home Screen / Add App to Home / Launcher Settings / Change Wallpaper.
-- **Long-press empty home area**: opens Launcher Settings directly.
-- **Hide bottom icons**: both the bottom-left `···` and the bottom-right search icon can be turned off in Settings → Home Screen & Gestures; after that, long-press still opens Settings and swipe-right on the leftmost page still opens Search.
+- **Edit Home Screen**: long-press an empty home area → **Edit Home Screen**. Icons jiggle and an iOS-style `-` badge appears at their top-left. Tapping `-` offers **Remove from Home Screen / Uninstall / Cancel** — removing from the Home Screen only sends the icon back to the App Library and does **not** uninstall the app. Long-pressing an icon still opens the full menu (change icon / app info / uninstall). Long-press the empty area again and choose Done in the menu to exit edit mode.
+- **Home menu** (long-press an empty home area): Edit Home Screen / Add App to Home / Add System Widget / Launcher Settings / Change Wallpaper.
+- **No persistent bottom icons**: only the page indicator dots remain at the bottom; Settings opens from the menu above, Search from swipe-right on the leftmost page, or with a Search action added to the sidebar.
 
 ### 2.2 Sidebar
 
-A vertical strip of frequently used apps on the right edge. Tap to launch. Spacing tightens automatically as you add icons, so the search button in the bottom-right stays clear.
+A vertical strip of frequently used apps on the right edge. Tap to launch. Spacing tightens automatically as you add icons so it does not crowd the home icons.
 
 - Show / hide: Settings → Sidebar → **Show sidebar**. When off, home icons use the full width; the status indicator stays.
 - Position: Settings → Sidebar → Position (Right / Left).
@@ -81,7 +80,7 @@ Swipe left from the home screen (or right, if **Reverse swipe direction** is ena
 
 ### 2.4 Search
 
-Open it by **swiping right on the home screen**, tapping the magnifier in the bottom-right, or swiping right on the leftmost page.
+Open it by **swiping right on the home screen** (the leftmost page), or with a Search action added to the sidebar. The swipe gesture can be turned off in Settings → Home Screen & Gestures.
 
 - **Apps**: filters names and package names as you type. With an empty query it shows **Recent** apps — the count is configurable (5 / 10 / 15 / 20).
 - **Contacts**: matches names and phone numbers (the Contacts permission is requested on first use). Tap a row to open the contact, tap the phone icon to dial directly.
@@ -99,7 +98,7 @@ Open it by **swiping right on the home screen**, tapping the magnifier in the bo
 | **Swipe down · left half** | Notifications | Fires after ≥ 96dp of accumulated travel |
 | **Swipe down · right half** | Quick Settings | The half where the gesture starts decides which panel opens |
 | **Double-tap empty area** | Sleep | Requires the accessibility service |
-| **Long-press empty area** | Enter Launcher Settings | Direct entry to Settings; still the main way in after hiding the bottom icons |
+| **Long-press empty area** | Open the home menu | Edit / Add App / Add Widget / Settings / Wallpaper are all here |
 
 > The swipe-down handler only claims vertical drags. It does not interfere with page swipes or icon long-press drags, and short swipes are ignored.
 
@@ -129,7 +128,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Sidebar | Show sidebar, Position, Edit Sidebar, Cutout top padding, Home icon size, Sidebar icon size |
 | Search | Recent apps count (5 / 10 / 15 / 20), Search engine (Baidu / Bing / Google), Search contacts |
 | iOS-style Status Bar | Show time and arc signal, Position, 24-hour clock, Signal dots follow real strength, Top offset, Status bar size |
-| Home Screen & Gestures | Show Android status bar, Show page indicators, Reverse swipe direction, Double-tap to sleep, Swipe down for notifications / quick settings, Swipe right to search, Bottom-left settings icon, Bottom-right search icon |
+| Home Screen & Gestures | Show Android status bar, Show page indicators, Reverse swipe direction, Double-tap to sleep, Swipe down for notifications / quick settings, Swipe right to search |
 | App Library | Smart categories, Edit App Category, Hide App |
 | Appearance | Glass blur intensity, Dark glass |
 | Icon Pack | Current icon pack (auto-detects installed packs) |
@@ -139,7 +138,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Backup and restore | Export settings, Import settings |
 | System | **Language**, Set as default launcher, Change Wallpaper, DuoLauncher app info, About |
 
-Open it from the home screen: bottom-left `···` → Launcher Settings, or long-press an empty home area.
+Open it by long-pressing an empty home area → Launcher Settings.
 
 ### 3.1 Language
 
@@ -291,7 +290,7 @@ To verify a build without publishing, go to Actions → **Release** → **Run wo
 
 ### Checking for updates inside the launcher
 
-Home screen → bottom-left `···` → **Launcher Settings** → the **Updates** section near the bottom:
+Long-press an empty home area → **Launcher Settings** → the **Updates** section near the bottom:
 
 | Item | Details |
 |---|---|
