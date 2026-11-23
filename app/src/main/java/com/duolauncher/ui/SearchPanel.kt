@@ -87,6 +87,9 @@ fun SearchPanel(
     val view = LocalView.current
     val textColor = glassTextColor(dark)
     val subColor = glassSubTextColor(dark)
+    // 两个显示开关（与主设置页共用同一份 DuoState）；最近常用由数量 0 表示不显示
+    val barVisible = DuoState.showSearchBar
+    val recentsVisible = DuoState.recentCount > 0
     val all = DuoState.visibleApps()
     val recents = DuoState.recentApps(DuoState.recentCount)
     // 输入框每敲一个字都会重组：过滤结果按「关键字 + 应用表」缓存，重组时不再整表扫一遍
@@ -194,13 +197,15 @@ fun SearchPanel(
     // focusEnabled 由 false→true 时把输入框重新挂回来（二次进入 / 小幅滑动又弹回）：
     // 输入框是重新组合的，DuoSearchField 的 autoFocus 会在本次挂载里只生效一次，
     // 键盘自然弹出，不会把焦点反复抢回来。
-    LaunchedEffect(focusEnabled) {
-        if (focusEnabled) {
+    LaunchedEffect(focusEnabled, barVisible) {
+        if (focusEnabled && barVisible) {
             fieldGone = false
             inputDismissed = false
             fieldCtl.requestInput()
         } else {
+            // 不在搜索页，或用户关掉了搜索栏：收键盘并把输入框摘掉，绝不留输入法会话
             dismissInputOnce()
+            if (!barVisible) fieldGone = true
         }
     }
 
@@ -253,79 +258,85 @@ fun SearchPanel(
 
             // 搜索框：磨砂玻璃条（细边框 + 半透明底），浮在虚化壁纸上——有「轮廓底」但不实心白板
             // 圆角与 App 资源库顶部搜索框保持一致（高 46dp → 半径 23dp，两端全圆）
-            GlassCard(
-                modifier = Modifier.fillMaxWidth().height(46.dp),
-                radius = 23.dp,
-                level = 0.55f,
-                dark = dark,
-                fill = 0.35f
-            ) {
-                Row(
-                    Modifier.fillMaxSize().padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.Search, null, tint = subColor, modifier = Modifier.size(19.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty() && fieldGone) Text(Lang.s(R.string.search), fontSize = 15.sp, color = subColor)
-                        // 关键：closing 一旦为 true 就不再合成输入框。
-                        // 输入框消失 → 输入法失去可依附的编辑器 → 会话结束 → 那条工具栏才会走。
-                        // 此时把已输入的内容画成静态文字，滑出过程中视觉不变。
-                        if (!fieldGone) {
-                            // 真实 EditText：Compose 的 BasicTextField 收不掉输入法会话，
-                            // 这条「输入状态工具栏」残留的根因就在这里
-                            DuoSearchField(
-                                controller = fieldCtl,
-                                value = query,
-                                textColor = textColor,
-                                hintColor = subColor,
-                                cursorColor = glassBlue,
-                                hint = Lang.s(R.string.search),
-                                autoFocus = focusEnabled,
-                                onValueChange = { query = it },
-                                onFocusChange = { if (it) inputDismissed = false },
-                                onSubmit = { openFirstResult() }
-                            )
-                        } else if (query.isNotEmpty()) {
-                            Text(query, fontSize = 15.sp, color = textColor, maxLines = 1)
-                        }
-                    }
-                    if (query.isNotEmpty() && !closing) {
-                        Icon(Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
-                            modifier = Modifier.size(18.dp).clickable { query = "" })
-                    }
-                }
-            }
-            Spacer(Modifier.height(18.dp))
-
-            if (query.isBlank()) {
-                Text(Lang.s(R.string.widget_recents), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = subColor,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 12.dp))
-                // 常用应用包进一张磨砂玻璃面板（细边框 + 半透明底）：有「轮廓底」而非实心白板
-                val recentRows = recents.chunked(5)
+            // 用户关掉「搜索栏」时整条不渲染——此时搜索页退化成纯「最近常用」启动器。
+            if (barVisible) {
                 GlassCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    radius = 24.dp,
+                    modifier = Modifier.fillMaxWidth().height(46.dp),
+                    radius = 23.dp,
                     level = 0.55f,
                     dark = dark,
-                    fill = 0.30f
+                    fill = 0.35f
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                        recentRows.forEachIndexed { i, row ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                row.forEach { app ->
-                                    AppIconCell(
-                                        app = app,
-                                        size = iconSize,
-                                        dark = dark,
-                                        showLabel = true,
-                                        onClick = { close(); AppRepository.launch(ctx, app.id) },
-                                        onLongClick = { nav.showAppMenu(app, "search") }
-                                    )
-                                }
-                                repeat(5 - row.size) { Spacer(Modifier.width(iconSize + 14.dp)) }
+                    Row(
+                        Modifier.fillMaxSize().padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Filled.Search, null, tint = subColor, modifier = Modifier.size(19.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (query.isEmpty() && fieldGone) Text(Lang.s(R.string.search), fontSize = 15.sp, color = subColor)
+                            // 关键：closing 一旦为 true 就不再合成输入框。
+                            // 输入框消失 → 输入法失去可依附的编辑器 → 会话结束 → 那条工具栏才会走。
+                            // 此时把已输入的内容画成静态文字，滑出过程中视觉不变。
+                            if (!fieldGone) {
+                                // 真实 EditText：Compose 的 BasicTextField 收不掉输入法会话，
+                                // 这条「输入状态工具栏」残留的根因就在这里
+                                DuoSearchField(
+                                    controller = fieldCtl,
+                                    value = query,
+                                    textColor = textColor,
+                                    hintColor = subColor,
+                                    cursorColor = glassBlue,
+                                    hint = Lang.s(R.string.search),
+                                    autoFocus = focusEnabled,
+                                    onValueChange = { query = it },
+                                    onFocusChange = { if (it) inputDismissed = false },
+                                    onSubmit = { openFirstResult() }
+                                )
+                            } else if (query.isNotEmpty()) {
+                                Text(query, fontSize = 15.sp, color = textColor, maxLines = 1)
                             }
-                            if (i < recentRows.lastIndex) Spacer(Modifier.height(14.dp))
+                        }
+                        if (query.isNotEmpty() && !closing) {
+                            Icon(Icons.Filled.Close, Lang.s(R.string.clear), tint = subColor,
+                                modifier = Modifier.size(18.dp).clickable { query = "" })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+
+            if (query.isBlank()) {
+                // 「最近常用」数量选 0 即不显示，不再单独给开关
+                if (recentsVisible) {
+                    Text(Lang.s(R.string.widget_recents), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = subColor,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 12.dp))
+                    // 常用应用包进一张磨砂玻璃面板（细边框 + 半透明底）：有「轮廓底」而非实心白板
+                    val recentRows = recents.chunked(5)
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        radius = 24.dp,
+                        level = 0.55f,
+                        dark = dark,
+                        fill = 0.30f
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                            recentRows.forEachIndexed { i, row ->
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                    row.forEach { app ->
+                                        AppIconCell(
+                                            app = app,
+                                            size = iconSize,
+                                            dark = dark,
+                                            showLabel = true,
+                                            onClick = { close(); AppRepository.launch(ctx, app.id) },
+                                            onLongClick = { nav.showAppMenu(app, "search") }
+                                        )
+                                    }
+                                    repeat(5 - row.size) { Spacer(Modifier.width(iconSize + 14.dp)) }
+                                }
+                                if (i < recentRows.lastIndex) Spacer(Modifier.height(14.dp))
+                            }
                         }
                     }
                 }

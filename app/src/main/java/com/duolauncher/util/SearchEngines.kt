@@ -21,7 +21,8 @@ object SearchEngines {
         SearchEngine("google", R.string.engine_google, "https://www.google.com/search?q=")
     )
 
-    val RECENT_COUNTS: List<Int> = listOf(5, 10, 15, 20)
+    /** 最近常用数量候选；0 表示不显示最近常用，不再单独给开关 */
+    val RECENT_COUNTS: List<Int> = listOf(0, 5, 10, 15, 20)
 
     fun of(id: String): SearchEngine = ALL.firstOrNull { it.id == id } ?: ALL[0]
 

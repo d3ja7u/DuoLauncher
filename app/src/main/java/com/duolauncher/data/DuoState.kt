@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -31,8 +32,27 @@ data class NowPlaying(
     val packageName: String,
     val sessionActivity: PendingIntent?,
     /** 当前是否在播放；暂停时为 false，胶囊仍在（长按可恢复） */
-    val playing: Boolean = false
+    val playing: Boolean = false,
+    /** 封面的身份标识（歌名|歌手|专辑|URI）：切歌或封面后到时用它判断是否需要刷新 */
+    val artKey: String = ""
 )
+
+/** 当前媒体会话的播放快照，供展开面板实时计算进度；不走 DuoState，避免每秒重组整个主屏 */
+data class PlaybackSnapshot(
+    val state: Int,
+    val position: Long,
+    val duration: Long,
+    val speed: Float,
+    val lastUpdate: Long
+) {
+    /** 按系统经过时间推算当前进度（PlaybackState.position 是快照，不会自己走） */
+    fun positionNow(): Long {
+        val delta = if (state == 3 /* PlaybackState.STATE_PLAYING */)
+            ((SystemClock.elapsedRealtime() - lastUpdate) * speed).toLong()
+        else 0L
+        return (position + delta).coerceIn(0L, duration.coerceAtLeast(0L))
+    }
+}
 
 /**
  * 全局状态 + 轻量持久化。所有改动即时写盘，Compose 直接观察这些 State。
@@ -119,7 +139,7 @@ object DuoState {
     var badgeColor by mutableStateOf(IOS_RED)       // 角标底色（ARGB）
 
     // ── 搜索 ──
-    /** 搜索页「最近常用」显示数量：5 / 10 / 15 / 20 */
+    /** 搜索页「最近常用」显示数量：0 / 5 / 10 / 15 / 20，0 表示不显示 */
     var recentCount by mutableStateOf(10)
     /** 网页搜索引擎 id：baidu / bing / google */
     var searchEngine by mutableStateOf("baidu")
@@ -129,8 +149,10 @@ object DuoState {
     var showSidebar by mutableStateOf(true)
     /** App 资源库那一页是否显示（关闭后 pager 里只剩主屏页与搜索页） */
     var showLibrary by mutableStateOf(true)
-    /** 主屏左下角「菜单」图标（点开含启动器设置）是否显示 */
-    /** 主屏右下角「搜索」图标是否显示 */
+    /** 整个搜索页是否显示（关闭后 pager 里不再插入搜索页，所有进搜索的入口都不再进入） */
+    var showSearchPage by mutableStateOf(true)
+    /** 搜索页是否显示搜索输入框（关闭后仍可用「最近常用」启动应用） */
+    var showSearchBar by mutableStateOf(true)
 
     // ── GitHub Releases 更新检查 ──
     /** 更新源地址；可以改成自建镜像，空串会自动回落到默认地址 */
@@ -203,8 +225,18 @@ object DuoState {
     var sidebarAlign by mutableStateOf("center")
     /** 是否显示右上角「正在播放」音乐胶囊 */
     var showNowPlaying by mutableStateOf(true)
+    /** 长按胶囊弹出的播放面板位置：top = 贴顶，center = 居中（默认，不挡右上角状态），bottom = 靠底 */
+    var playerPanelPosition by mutableStateOf("center")
+    /** 播放面板是否显示「歌词」按钮（还需播放器提供 lyric 入口才会真正显示） */
+    var showLyricButton by mutableStateOf(true)
     /** 当前正在播放的媒体（非播放态为 null） */
     var nowPlaying by mutableStateOf<NowPlaying?>(null)
+    /**
+     * 本地收藏的曲目（key = 包名|歌名|歌手）。
+     * 媒体会话没有统一的「收藏」标准，这里只记住按钮状态；实际动作转发给播放器的
+     * like / 收藏 自定义 action，或 setRating。收藏列表只在本机，不随备份走。
+     */
+    val mediaFavorites = mutableStateMapOf<String, Boolean>()
     var iconPack by mutableStateOf("")              // 选中的图标包包名，空=系统默认
     var appLoadDone by mutableStateOf(false)
     /** 主屏图标正在被拖动（临时状态，不持久化）：拖拽期间要锁住翻页和下滑手势 */
@@ -233,6 +265,24 @@ object DuoState {
     var status4gLabel by mutableStateOf("LTE")
     /** 是否显示电量数字；关闭后顶部圆环连成完整一段 */
     var showBatteryNumber by mutableStateOf(true)
+    /** 右上角是否显示时间（可单独关闭，只留三合一徽标） */
+    var showStatusTime by mutableStateOf(true)
+    /** 右上角是否显示三合一徽标（电量环 + WiFi / 信号点） */
+    var showStatusBadge by mutableStateOf(true)
+
+    /**
+     * 时间 + 三合一徽标的实际高度（dp）。**唯一口径**：HomePage 排版、
+     * [gridTopGapDp]、胶囊与侧栏避让都读它，避免关掉其中一项后还留着空档。
+     */
+    fun statusBlockHeightDp(): Float {
+        if (!showDuoStatus) return 0f
+        val scale = statusScale.coerceIn(0.55f, 1.8f)
+        val timeH = 18f * 1.35f * scale
+        val badgeH = 50f * scale
+        val gap = if (showStatusTime && showStatusBadge) 6f * scale else 0f
+        val h = (if (showStatusTime) timeH else 0f) + gap + (if (showStatusBadge) badgeH else 0f)
+        return h
+    }
 
     // ── 壁纸自动切换：默认关闭，不改变用户原有壁纸习惯 ──
     var wallpaperRotate by mutableStateOf(false)
@@ -353,6 +403,16 @@ object DuoState {
             sidebarGlass = o.optDouble("sbGlass", 1.2).toFloat().coerceIn(0.4f, 2.4f)
             sidebarAlign = o.optString("sbAlign", "center").let { if (it == "bottom") "bottom" else "center" }
             showNowPlaying = o.optBoolean("npOn", true)
+            playerPanelPosition = o.optString("npPos", "center").let {
+                if (it == "top" || it == "bottom") it else "center"
+            }
+            showLyricButton = o.optBoolean("npLyric", true)
+            mediaFavorites.clear()
+            o.optJSONArray("npFav")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    arr.optString(i).takeIf { it.isNotBlank() }?.let { mediaFavorites[it] = true }
+                }
+            }
             sidebarVer = o.optInt("sbVer", 0)
             // 有存档 = 早就初始化过主屏了；缺省 true，避免"清空后被重新填满"
             homeSeeded = o.optBoolean("homeSeeded", true)
@@ -367,6 +427,8 @@ object DuoState {
             status4gLabel = if (o.optString("net4g", "") == "4G" ||
                 o.optString("netLabel", "") == "4G") "4G" else "LTE"
             showBatteryNumber = o.optBoolean("battNum", true)
+            showStatusTime = o.optBoolean("stTime", true)
+            showStatusBadge = o.optBoolean("stBadge", true)
             wallpaperRotate = o.optBoolean("wpRotate", false)
             wallpaperIntervalMin = o.optInt("wpInterval", 60).let { if (it > 0) it else 60 }
             wallpaperRandom = o.optBoolean("wpRandom", false)
@@ -379,12 +441,17 @@ object DuoState {
             showBadges = o.optBoolean("badgeOn", true)
             badgeColor = o.optInt("badgeColor", IOS_RED)
             recentCount = o.optInt("recentCnt", 10).let { n ->
-                if (n in listOf(5, 10, 15, 20)) n else 10
+                if (n in listOf(0, 5, 10, 15, 20)) n else 10
             }
             searchEngine = o.optString("searchEng", "baidu").ifBlank { "baidu" }
             searchContacts = o.optBoolean("searchContacts", true)
             showSidebar = o.optBoolean("showSb", true)
             showLibrary = o.optBoolean("libOn", true)
+            showSearchPage = o.optBoolean("searchOn", true)
+            showSearchBar = o.optBoolean("searchBarOn", true)
+            // 旧版本用独立开关控制「最近常用」显隐，现在只有数量为 0 才不显示：
+            // 关过那个开关的存档，迁移成 0，效果保持不变
+            if (!o.optBoolean("searchRecentOn", true)) recentCount = 0
             updateUrl = o.optString("updUrl", UpdateChecker.DEFAULT_URL)
                 .ifBlank { UpdateChecker.DEFAULT_URL }
             autoCheckUpdate = o.optBoolean("updAuto", true)
@@ -498,6 +565,11 @@ object DuoState {
             o.put("sbGlass", sidebarGlass.toDouble())
             o.put("sbAlign", sidebarAlign)
             o.put("npOn", showNowPlaying)
+            o.put("npPos", playerPanelPosition)
+            o.put("npLyric", showLyricButton)
+            val favArr = JSONArray()
+            mediaFavorites.filter { it.value }.forEach { favArr.put(it.key) }
+            o.put("npFav", favArr)
             o.put("sbVer", sidebarVer)
             o.put("homeSeeded", homeSeeded)
             o.put("duoStatus", showDuoStatus)
@@ -508,6 +580,8 @@ object DuoState {
             o.put("statusScale", statusScale.toDouble())
             o.put("net4g", status4gLabel)
             o.put("battNum", showBatteryNumber)
+            o.put("stTime", showStatusTime)
+            o.put("stBadge", showStatusBadge)
             o.put("wpRotate", wallpaperRotate)
             o.put("wpInterval", wallpaperIntervalMin)
             o.put("wpRandom", wallpaperRandom)
@@ -524,6 +598,8 @@ object DuoState {
             o.put("searchContacts", searchContacts)
             o.put("showSb", showSidebar)
             o.put("libOn", showLibrary)
+            o.put("searchOn", showSearchPage)
+            o.put("searchBarOn", showSearchBar)
             o.put("updUrl", updateUrl)
             o.put("updAuto", autoCheckUpdate)
             o.put("updAt", lastUpdateCheck)
@@ -858,8 +934,7 @@ object DuoState {
      */
     fun gridTopGapDp(landscape: Boolean, systemTopDp: Float = this.systemTopDp): Float {
         val statusTopPad = if (statusRight) statusTop else maxOf(statusTop, 64)
-        val scale = statusScale.coerceIn(0.55f, 1.8f)
-        val statusH = (18f * 1.35f + 6f + 50f) * scale
+        val statusH = statusBlockHeightDp()
         val statusDrawTop = (statusTopPad - 20f).coerceAtLeast(2f)
         // 状态块画在侧栏通道里，且与侧栏同侧
         val statusInLane = showSidebar && (sidebarLeft != statusRight)

@@ -46,6 +46,10 @@ import com.duolauncher.util.NetworkLabelResolver
 import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.launch
 
+/** pager 页语义标记：与主屏真实页序号（0..N-1）不冲突的负数 */
+private const val PAGER_SEARCH = -1
+private const val PAGER_LIBRARY = -2
+
 class MainActivity : ComponentActivity() {
 
     /** Home 键回到主屏的信号 */
@@ -244,18 +248,34 @@ class MainActivity : ComponentActivity() {
             DuoState.layoutHome(DuoState.homeColumns, gridRows).size
         }
         // 「设置 → 主屏幕 → 显示 App 资源库」关掉时，pager 里不再有资源库这一页
+        // 「设置 → 搜索 → 显示搜索页面」关掉时，pager 里不再有搜索页
+        // 用一张显式的「页语义表」统一维护顺序，避免各开关组合下出现下标错位：
+        //   PAGER_SEARCH = 搜索页，PAGER_LIBRARY = 资源库页，0..homePageCount-1 = 主屏页
         val showLib = DuoState.showLibrary
-        val totalPages = homePageCount + 1 + (if (showLib) 1 else 0)
+        val showSearch = DuoState.showSearchPage
         /** 「真实页序号」沿用旧语义：主屏 0..homePageCount-1，资源库 homePageCount */
         val libraryPage = homePageCount
-        /** 搜索页固定在 pager 一端，始终挨着主屏第一页（倒序时换到另一端） */
-        val searchPagerPage = if (DuoState.reversePages) totalPages - 1 else 0
-        fun toPagerPage(actual: Int): Int {
-            val a = actual.coerceIn(0, libraryPage)
-            return if (DuoState.reversePages) libraryPage - a else a + 1
+        val pagerPages = remember(homePageCount, showLib, showSearch, DuoState.reversePages) {
+            buildList {
+                if (DuoState.reversePages) {
+                    if (showLib) add(PAGER_LIBRARY)
+                    for (a in homePageCount - 1 downTo 0) add(a)
+                    if (showSearch) add(PAGER_SEARCH)
+                } else {
+                    if (showSearch) add(PAGER_SEARCH)
+                    for (a in 0 until homePageCount) add(a)
+                    if (showLib) add(PAGER_LIBRARY)
+                }
+            }
         }
-        /** 资源库页的 pager 下标；关闭显示时为 -1（不参与任何计算） */
-        val libraryPagerPage = if (showLib) toPagerPage(libraryPage) else -1
+        val totalPages = pagerPages.size
+        /** 搜索页 / 资源库页的 pager 下标；关闭显示时为 -1（永不匹配） */
+        val searchPagerPage = pagerPages.indexOf(PAGER_SEARCH)
+        val libraryPagerPage = pagerPages.indexOf(PAGER_LIBRARY)
+        fun toPagerPage(actual: Int): Int {
+            val at = pagerPages.indexOf(actual.coerceIn(0, libraryPage))
+            return if (at >= 0) at else 0
+        }
         val pagerState = rememberPagerState(initialPage = toPagerPage(0)) { totalPages }
 
         /**
@@ -295,7 +315,8 @@ class MainActivity : ComponentActivity() {
         // 滑动过程中它一直是 false，停稳那一刻才变 true，正是我们要的语义。
         val searchFocused by remember(searchPagerPage) {
             derivedStateOf {
-                pagerState.currentPage == searchPagerPage &&
+                searchPagerPage >= 0 &&
+                        pagerState.currentPage == searchPagerPage &&
                         !pagerState.isScrollInProgress &&
                         kotlin.math.abs(pagerState.currentPageOffsetFraction) < 0.02f
             }
@@ -307,6 +328,8 @@ class MainActivity : ComponentActivity() {
         // 逐帧的 alpha 变化放到 graphicsLayer 的 draw 阶段读取，不触发任何重组。
         val showSearchBackdrop by remember(searchPagerPage) {
             derivedStateOf {
+                // 搜索页被关掉时这一页根本不存在，不做任何计算
+                if (searchPagerPage < 0) return@derivedStateOf false
                 val pos = pagerState.currentPage + pagerState.currentPageOffsetFraction
                 (1f - kotlin.math.abs(pos - searchPagerPage)) > 0.01f
             }
@@ -405,16 +428,42 @@ class MainActivity : ComponentActivity() {
 
         /** 打开设置等浮层前，若正停在搜索页就先回主屏，避免关掉浮层后键盘又弹出来 */
         fun leaveSearchIfNeeded() {
-            if (pagerState.currentPage == searchPagerPage) {
+            if (searchPagerPage >= 0 && pagerState.currentPage == searchPagerPage) {
                 uiScope.launch { runCatching { pagerState.scrollToPage(toPagerPage(0)) } }
             }
         }
 
+        /**
+         * pager 下标由「当前页语义表」算出：主屏页个数可能因拖动临时变化，
+         * 这里按当下页数重建一份顺序再查下标，避免关掉搜索页后整体错位。
+         */
+        fun pagerIndexOfHome(actual: Int, count: Int): Int {
+            val lib = DuoState.showLibrary
+            val search = DuoState.showSearchPage
+            val list = buildList {
+                if (DuoState.reversePages) {
+                    if (lib) add(PAGER_LIBRARY)
+                    for (a in count - 1 downTo 0) add(a)
+                    if (search) add(PAGER_SEARCH)
+                } else {
+                    if (search) add(PAGER_SEARCH)
+                    for (a in 0 until count) add(a)
+                    if (lib) add(PAGER_LIBRARY)
+                }
+            }
+            return list.indexOf(actual.coerceIn(0, count - 1)).coerceAtLeast(0)
+        }
+
         val nav = remember(totalPages, libraryPage, searchPagerPage) {
             Nav(
-                // 点右下角搜索键 / 侧栏动作：和 goLibrary 一样走 pager 的原生翻页动画
+                // 侧栏「搜索」动作：和 goLibrary 一样走 pager 的原生翻页动画。
+                // 搜索页被关掉时给提示，不让点击看起来没反应。
                 openSearch = {
-                    uiScope.launch { runCatching { pagerState.animateScrollToPage(searchPagerPage) } }
+                    if (DuoState.showSearchPage && searchPagerPage >= 0) {
+                        uiScope.launch { runCatching { pagerState.animateScrollToPage(searchPagerPage) } }
+                    } else {
+                        ctx.toast(Lang.s(R.string.toast_search_hidden))
+                    }
                 },
                 openSettings = { leaveSearchIfNeeded(); settingsSub = null; overlay = "settings" },
                 openSidebarEditor = { leaveSearchIfNeeded(); settingsSub = "sidebar"; overlay = "settings" },
@@ -433,8 +482,7 @@ class MainActivity : ComponentActivity() {
                             DuoState.homeColumns,
                             DuoState.effectiveHomeRows(cfg.screenHeightDp, landscape)
                         ).size.coerceAtLeast(1)
-                        val actual = page.coerceIn(0, count - 1)
-                        val idx = if (DuoState.reversePages) count - actual else actual + 1
+                        val idx = pagerIndexOfHome(page, count)
                         runCatching { pagerState.animateScrollToPage(idx) }
                     }
                 },
@@ -465,6 +513,14 @@ class MainActivity : ComponentActivity() {
                 val id = key.toIntOrNull() ?: return@forEach
                 val info = runCatching { widgetManager.getAppWidgetInfo(id) }.getOrNull() ?: return@forEach
                 DuoState.ensureWidgetSize(id, info.minWidth, info.minHeight)
+            }
+        }
+
+        // 关掉「显示搜索页面」时搜索页会从 pager 里消失：留在原下标会落到资源库页，
+        // 所以统一回到主屏第一页，观感上就是「搜索页没了，人还在桌面上」。
+        LaunchedEffect(DuoState.showSearchPage) {
+            if (!DuoState.showSearchPage) {
+                runCatching { pagerState.scrollToPage(toPagerPage(0)) }
             }
         }
 

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.duolauncher.data.AppInfo
 import com.duolauncher.data.DuoState
 import com.duolauncher.data.IconPacks
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 /** 取当前系统壁纸作为毛玻璃的模糊底图（动态壁纸时返回 null，自动降级为纯色玻璃） */
@@ -38,20 +41,25 @@ fun rememberWallpaperBitmap(): Bitmap? {
     val ctx = LocalContext.current
     // 壁纸自动切换后 version 递增，强制重新取一次系统壁纸，避免毛玻璃底图还是旧图
     val version = DuoState.wallpaperVersion
-    return remember(ctx, version) {
-        runCatching {
-            val d = WallpaperManager.getInstance(ctx).drawable ?: return@runCatching null
-            // 毛玻璃底图最终只缩到 140px 宽显示，720x1440(约 4MB) 纯属浪费；
-            // 每次换壁纸都会重建一张，降到 360x720 后常驻内存减少约 3/4。
-            val w = (d.intrinsicWidth.takeIf { it > 0 } ?: 360).coerceAtMost(360)
-            val h = (d.intrinsicHeight.takeIf { it > 0 } ?: 720).coerceAtMost(720)
-            val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val c = Canvas(b)
-            d.setBounds(0, 0, w, h)
-            d.draw(c)
-            b
-        }.getOrNull()
-    }
+    // 解码系统壁纸 + 缩放是一次几 MB 的位图操作，旧实现放在组合里同步做，
+    // 冷启动第一帧要等它做完（实测 20–40ms）。这里挪到 IO 线程，先出界面再补图，
+    // GlassBackdrop 对 null 已有降级路径（只铺色调层），不会闪白屏。
+    return produceState<Bitmap?>(initialValue = null, ctx, version) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val d = WallpaperManager.getInstance(ctx).drawable ?: return@runCatching null
+                // 毛玻璃底图最终只缩到 140px 宽显示，720x1440(约 4MB) 纯属浪费；
+                // 每次换壁纸都会重建一张，降到 360x720 后常驻内存减少约 3/4。
+                val w = (d.intrinsicWidth.takeIf { it > 0 } ?: 360).coerceAtMost(360)
+                val h = (d.intrinsicHeight.takeIf { it > 0 } ?: 720).coerceAtMost(720)
+                val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                val c = Canvas(b)
+                d.setBounds(0, 0, w, h)
+                d.draw(c)
+                b
+            }.getOrNull()
+        }
+    }.value
 }
 
 @Composable

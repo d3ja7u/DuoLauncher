@@ -623,15 +623,20 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
         modifier.then(Modifier.onGloballyPositioned { blockBounds = it.boundsInWindow() }),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = status.time,
-            fontSize = timeSize,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp,
-            color = inkColor,
-            style = TextStyle(shadow = Shadow(shade, Offset(0f, 1.8f * scale), 4f * scale))
-        )
-        Spacer(Modifier.height((6 * scale).dp))
+        if (DuoState.showStatusTime) {
+            Text(
+                text = status.time,
+                fontSize = timeSize,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp,
+                color = inkColor,
+                style = TextStyle(shadow = Shadow(shade, Offset(0f, 1.8f * scale), 4f * scale))
+            )
+        }
+        if (DuoState.showStatusTime && DuoState.showStatusBadge) {
+            Spacer(Modifier.height((6 * scale).dp))
+        }
+        if (DuoState.showStatusBadge) {
         Canvas(Modifier.size(iconSize)) {
             val side = min(size.width, size.height)
             val k = side / 80f           // 80×80 视图网格 → 像素
@@ -768,6 +773,7 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
                 }
                 drawNetLabel(measurer, netLabel, cx, cy, k, inkColor, shade)
             }
+        }
         }
     }
 }
@@ -1259,3 +1265,12 @@ private fun rememberWallpaperInk(bounds: Rect?): State<Boolean> {
     }
     return inkState
 }
+
+/**
+ * 「时间 + 三合一」所在区域的明暗结论，供主屏其他元素复用（目前是音乐胶囊的频谱）：
+ * 与时间用同一份判断——浅色壁纸 → 黑，深色壁纸 → 白，所以频谱和上面的时间始终同色。
+ * 还没算过（例如状态栏整体关闭）时退回 [fallback]。
+ */
+@Composable
+fun rememberStatusInkColor(fallback: Color): Color =
+    if (inkBooted) (if (inkState.value) Color.White else Color.Black) else fallback

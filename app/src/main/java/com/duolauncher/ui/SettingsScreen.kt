@@ -467,6 +467,32 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         DuoState.showNowPlaying = on; DuoState.save()
                         if (on && !badgeAccess) DuoNotificationListener.openSettings(ctx)
                     }
+                    if (DuoState.showNowPlaying) {
+                        SettingRow(Lang.s(R.string.np_panel_position), dark = dark)
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                                .horizontalScroll(rememberScrollState())
+                        ) {
+                            SegmentedChips(
+                                options = listOf(
+                                    "top" to Lang.s(R.string.np_pos_top),
+                                    "center" to Lang.s(R.string.np_pos_center),
+                                    "bottom" to Lang.s(R.string.np_pos_bottom)
+                                ),
+                                selected = DuoState.playerPanelPosition,
+                                dark = dark
+                            ) {
+                                DuoState.playerPanelPosition = it; DuoState.save()
+                            }
+                        }
+                        SettingToggle(
+                            Lang.s(R.string.np_show_lyric),
+                            Lang.s(R.string.np_show_lyric_desc),
+                            DuoState.showLyricButton, dark
+                        ) { on ->
+                            DuoState.showLyricButton = on; DuoState.save()
+                        }
+                    }
                     if (DuoState.showNowPlaying && !badgeAccess) {
                         SettingRow(
                             Lang.s(R.string.notif_access),
@@ -500,6 +526,12 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             dark = dark
                         ) { DuoState.recentCount = it.toInt(); DuoState.save() }
                     }
+                    Text(
+                        Lang.s(R.string.recent_count_hint),
+                        fontSize = 11.sp,
+                        color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(start = 20.dp, end = 16.dp, bottom = 6.dp)
+                    )
                     SettingRow(
                         Lang.s(R.string.search_engine),
                         SearchEngines.label(DuoState.searchEngine), dark
@@ -516,6 +548,19 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         Lang.s(R.string.search_contacts_desc),
                         DuoState.searchContacts, dark
                     ) { DuoState.searchContacts = it; DuoState.save() }
+                    SettingToggle(
+                        Lang.s(R.string.search_show_bar),
+                        Lang.s(R.string.search_show_bar_desc),
+                        DuoState.showSearchBar, dark
+                    ) { DuoState.showSearchBar = it; DuoState.save() }
+                    // 搜索页若被整体关闭，页内的设置入口也就进不去了，所以这里必须留一份开关
+                    SettingToggle(
+                        Lang.s(R.string.search_show_page),
+                        Lang.s(R.string.search_show_page_desc),
+                        DuoState.showSearchPage, dark
+                    ) { on ->
+                        DuoState.showSearchPage = on; DuoState.save()
+                    }
                 }
             }
         }
@@ -525,6 +570,10 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                 Column(Modifier.padding(vertical = 6.dp)) {
                     SettingToggle(Lang.s(R.string.status_time_signal), Lang.s(R.string.status_time_signal_desc),
                         DuoState.showDuoStatus, dark) { DuoState.showDuoStatus = it; DuoState.save() }
+                    SettingToggle(Lang.s(R.string.status_show_time), Lang.s(R.string.status_show_time_desc),
+                        DuoState.showStatusTime, dark) { DuoState.showStatusTime = it; DuoState.save() }
+                    SettingToggle(Lang.s(R.string.status_show_badge), Lang.s(R.string.status_show_badge_desc),
+                        DuoState.showStatusBadge, dark) { DuoState.showStatusBadge = it; DuoState.save() }
                     SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.statusRight) Lang.s(R.string.status_pos_right) else Lang.s(R.string.status_pos_left), dark,
                         trailing = {
                             Row {

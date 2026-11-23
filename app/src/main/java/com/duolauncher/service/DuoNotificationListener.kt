@@ -6,10 +6,15 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.MediaMetadata
+import android.media.Rating
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -61,6 +66,14 @@ class DuoNotificationListener : NotificationListenerService() {
     /** 专辑封面缓存：同一首歌平繁回调（播放/暂停/进度）时不再重复解码大图 */
     private var artKey: String = ""
     private var artCache: Bitmap? = null
+    /** 上一次用的原图（未缩放）：通知重复 post 时是同一个实例，可直接判等复用 */
+    private var artRaw: Bitmap? = null
+    /** 晚到封面的重试计数（按 artKey 归零，最多重试几次） */
+    private var artRetryKey: String = ""
+    private var artRetryCount: Int = 0
+    /** 切歌后播放器的通知大图标常晚于元数据到达，延后再取一次封面 */
+    private val artRefreshHandler = Handler(Looper.getMainLooper())
+    private var artRefreshRunnable: Runnable? = null
 
     // ── 音乐胶囊：监听系统媒体会话 ──
     private var mediaSessionManager: MediaSessionManager? = null
@@ -110,8 +123,20 @@ class DuoNotificationListener : NotificationListenerService() {
         val n = sbn.notification
         // 音乐胶囊兜底：媒体播放类通知出现、但当前还没拿到活跃会话时，
         // 主动重拉一次（部分 ROM 的 onActiveSessionsChanged 收不到，仅靠回调会漏掉）
-        if (n?.category == Notification.CATEGORY_TRANSPORT && DuoState.nowPlaying == null) {
-            refreshMedia()
+        if (n?.category == Notification.CATEGORY_TRANSPORT) {
+            val np = DuoState.nowPlaying
+            if (np == null) {
+                // 还没拿到会话：兜底重拉一次活跃会话（部分 ROM 收不到 onActiveSessionsChanged）
+                refreshMedia()
+            } else if (sbn.packageName == np.packageName && shouldRefreshArt(np)) {
+                // 封面晚了才到：只重取封面，不再重拉活跃会话（那是跨进程调用）。
+                // artIsStale 为假时（这首已经有封面了）完全不再排队 ——
+                // 网易云播放中每秒刷一次通知，旧实现于是每秒 getActiveSessions + 缩图 + 整屏重组。
+                artRefreshRunnable?.let { artRefreshHandler.removeCallbacks(it) }
+                val forceRefresh = Runnable { handleMedia(lastControllers, forceArt = true) }
+                artRefreshRunnable = forceRefresh
+                artRefreshHandler.postDelayed(forceRefresh, 400L)
+            }
         }
         val key = keyOf(sbn)
         if (!isCountable(sbn)) {
@@ -220,17 +245,36 @@ class DuoNotificationListener : NotificationListenerService() {
     }
 
     /** 主动拉一次当前活跃会话（注册瞬间不一定会回调 onActiveSessionsChanged） */
-    private fun refreshMedia() {
+    private fun refreshMedia(forceArt: Boolean = false) {
         val msm = mediaSessionManager ?: return
         runCatching {
             lastControllers = msm.getActiveSessions(
                 ComponentName(this, DuoNotificationListener::class.java)
             )
-            handleMedia(lastControllers)
+            handleMedia(lastControllers, forceArt)
         }
     }
 
     private fun refreshCurrent() = handleMedia(lastControllers)
+
+    /**
+     * 这首还需不需要再取一次封面。
+     *
+     * - 还没有封面 / 缓存里放的是上一首：每首最多补 [ART_RETRY_LIMIT] 次；
+     * - 已有封面：再补 [ART_RETRY_EXTRA] 次就够 —— 切歌瞬间播放器常先用上一首的大图标
+     *   顶一下，晚到的高清封面得靠这几次补救。
+     *
+     * 总之每首都是「有限次」，不像旧实现那样播放器每刷一次通知就重取一次
+     * （网易云播放中每秒刷通知 → 每秒 getActiveSessions + 缩图 + 整屏重组）。
+     */
+    private fun shouldRefreshArt(np: NowPlaying): Boolean {
+        if (np.artKey != artRetryKey) { artRetryKey = np.artKey; artRetryCount = 0 }
+        val stale = np.art == null || artKey != np.artKey
+        val limit = if (stale) ART_RETRY_LIMIT else ART_RETRY_EXTRA
+        if (artRetryCount >= limit) return false
+        artRetryCount++
+        return true
+    }
 
     /** 仅在真正播放时展示胶囊；暂停 / 停止则清空。
      * 活跃判定放宽：除 STATE_PLAYING 外，BUFFERING / 快进快退 / 切歌等过渡态也算活跃；
@@ -257,7 +301,7 @@ class DuoNotificationListener : NotificationListenerService() {
      * 选会话的优先级：正在播或处于过渡态 → 当前已选且仍有曲目 → 任意有曲目的会话。
      * `playing` 用来驱动胶囊的视觉状态（暂停时竖条变暗）。
      */
-    private fun handleMedia(controllers: List<MediaController>) {
+    private fun handleMedia(controllers: List<MediaController>, forceArt: Boolean = false) {
         fun hasMeta(c: MediaController) =
             c.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)?.isNotBlank() == true
 
@@ -285,6 +329,7 @@ class DuoNotificationListener : NotificationListenerService() {
         val meta = chosen.metadata
         val title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
         val artist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+        val album = meta?.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
         val pkg = chosen.packageName ?: ""
         val act: PendingIntent? = chosen.sessionActivity
         val state = chosen.playbackState?.state
@@ -295,30 +340,89 @@ class DuoNotificationListener : NotificationListenerService() {
             PlaybackState.STATE_ERROR -> false
             else -> true
         }
-        // 播放器常常每秒刷新好几次 playbackState（进度），歌与播放状态都没变时
-        // 不要再新建 NowPlaying —— 那会让整个主屏（胶囊 + 频谱）反复重组、动画重启。
+        // 封面身份必须包含专辑和封面 URI：同一首歌在不同专辑里封面不同；
+        // 很多播放器先给歌名、封面 URI 晚一拍才到，旧逻辑只比歌名就把后到的封面挡掉了。
+        val newArtKey = listOf(
+            title, artist, album,
+            meta?.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI) ?: "",
+            meta?.getString(MediaMetadata.METADATA_KEY_ART_URI) ?: ""
+        ).joinToString("|")
+        // 播放器常常每秒刷新好几次 playbackState / 通知（进度），歌与播放状态都没变、
+        // 封面也还是同一张时，**任何情况下**都不要再新建 NowPlaying ——
+        // 那会让整个主屏（胶囊 + 频谱 + 状态栏避让）每秒钟重组一次。
+        // 旧实现只要 forceArt（等晚到封面）为真就无条件重建，网易云播放中每秒刷通知，
+        // 于是每秒白掉一次整屏重组 + 一次 320px 缩图。
         val cur = DuoState.nowPlaying
-        if (cur != null && cur.title == title && cur.artist == artist &&
-            cur.packageName == pkg && cur.playing == playing && cur.sessionActivity == act
-        ) return
-        val art: Bitmap? = artFor(meta, "$title|$artist")
-        DuoState.nowPlaying = NowPlaying(title, artist, art, pkg, act, playing)
+        val metaSame = cur != null && cur.title == title && cur.artist == artist &&
+            cur.packageName == pkg && cur.playing == playing &&
+            cur.sessionActivity == act && cur.artKey == newArtKey
+        if (metaSame && cur?.art != null && !forceArt) return
+        val art: Bitmap? = artFor(meta, pkg, newArtKey, forceArt) ?: cur?.art
+        if (metaSame && art === cur?.art) return
+        DuoState.nowPlaying = NowPlaying(title, artist, art, pkg, act, playing, newArtKey)
     }
 
     /**
-     * 专辑封面：降采样到 320px 以内，并按「歌名|歌手」缓存。
+     * 专辑封面：降采样到 320px 以内，按「歌名|歌手|专辑|封面URI」缓存。
      *
-     * 不少播放器把上千像素的原图塞进通知元数据，而胶囊上的封面只有几十 dp；
-     * 每次播放/暂停回调都取原图既不必要也占内存。缓存命中时连 getBitmap 都不再调用。
+     * 取图顺序：① 会话里的 bitmap（ALBUM_ART / ART）；② 通知大图标（多数播放器都有）；
+     * ③ content:// 的封面 URI。原来只走 ①，网易云等把封面放通知大图标 / URI 里时
+     * 就一直空着；再加上「封面晚到被 early-return 挡住」，表现为切歌不换图。
      */
-    private fun artFor(meta: MediaMetadata?, key: String): Bitmap? {
-        if (key.isNotBlank() && key == artKey) return artCache
+    private fun artFor(meta: MediaMetadata?, pkg: String, key: String, force: Boolean = false): Bitmap? {
+        if (!force && key.isNotBlank() && key == artKey) return artCache
+        // 通知大图标常比元数据晚到，优先用会话给出的封面 URI（明确指向当前曲目），
+        // 再退回通知大图标，避免把上一首的图缓存成这一首的。
         val raw = runCatching {
             meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
                 ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-        }.getOrNull() ?: return null
+        }.getOrNull()
+            ?: uriArt(
+                meta?.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI)
+                    ?: meta?.getString(MediaMetadata.METADATA_KEY_ART_URI)
+            )
+            ?: notificationArt(pkg)
+            ?: return null
+        // 强制刷新时通知大图标可能还是同一张 Bitmap 实例（只是通知被重新 post 了一次）：
+        // 直接复用缓存，别再缩一遍图、更别让上层因此重建 NowPlaying
+        if (raw === artRaw && key == artKey) return artCache
+        val out = downscale(raw)
+        artKey = key
+        artRaw = raw
+        artCache = out
+        return out
+    }
+
+    /** 媒体通知的大图标：系统里最稳定的封面来源，尤其网易云 / QQ 音乐 */
+    private fun notificationArt(pkg: String): Bitmap? {
+        if (pkg.isBlank()) return null
+        return runCatching {
+            activeNotifications.firstOrNull { sbn ->
+                sbn.packageName == pkg &&
+                    (sbn.notification.category == Notification.CATEGORY_TRANSPORT ||
+                        sbn.notification.extras?.containsKey("android.media.metadata.TITLE") == true)
+            }?.notification?.extras?.let { b ->
+                @Suppress("DEPRECATION")
+                b.get(Notification.EXTRA_LARGE_ICON) as? Bitmap
+                    ?: (b.get(Notification.EXTRA_LARGE_ICON) as? android.graphics.drawable.Icon)
+                        ?.loadDrawable(this)?.let { (it as? android.graphics.drawable.BitmapDrawable)?.bitmap }
+            }
+        }.getOrNull()
+    }
+
+    /** content:// 封面 URI：只在本地读，不发起网络请求 */
+    private fun uriArt(uriString: String?): Bitmap? {
+        if (uriString.isNullOrBlank()) return null
+        return runCatching {
+            val uri = Uri.parse(uriString)
+            if (uri.scheme != "content") return@runCatching null
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        }.getOrNull()
+    }
+
+    private fun downscale(raw: Bitmap): Bitmap {
         val maxEdge = maxOf(raw.width, raw.height)
-        val out = if (maxEdge > 320) runCatching {
+        return if (maxEdge > 320) runCatching {
             val s = 320f / maxEdge
             Bitmap.createScaledBitmap(
                 raw,
@@ -327,9 +431,6 @@ class DuoNotificationListener : NotificationListenerService() {
                 true
             )
         }.getOrDefault(raw) else raw
-        artKey = key
-        artCache = out
-        return out
     }
 
     private fun publish() {
@@ -411,6 +512,10 @@ class DuoNotificationListener : NotificationListenerService() {
     }
 
     companion object {
+        /** 还没有封面时，同一首最多补几次 */
+        private const val ART_RETRY_LIMIT = 4
+        /** 已有封面后，再补几次（等晚到的高清图） */
+        private const val ART_RETRY_EXTRA = 2
         private const val PREF_READ = "duo_badge_read_v1"
         private const val KEY_READ = "readKeys"
 
@@ -494,6 +599,161 @@ class DuoNotificationListener : NotificationListenerService() {
             // 乐观更新：回调慢 / 不回调的播放器也能立刻看到状态翻转，胶囊不会闪没
             if (np != null) DuoState.nowPlaying = np.copy(playing = !playing)
         }
+
+        /** 展开面板用：播放快照。返回 null 表示会话已不在 */
+        fun snapshot(): com.duolauncher.data.PlaybackSnapshot? {
+            val c = instance?.activeController ?: return null
+            val st = c.playbackState ?: return null
+            return com.duolauncher.data.PlaybackSnapshot(
+                state = st.state,
+                position = st.position,
+                duration = c.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L,
+                speed = st.playbackSpeed,
+                // getLastUpdateTime() 是隐藏 API，这里以读取时刻为基准，误差 < 1 帧
+                lastUpdate = android.os.SystemClock.elapsedRealtime()
+            )
+        }
+
+        /** 进度是否可拖：播放器声明了 ACTION_SEEK_TO 且时长已知 */
+        fun canSeek(): Boolean {
+            val c = instance?.activeController ?: return false
+            val st = c.playbackState ?: return false
+            return st.actions and PlaybackState.ACTION_SEEK_TO != 0L
+        }
+
+        fun skipNext() {
+            runCatching { instance?.activeController?.transportControls?.skipToNext() }
+        }
+
+        fun skipPrevious() {
+            runCatching { instance?.activeController?.transportControls?.skipToPrevious() }
+        }
+
+        fun seekTo(ms: Long) {
+            runCatching { instance?.activeController?.transportControls?.seekTo(ms) }
+        }
+
+        /** 收藏曲目的稳定 key（跨会话重连仍认得同一首） */
+        fun favoriteKey(np: com.duolauncher.data.NowPlaying): String =
+            "${np.packageName}|${np.title}|${np.artist}"
+
+        /**
+         * 收藏 / 取消收藏。
+         * 媒体会话没有统一标准：优先发播放器自带的 like / 收藏 自定义 action，
+         * 没有则退回 setRating（Rating 在网易云等实际上是「喜欢」而非「收藏」，
+         * 所以仅作兜底）。本机状态立即翻转，不依赖播放器回传。
+         */
+        fun toggleFavorite(ctx: Context): Boolean {
+            val np = DuoState.nowPlaying ?: return false
+            val key = favoriteKey(np)
+            val next = !DuoState.mediaFavorites[key].orDefaultFalse()
+            DuoState.mediaFavorites[key] = next
+            DuoState.save()
+            val c = instance?.activeController
+            var sent = false
+            if (c != null) {
+                val actions = runCatching { c.playbackState?.customActions }.getOrNull().orEmpty()
+                // 网易云同时给了 like（红心）和 收藏（加歌单），用户说的是「收藏」，优先后者
+                val action = actions.firstOrNull { it.name.contains("收藏", true) }
+                    ?: actions.firstOrNull {
+                        it.name.toString().equals("like", ignoreCase = true) ||
+                            it.name.toString().contains("favorite", ignoreCase = true)
+                    }
+                if (action != null) {
+                    sent = runCatching {
+                        c.transportControls.sendCustomAction(action, action.extras)
+                        true
+                    }.getOrDefault(false)
+                }
+                if (!sent) {
+                    sent = runCatching {
+                        c.transportControls.setRating(
+                            Rating.newHeartRating(next)
+                        )
+                        true
+                    }.getOrDefault(false)
+                }
+            }
+            toast(ctx, if (next) R.string.np_favorited else R.string.np_unfavorited)
+            return sent
+        }
+
+        /** 当前播放器是否提供歌词入口（网易云以 lyric 自定义 action 的形式给出） */
+        fun hasLyricAction(): Boolean = lyricAction() != null
+
+        /**
+         * 打开播放器自带的歌词页。
+         * 国内播放器普遍不把歌词文本放进 MediaMetadata，只能通过它暴露的
+         * lyric / 歌词 自定义 action 跳到 App 内部歌词界面。
+         */
+        fun openLyrics(ctx: Context): Boolean {
+            val c = instance?.activeController ?: return false
+            val action = lyricAction() ?: return false
+            val sent = runCatching {
+                c.transportControls.sendCustomAction(action, action.extras)
+                true
+            }.getOrDefault(false)
+            if (!sent) toast(ctx, R.string.np_lyric_unavailable)
+            return sent
+        }
+
+        private fun lyricAction(): PlaybackState.CustomAction? {
+            val actions = instance?.activeController?.playbackState?.customActions ?: return null
+            fun isLyric(a: PlaybackState.CustomAction): Boolean {
+                val n = a.name?.toString().orEmpty()
+                return n.equals("lyric", true) || n.contains("lyric", true) || n.contains("歌词")
+            }
+            return actions.firstOrNull(::isLyric)
+        }
+
+        /** 当前可用音频输出设备（只列系统外放 / 有线 / 蓝牙 / USB，不含虚拟路由） */
+        fun outputDevices(ctx: Context): List<AudioDeviceInfo> {
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return emptyList()
+            return runCatching {
+                am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter { d ->
+                    when (d.type) {
+                        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                        AudioDeviceInfo.TYPE_BLE_HEADSET,
+                        AudioDeviceInfo.TYPE_USB_HEADSET,
+                        AudioDeviceInfo.TYPE_USB_DEVICE,
+                        AudioDeviceInfo.TYPE_HDMI,
+                        AudioDeviceInfo.TYPE_DOCK -> true
+                        else -> false
+                    }
+                }.distinctBy { it.type }
+            }.getOrDefault(emptyList())
+        }
+
+        /** 当前实际出声的是不是扬声器：扬声器用灰色默认输出图标，其它设备高亮。 */
+        fun activeOutputIsSpeaker(ctx: Context): Boolean {
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return true
+            return runCatching {
+                val active = am.activePlaybackConfigurations
+                    .mapNotNull { it.audioDeviceInfo }
+                    .filter { !it.isSource }
+                active.isEmpty() || active.all { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+            }.getOrDefault(true)
+        }
+
+        /**
+         * 切换输出到指定设备。
+         * Android 12+ 的 MediaRouter2 只允许媒体会话持有者切系统路由，桌面启动器
+         * 不是网易云的会话持有者，直接 selectRoute 会被系统拒；所以这里统一拉起
+         * 媒体通知的输出切换器（stateful 的系统入口），由用户在系统面板里点选。
+         */
+        fun openOutputSwitcher(ctx: Context): Boolean =
+            com.duolauncher.util.SystemPanel.openNotifications(ctx)
+
+        private fun toast(ctx: Context, resId: Int) {
+            runCatching {
+                android.widget.Toast.makeText(ctx, resId, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        private fun Boolean?.orDefaultFalse(): Boolean = this == true
 
         /**
          * 音乐胶囊：点击打开对应播放器。

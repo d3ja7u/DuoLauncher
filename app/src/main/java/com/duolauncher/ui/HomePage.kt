@@ -3,20 +3,16 @@ package com.duolauncher.ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.StartOffset
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -31,16 +27,24 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,6 +105,8 @@ fun HomePage(
     /** 长按主屏空白弹出的菜单（编辑主屏幕 / 设置） */
     var sidebarMenu by remember { mutableStateOf<SidebarItem?>(null) }
     var showHomeMenu by remember { mutableStateOf(false) }
+    /** 长按音乐胶囊弹出的灵动岛式播放面板 */
+    var showPlayerPanel by remember { mutableStateOf(false) }
     /** 左下角菜单「添加应用到主屏幕」打开的应用选择器 */
     var appPickerOpen by remember { mutableStateOf(false) }
     var openFolder by remember { mutableStateOf<FolderItem?>(null) }
@@ -152,9 +158,9 @@ fun HomePage(
     // 时间 + 电量三合一再往上提：只挪绘制位置，网格 topGap 仍用 statusTopPad，不动图标行距。
     // 侧栏「靠下居中」的基准也用这个真实下沿（见下方 sbRegionTop），两者始终对齐。
     val statusDrawTop = (statusTopPad - 20f).coerceAtLeast(2f)
-    val statusScale = DuoState.statusScale.coerceIn(0.55f, 1.8f)
-    // 状态块真实高度：时间(≈1.35×字号) + 6dp 间距 + 徽标 50dp
-    val statusHeight = (18f * 1.35f + 6f + 50f) * statusScale
+    // 状态块真实高度（时间 / 三合一徽标可分别关闭）走 DuoState 的唯一口径，
+    // 关掉其中一项后，胶囊与侧栏会跟着上移，不会留下空档。
+    val statusHeight = DuoState.statusBlockHeightDp()
     val cfg = LocalConfiguration.current
     val landscape = cfg.screenWidthDp > cfg.screenHeightDp
     // 顶部留白走 DuoState 的唯一口径：状态块和侧栏同侧时不再为它整块让位；
@@ -192,6 +198,8 @@ fun HomePage(
     Box(
         Modifier
             .fillMaxSize()
+            // 播放面板弹出时把身后的桌面（含底部）虚化，关闭即恢复清晰
+            .then(if (showPlayerPanel) Modifier.blur(8.dp) else Modifier)
             .onGloballyPositioned { pageOrigin = it.positionInRoot() }
             // 主屏空白处手势：双击息屏 + 长按进「启动器设置」，两个手势互不干扰
             // （双击在超时前等第二击；长按超过阈值即触发，并取消 pending taps）。
@@ -867,8 +875,8 @@ fun HomePage(
                             top = (statusDrawTop + statusHeight + 8).dp
                         )
                         .width(sidebarWidth),
-                    onOpen = { DuoNotificationListener.openMediaApp(ctx) },
-                    onToggle = { DuoNotificationListener.togglePlayPause() }
+                    onPanel = { showPlayerPanel = true },
+                    onPlayPause = { DuoNotificationListener.togglePlayPause() }
                 )
             }
         }
@@ -896,6 +904,11 @@ fun HomePage(
                 }
             }
         }
+    }
+
+    // 长按音乐胶囊 → 灵动岛式播放面板（收藏 / 进度 / 音量 / 上一首 / 播放暂停 / 下一首）
+    if (showPlayerPanel) {
+        PlayerPanel(dark = dark, onDismiss = { showPlayerPanel = false })
     }
 
     // 编辑态点「-」→ iOS 风格移除确认（从主屏幕移除 / 卸载应用 / 取消）
@@ -1135,7 +1148,7 @@ private val NpCapsuleHeight = 34.dp
 /**
  * 右上角「正在播放」胶囊（紧凑版，对齐参考图）：
  * 左侧圆形专辑封面 + 右侧 iOS 风格频谱（5 条、中间高两端低、随律动起伏）。
- * 单击打开播放器；长按暂停 / 继续——胶囊很小，不拆热区，避免点不中或误触暂停把胶囊弄没。
+ * 单击展开播放面板；长按暂停 / 继续——胶囊很小，不拆热区，避免点不中或误触。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1143,13 +1156,13 @@ private fun NowPlayingCapsule(
     np: NowPlaying,
     dark: Boolean,
     modifier: Modifier,
-    onOpen: () -> Unit,
-    onToggle: () -> Unit
+    onPanel: () -> Unit,
+    onPlayPause: () -> Unit
 ) {
     GlassCard(
         modifier = modifier
             .height(NpCapsuleHeight)
-            .combinedClickable(onClick = onOpen, onLongClick = onToggle),
+            .combinedClickable(onClick = onPanel, onLongClick = onPlayPause),
         radius = NpCapsuleHeight / 2,          // = 高度一半：iOS 胶囊那种全圆端头（连续曲率观感）
         level = DuoState.glassLevel,
         fill = 0.9f,
@@ -1177,50 +1190,351 @@ private fun NowPlayingCapsule(
                     Icon(Icons.Filled.MusicNote, null, tint = glassSubTextColor(dark), modifier = Modifier.size(15.dp))
                 }
             }
-            // iOS 风格频谱：中间最高、两端渐低，播放时随律动起伏；暂停定格变暗
-            MusicSpectrum(playing = np.playing, color = glassTextColor(dark))
+            // iOS 风格频谱：与上面的时间同色（按壁纸明暗自适应黑 / 白），
+            // 状态栏整体关闭、还拿不到明暗结论时回退到玻璃文字色
+            MusicSpectrum(
+                playing = np.playing,
+                color = rememberStatusInkColor(glassTextColor(dark))
+            )
         }
     }
 }
 
 /**
+ * 点胶囊弹出的「灵动岛」播放面板：大封面 + 歌名 + 可拖动进度条 +
+ * 收藏 / 上一首 / 暂停 / 下一首 / 歌词（播放器支持时）。
+ *
+ * 进度用 [DuoNotificationListener.snapshot] 每 500ms 取一次，
+ * 只重组这一个 Dialog，不碰 DuoState.nowPlaying（否则整个主屏每秒重画）。
+ */
+@Composable
+private fun PlayerPanel(
+    dark: Boolean,
+    onDismiss: () -> Unit
+) {
+    val ctx = LocalContext.current
+    val np = DuoState.nowPlaying
+    if (np == null) {
+        onDismiss()
+        return
+    }
+    var tick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            tick = System.currentTimeMillis()
+            kotlinx.coroutines.delay(500L)
+        }
+    }
+    // tick 只用于触发重组；进度从会话实时快照读取，不写回 DuoState
+    @Suppress("UNUSED_VARIABLE") val refresh = tick
+    val snap = DuoNotificationListener.snapshot()
+    val duration = snap?.duration ?: 0L
+    val canSeek = duration > 0 && DuoNotificationListener.canSeek()
+    var dragPos by remember { mutableFloatStateOf(-1f) }
+    val shownPos = if (dragPos >= 0f) dragPos.toLong() else (snap?.positionNow() ?: 0L)
+    val favKey = DuoNotificationListener.favoriteKey(np)
+    var fav by remember(favKey) { mutableStateOf(DuoState.mediaFavorites[favKey] == true) }
+    // 歌词按钮是否可见：设置里开启，且当前播放器提供了歌词入口
+    val showLyric = DuoState.showLyricButton && DuoNotificationListener.hasLyricAction()
+    // 封面 / 歌名点击都回到播放器，并收起面板
+    val openApp: () -> Unit = {
+        DuoNotificationListener.openMediaApp(ctx)
+        onDismiss()
+    }
+
+    // 位置由设置决定（默认居中，避免贴顶时压住右上角时间和三合一状态）。
+    // 贴顶时从左上角挖孔右侧开始；靠底时留出系统手势条高度。
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
+        val position = DuoState.playerPanelPosition
+        // 左右用同一套边距，三个位置卡片都落在同一条水平中心线上；
+        // 80dp 左边距同时避开左上角挖孔，卡片最大宽度固定，平板也不会被拉宽。
+        val sideAvoid = 80.dp
+        val alignment: Alignment = when (position) {
+            "top" -> Alignment.TopCenter
+            "bottom" -> Alignment.BottomCenter
+            else -> Alignment.Center
+        }
+        val padding = when (position) {
+            "top" -> PaddingValues(start = sideAvoid, end = sideAvoid, top = 10.dp)
+            "bottom" -> PaddingValues(start = sideAvoid, end = sideAvoid, bottom = 28.dp)
+            else -> PaddingValues(horizontal = sideAvoid)
+        }
+        // 卡片外空白点击即关闭面板（Dialog 内容铺满屏幕，onDismissRequest 不会因空白处触发）
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                )
+                .padding(padding)
+        ) {
+            GlassCard(
+                // 消费卡片范围内的点击，避免卡片内空白区误触关闭
+                modifier = Modifier
+                    .align(alignment)
+                    .fillMaxWidth()
+                    .widthIn(max = 350.dp)
+                    .wrapContentHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
+                    ),
+                radius = 28.dp, level = 0.9f, fill = 1f, dark = dark
+            ) {
+                Column(Modifier.padding(20.dp)) {
+                // 标题行：封面 + 歌名歌手 + 频谱
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(54.dp).clip(RoundedCornerShape(11.dp))
+                            .background(glassTextColor(dark).copy(alpha = 0.14f))
+                            .clickable(onClick = openApp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (np.art != null) {
+                            Image(
+                                bitmap = np.art.asImageBitmap(), contentDescription = null,
+                                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Icon(Icons.Filled.MusicNote, null, tint = glassSubTextColor(dark), modifier = Modifier.size(24.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(13.dp))
+                    Column(Modifier.weight(1f).clickable(onClick = openApp)) {
+                        Text(np.title.ifBlank { Lang.s(R.string.unknown_title) },
+                            fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                            color = glassTextColor(dark), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(3.dp))
+                        Text(np.artist, fontSize = 12.sp, color = glassSubTextColor(dark),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    val panelAccent = remember(np.artKey, np.art, dark) {
+                        coverAccentColor(np.art, if (dark) onGlassDark else onGlassLight)
+                    }
+                    MusicSpectrum(playing = np.playing, color = panelAccent)
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // 进度条：拖动时本地预览，松手才真正 seek
+                val positionText = remember(shownPos) { fmtTime(shownPos) }
+                val remainText = remember(shownPos, duration) {
+                    if (duration > 0) "-${fmtTime((duration - shownPos).coerceAtLeast(0))}" else "--:--"
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(positionText, fontSize = 11.sp, color = glassSubTextColor(dark))
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.weight(1f).height(28.dp), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.Slider(
+                            value = if (duration > 0) shownPos.coerceIn(0, duration).toFloat() else 0f,
+                            onValueChange = { if (canSeek) dragPos = it.toDouble().toLong().toFloat() },
+                            onValueChangeFinished = {
+                                if (canSeek && dragPos >= 0f) DuoNotificationListener.seekTo(dragPos.toLong())
+                                dragPos = -1f
+                            },
+                            valueRange = 0f..(duration.coerceAtLeast(1).toFloat()),
+                            enabled = canSeek,
+                            colors = androidx.compose.material3.SliderDefaults.colors(
+                                thumbColor = glassTextColor(dark),
+                                activeTrackColor = glassTextColor(dark),
+                                inactiveTrackColor = glassTextColor(dark).copy(alpha = 0.22f),
+                                disabledThumbColor = glassTextColor(dark).copy(alpha = 0.4f),
+                                disabledActiveTrackColor = glassTextColor(dark).copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(remainText, fontSize = 11.sp, color = glassSubTextColor(dark))
+                }
+                if (!canSeek) {
+                    Text(Lang.s(R.string.np_no_seek), fontSize = 10.sp, color = glassSubTextColor(dark))
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                // 控制行：收藏 / 上一首 / 播放暂停 / 下一首 / 歌词（支持时显示）
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(onClick = {
+                        DuoNotificationListener.toggleFavorite(ctx)
+                        fav = DuoState.mediaFavorites[favKey] == true
+                    }) {
+                        Icon(
+                            if (fav) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = null,
+                            tint = if (fav) Color(0xFFFFD34E) else glassSubTextColor(dark),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    IconButton(onClick = { DuoNotificationListener.skipPrevious() }) {
+                        Icon(Icons.Filled.SkipPrevious, null, tint = glassTextColor(dark), modifier = Modifier.size(28.dp))
+                    }
+                    IconButton(onClick = { DuoNotificationListener.togglePlayPause() }) {
+                        Icon(
+                            if (np.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            null, tint = glassTextColor(dark), modifier = Modifier.size(34.dp)
+                        )
+                    }
+                    IconButton(onClick = { DuoNotificationListener.skipNext() }) {
+                        Icon(Icons.Filled.SkipNext, null, tint = glassTextColor(dark), modifier = Modifier.size(28.dp))
+                    }
+                    // 歌词：调用播放器自带的歌词入口（网易云为 lyric 自定义 action，
+                    // 实际是开/关桌面歌词）。播放器不向系统暴露歌词开关的真实状态，
+                    // 所以这里只做纯切换、不显示对勾，避免出现状态不一致。
+                    // 不支持时留同宽占位，保持一行 5 个槽位的间距不变。
+                    if (showLyric) {
+                        IconButton(onClick = { DuoNotificationListener.openLyrics(ctx) }) {
+                            LyricIcon(dark = dark)
+                        }
+                    } else {
+                        Spacer(Modifier.size(48.dp))
+                    }
+                }
+            }
+        }
+        }
+    }
+
+}
+
+/** mm:ss（超过一小时按 h:mm:ss） */
+private fun fmtTime(ms: Long): String {
+    val total = (ms / 1000L).coerceAtLeast(0L)
+    val h = total / 3600L
+    val m = (total % 3600L) / 60L
+    val s = total % 60L
+    return if (h > 0) "$h:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
+    else "${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}"
+}
+
+/**
+ * 从专辑封面提取主色，给频谱着色，让胶囊跟当前歌曲的封面颜色一致。
+ * 降采样到 20×20 做颜色分桶，跳过近白/近黑/低饱和像素，取数量最多的色桶；
+ * 最后把亮度归一到中等偏亮，保证在深/浅两种玻璃底上都看得清。取不到就回退到 [fallback]。
+ */
+private fun coverAccentColor(bitmap: Bitmap?, fallback: Color): Color {
+    if (bitmap == null || bitmap.isRecycled) return fallback
+    return try {
+        val w = 20
+        val h = 20
+        val small = Bitmap.createScaledBitmap(bitmap, w, h, false)
+        val buckets = HashMap<Int, Int>()
+        for (y in 0 until h) for (x in 0 until w) {
+            val c = small.getPixel(x, y)
+            if (((c ushr 24) and 0xFF) < 180) continue     // 跳过透明
+            var r = (c shr 16) and 0xFF
+            var g = (c shr 8) and 0xFF
+            var b = c and 0xFF
+            val mx = maxOf(r, g, b)
+            val mn = minOf(r, g, b)
+            if (mx - mn < 24 || mx < 40 || mn > 220) continue   // 跳过近灰/近黑/近白
+            val key = ((r / 32) shl 10) or ((g / 32) shl 5) or (b / 32)
+            buckets[key] = (buckets[key] ?: 0) + 1
+        }
+        val best = buckets.maxByOrNull { it.value }?.key ?: return fallback
+        var r = ((best shr 10) and 0x7) * 32 + 16
+        var g = ((best shr 5) and 0x7) * 32 + 16
+        var b = (best and 0x7) * 32 + 16
+        val lum = r * 0.299f + g * 0.587f + b * 0.114f
+        if (lum in 1f..255f) {
+            val k = (190f / lum).coerceIn(0.6f, 1.8f)
+            r = (r * k).toInt().coerceIn(0, 255)
+            g = (g * k).toInt().coerceIn(0, 255)
+            b = (b * k).toInt().coerceIn(0, 255)
+        }
+        Color(r, g, b)
+    } catch (e: Throwable) {
+        fallback
+    }
+}
+
+/**
  * 胶囊右侧的迷你频谱（对齐 iOS 灵动岛那种「中间高、两边低」的 5 条）。
- * 系统媒体会话拿不到音频采样，这里用不同相位/周期的起伏模拟律动，
- * 播放时持续跳动，暂停时定格成一个低矮的静态形状。
+ * 系统媒体会话拿不到音频采样，这里用不同周期的三角波模拟律动。
+ *
+ * 性能：旧实现每帧改 5 个 Box 的 height —— 高度是布局参数，等于每帧重排整颗胶囊，
+ * 120Hz 机型实测播放时占用 >1 个核（主线程 69% + RenderThread 58%）。
+ * 现在整条频谱是一个 [Canvas]：高度变化只在「绘制」阶段算，相位时钟只在 draw
+ * 里读取（不进组合），并把刷新率压到 24fps —— 小频谱本来也用不上 120fps。
+ * 暂停时不挂任何动画协程，直接画静态矮条，桌面回到 0 帧空闲。
  */
 @Composable
 private fun MusicSpectrum(playing: Boolean, color: Color) {
-    val base = listOf(5f, 10f, 15f, 10f, 5f)          // 各条满格高度（dp）
-    // 只在播放时创建无限动画。暂停 / 无媒体时若仍挂着 5 个 transition，
-    // 它们会持续向 Choreographer 请求帧，桌面常驻白白耗电。
-    val ratios: List<State<Float>>? = if (playing) {
-        val transition = rememberInfiniteTransition()
-        base.indices.map { i ->
-            transition.animateFloat(
-                initialValue = 0.30f,
-                targetValue = 1f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(420 + i * 75, easing = FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse,
-                    initialStartOffset = StartOffset(i * 95)
-                )
-            )
+    val base = remember { floatArrayOf(5f, 10f, 15f, 10f, 5f) }   // 各条满格高度（dp）
+    val barW = 2.5.dp
+    val gap = 2.5.dp
+    val maxH = 15.dp
+    // 相位时钟：只在绘制阶段被读取，所以更新它只会让这块重绘，不会重组/重排
+    val clock = remember { mutableLongStateOf(0L) }
+    LaunchedEffect(playing) {
+        if (!playing) {
+            clock.longValue = 0L
+            return@LaunchedEffect
         }
-    } else null
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.5.dp)
+        // 用 delay 而不是 withFrameNanos：后者会让 Choreographer 每个 vsync（120Hz）
+        // 都回调一次主线程，纯属为了等一个 15fps 的节拍。
+        while (true) {
+            clock.longValue = System.nanoTime()
+            kotlinx.coroutines.delay(66L)
+        }
+    }
+    Canvas(
+        Modifier
+            .width(barW * base.size + gap * (base.size - 1))
+            .height(maxH)
+            // 单独一层 RenderNode：这样每帧只重录这几条小竖条，
+            // 不会连带把整屏（壁纸 + 图标 + 文字）重录一遍
+            .graphicsLayer()
     ) {
-        base.forEachIndexed { i, full ->
-            val k = ratios?.get(i)?.value ?: 0.45f
-            Box(
-                Modifier
-                    .width(2.5.dp)
-                    .height((full * k).coerceAtLeast(2f).dp)
-                    .clip(RoundedCornerShape(1.5.dp))
-                    .background(color.copy(alpha = if (playing) 0.92f else 0.32f))
+        val t = clock.longValue / 1_000_000_000f
+        val w = barW.toPx()
+        val step = w + gap.toPx()
+        val full = size.height
+        base.forEachIndexed { i, peak ->
+            val ratio = if (playing) {
+                // 周期 / 相位各条不同，凑出「各跳各的」观感
+                val period = 0.42f + i * 0.075f
+                val phase = (t / (period * 2f) + i * 0.13f) % 1f
+                val tri = if (phase < 0.5f) phase * 2f else (1f - phase) * 2f
+                0.30f + 0.70f * tri
+            } else 0.45f
+            val h = (full * (peak / 15f) * ratio).coerceAtLeast(2.dp.toPx())
+            drawRoundRect(
+                color = color.copy(alpha = if (playing) 0.92f else 0.32f),
+                topLeft = Offset(i * step, (full - h) / 2f),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(w / 2f)
             )
         }
+    }
+}
+
+/**
+ * 歌词按钮：仿网易云通知中心的「词」字样式，字色与通知文字一致。
+ * 播放器不暴露歌词开关状态，所以不加对勾，只作切换动作。
+ * 用文字直接绘制，避免图标资源在不同密度下糊掉。
+ */
+@Composable
+private fun LyricIcon(dark: Boolean) {
+    Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+        Text(
+            Lang.s(R.string.np_lyric_char),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = glassTextColor(dark),
+            maxLines = 1
+        )
     }
 }
 

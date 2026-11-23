@@ -14,9 +14,11 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
   <img src="screenshots/02-sidebar-music.jpg" width="23%">
   <img src="screenshots/03-library-categories.jpg" width="23%">
   <img src="screenshots/04-library-list.jpg" width="23%">
+  <img src="screenshots/05-player-panel.jpg" width="23%">
+  <img src="screenshots/06-player-lyrics.jpg" width="23%">
 </p>
 
-> All screenshots were taken on a Unihertz Titan 2 Elite (v1.5.10) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
+> All screenshots were taken on a Unihertz Titan 2 Elite (v1.6.1) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
 
 ---
 
@@ -27,7 +29,7 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
 | Glassmorphism | Live-blurred glass for the sidebar, search pill and settings cards; adjustable blur intensity and light/dark glass |
 | iOS-style status bar | Time + arc signal + Wi-Fi dots replaces the Android status bar; switchable side, 12/24-hour clock |
 | Sidebar dock | A vertical column of favorite apps on the right (or left); fully editable, reorderable, with its own icon scale |
-| Music capsule | Shows what is playing above the dock: round cover art + animated spectrum. Tap to reopen the player, long-press to pause / resume; it stays while paused |
+| Music capsule | Shows what is playing above the dock: round cover art + animated spectrum tinted from the cover. Tap to expand a fixed-width playback panel with a blurred backdrop; long-press to pause / resume. In the panel, tap the cover or track title to open the player; it also has favorite, draggable seek bar, previous / pause / next, and a lyrics toggle when the music app supports it. Tap outside to close; it stays while paused. Set the panel position (top / center / bottom) in Settings → Music Capsule; centered by default |
 | App Library | Category cards plus an iOS-style A–Z list; the right-hand index bar supports tap and drag |
 | Unified search | Apps + phone contacts + web search in one place; Enter opens the first result, web search opens in the default browser |
 | Notification badges | Unread counts on icons, Apple-style outlined bubbles, 8 colors |
@@ -82,11 +84,11 @@ Swipe left from the home screen (or right, if **Reverse swipe direction** is ena
 
 Open it by **swiping right on the home screen** (the leftmost page), or with a Search action added to the sidebar. The swipe gesture can be turned off in Settings → Home Screen & Gestures.
 
-- **Apps**: filters names and package names as you type. With an empty query it shows **Recent** apps — the count is configurable (5 / 10 / 15 / 20).
+- **Apps**: filters names and package names as you type. With an empty query it shows **Recent** apps — the count is configurable (0 / 5 / 10 / 15 / 20); 0 hides the section.
 - **Contacts**: matches names and phone numbers (the Contacts permission is requested on first use). Tap a row to open the contact, tap the phone icon to dial directly.
 - **Web search**: a "Search with Baidu / Bing / Google" row at the bottom. Tapping it — or pressing Enter when no app or contact matches — opens the **system default browser**; there is no embedded web view.
 - **Enter = first result**: pressing Search / Enter on the keyboard opens the first result in order (app → contact → web search).
-- **Search settings**: the gear in the top-right of the search page, or Settings → Search, controls the recent count, search engine and contact toggle. Both edit the same state.
+- **Search settings**: the gear in the top-right of the search page, or Settings → Search, controls the recent count, search engine and contact toggle; the search bar and the whole search page can be turned off in Settings → Search. Both edit the same state.
 - To close: **swipe left**, **swipe up**, or press **Back**. The IME is explicitly hidden on close, so no keyboard toolbar is left behind on the home screen.
 
 ### 2.5 Gestures
@@ -126,7 +128,7 @@ In edit mode or in the App Library, long-press an icon to:
 | Section | Items |
 |---|---|
 | Sidebar | Show sidebar, Position, Edit Sidebar, Cutout top padding, Home icon size, Sidebar icon size |
-| Search | Recent apps count (5 / 10 / 15 / 20), Search engine (Baidu / Bing / Google), Search contacts |
+| Search | Recent apps count (0 / 5 / 10 / 15 / 20, 0 hides), Search engine (Baidu / Bing / Google), Search contacts, Show search bar, Show search page |
 | iOS-style Status Bar | Show time and arc signal, Position, 24-hour clock, Signal dots follow real strength, Top offset, Status bar size |
 | Home Screen & Gestures | Show Android status bar, Show page indicators, Reverse swipe direction, Double-tap to sleep, Swipe down for notifications / quick settings, Swipe right to search |
 | App Library | Smart categories, Edit App Category, Hide App |
@@ -236,6 +238,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.6.1 | Tapping the music capsule opens a playback panel with progress dragging, favourite, previous / next and a lyrics entry, while a long press pauses or resumes; the panel can sit at the top, centre or bottom; the status bar clock and tri-status badge can be hidden independently; the search bar or the whole search page can be turned off, and the recent-apps count accepts 0 to hide the section; improved the capsule spectrum and album art loading and switching |
 | 1.6.0 | Long-press an empty area of the home screen to add apps or system widgets; icons and widgets can be placed freely, dragged into folders, or dragged to the screen edge to move to an adjacent screen; Manage Categories supports creating, renaming and deleting categories with restore; the App Library can be hidden in Settings; improved display on tablets and other large-screen devices |
 | 1.5.16 | Added a "backup sleep method" for double-tap-to-sleep with accessibility or device-admin schemes; improved how the desktop clock and tri-status badge choose black or white icons on dark wallpapers; fixed the backup method failing to enable and the accessibility prompt still appearing when it is enabled |
 | 1.5.15 | Further reduced power consumption and optimised overall app performance |
