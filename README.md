@@ -6,7 +6,8 @@
 
 不是主题包，也不是图标包——它就是一个完整的 Launcher（`android.intent.category.HOME`），可以直接设为默认桌面。
 
-[![Release](https://img.shields.io/github/v/release/d3ja7u/DuoLauncher?label=release)](https://github.com/d3ja7u/DuoLauncher/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/d3ja7u/DuoLauncher?label=github)](https://github.com/d3ja7u/DuoLauncher/releases/latest)
+[![Gitee Release](https://img.shields.io/gitee/v/release/d3ja7u/DuoLauncher?label=gitee)](https://gitee.com/d3ja7u/DuoLauncher/releases/latest)
 [![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
 
 <p align="center">
@@ -193,7 +194,8 @@
 - Gradle 8.9（随 wrapper 提供）
 
 ```bash
-git clone https://github.com/d3ja7u/DuoLauncher.git
+git clone https://gitee.com/d3ja7u/DuoLauncher.git   # 国内推荐
+# 或：git clone https://github.com/d3ja7u/DuoLauncher.git
 cd DuoLauncher
 
 # 指向本机 Android SDK（该文件不入库）
@@ -274,22 +276,17 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ## 八、下载与发行版
 
-**不想自己编译**：直接到 [Releases](https://github.com/d3ja7u/DuoLauncher/releases) 下载最新一版的 `DuoLauncher-x.y.z.apk` 安装。
+**不想自己编译**：直接到 [Releases](/releases/latest) 下载最新一版的 `DuoLauncher-x.y.z.apk` 安装（GitHub / Gitee 两边同步发布，任选其一）。
 
-发版是全自动的，由 `.github/workflows/release.yml` 完成：改好版本号、打个 `v*` tag 推上去，Actions 就会编译 APK、生成变更说明并发布 Release。
+发版流程：改 `app/build.gradle.kts` 里的 `versionName` / `versionCode` → 提交 → 打 `v*` tag → **GitHub 与 Gitee 两边都推送源码和 tag**，并分别在两个平台创建 Release、上传同一个 APK 包。两端的版本号、更新说明和资产保持一致。
 
 ```bash
-# 1. 先改 app/build.gradle.kts 里的 versionName / versionCode
-# 2. 提交后打 tag 并推送，一次做完
-git tag v1.5.1
-git push origin main --tags
+git tag v1.6.1
+git push origin main --tags      # GitHub
+git push gitee main --tags       # Gitee
 ```
 
-工作流第一步会校验 tag 与 `versionName` 是否一致，不一致直接失败——省得发出去的包版本号和 Release 标题对不上。
-
-只想确认编译能不能过、暂时不想发版时，到 Actions 页面选 `Release` → **Run workflow** 手动触发即可，产物会作为 artifact 保留 7 天，不会产生 Release。
-
-签名说明：CI 用 `assembleRelease` 产出正式包（已开启 R8 与资源缩减，约 2.1 MB、非 debuggable，工作流内还会校验体积不超过 30 MB）。签名使用仓库 Secrets 里的 `DEBUG_KEYSTORE_B64`（本机 `~/.android/debug.keystore` 的 base64），与本地 `./gradlew assembleDebug` / `assembleRelease` 同签名，手机上装有旧版时可直接覆盖安装。若该 Secret 未配置，工作流会退回 CI 自动生成的调试签名，此时装新版要先卸载旧版。
+签名说明：正式包用 `assembleRelease` 产出（R8 与资源缩减、非 debuggable）。签名沿用本机 `~/.android/debug.keystore`，与旧版同签名，可直接覆盖安装。
 
 ### 在启动器里检查更新
 

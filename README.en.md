@@ -6,7 +6,8 @@ An Android home screen launcher written in Kotlin + Jetpack Compose, with an iOS
 
 This is not a theme or an icon pack — it is a complete launcher (`android.intent.category.HOME`) and can be set as your default home app.
 
-[![Release](https://img.shields.io/github/v/release/d3ja7u/DuoLauncher?label=release)](https://github.com/d3ja7u/DuoLauncher/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/d3ja7u/DuoLauncher?label=github)](https://github.com/d3ja7u/DuoLauncher/releases/latest)
+[![Gitee Release](https://img.shields.io/gitee/v/release/d3ja7u/DuoLauncher?label=gitee)](https://gitee.com/d3ja7u/DuoLauncher/releases/latest)
 [![License](https://img.shields.io/github/license/d3ja7u/DuoLauncher)](LICENSE)
 
 <p align="center">
@@ -193,7 +194,8 @@ Requirements:
 - Gradle 8.9 (provided by the wrapper)
 
 ```bash
-git clone https://github.com/d3ja7u/DuoLauncher.git
+git clone https://gitee.com/d3ja7u/DuoLauncher.git   # recommended in China
+# or: git clone https://github.com/d3ja7u/DuoLauncher.git
 cd DuoLauncher
 
 # Point to your local Android SDK (this file is not committed)
@@ -274,22 +276,17 @@ Version matrix:
 
 ## 8. Downloads and releases
 
-**Don't want to build it?** Grab `DuoLauncher-x.y.z.apk` from [Releases](https://github.com/d3ja7u/DuoLauncher/releases).
+**Don't want to build it?** Grab `DuoLauncher-x.y.z.apk` from [Releases](/releases/latest) (published on both GitHub and Gitee; pick either one).
 
-Releases are fully automated by `.github/workflows/release.yml`: bump the version, push a `v*` tag, and Actions compiles the APK, generates release notes and publishes the Release.
+Release flow: bump `versionName` / `versionCode` in `app/build.gradle.kts` → commit → tag `v*` → **push source and tags to both GitHub and Gitee**, then create a Release and upload the same APK on each platform. Version numbers, release notes and assets stay identical on both.
 
 ```bash
-# 1. Bump versionName / versionCode in app/build.gradle.kts
-# 2. Commit, then tag and push in one go
-git tag v1.5.1
-git push origin main --tags
+git tag v1.6.1
+git push origin main --tags      # GitHub
+git push gitee main --tags       # Gitee
 ```
 
-The workflow's first step fails if the tag doesn't match `versionName`, so the APK version and the Release title can't drift apart.
-
-To verify a build without publishing, go to Actions → **Release** → **Run workflow**. The APK is kept as an artifact for 7 days and no Release is created.
-
-**Signing**: CI builds the distributable APK with `assembleRelease` (R8 + resource shrinking, ~2.1 MB, not debuggable; the workflow also fails the build if it exceeds 30 MB). Signing uses the `DEBUG_KEYSTORE_B64` repository Secret (base64 of your local `~/.android/debug.keystore`), so CI output matches both local `./gradlew assembleDebug` and `assembleRelease` and can be installed over an older version. If that Secret is missing, the workflow falls back to a generated CI debug key and you'll need to uninstall the old build first.
+**Signing**: the release APK is built with `assembleRelease` (R8 + resource shrinking, not debuggable) and signed with the local `~/.android/debug.keystore`, the same signature as older versions, so it can be installed over them.
 
 ### Checking for updates inside the launcher
 
