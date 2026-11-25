@@ -1167,8 +1167,10 @@ fun HomePage(
                     .align(if (DuoState.statusRight) Alignment.TopEnd else Alignment.TopStart)
                     .padding(
                         top = statusDrawTop.dp,
-                        start = if (DuoState.statusRight) 0.dp else lane,
-                        end = if (DuoState.statusRight) lane else 0.dp
+                        // 多让 5dp：图标右上角的未读数字是向外探出来的，
+                        // 紧贴 lane 会正好压到时间的第一位数字上
+                        start = if (DuoState.statusRight) 0.dp else lane + 5.dp,
+                        end = if (DuoState.statusRight) lane + 5.dp else 0.dp
                     )
             )
         }

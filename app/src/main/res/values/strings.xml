@@ -108,6 +108,28 @@
     <string name="action_lock">锁屏</string>
     <string name="action_unknown">未知操作</string>
     <string name="settings_title">DuoLauncher 设置</string>
+    <!-- 设置二级菜单：一级分类 -->
+    <string name="grp_home">主屏幕</string>
+    <string name="grp_home_desc">图标行列、批量添加或清除、App 资源库与角标</string>
+    <string name="grp_sidebar">侧边栏</string>
+    <string name="grp_sidebar_desc">显示与位置、条目编辑、玻璃浓度与图标大小</string>
+    <string name="grp_status">状态栏</string>
+    <string name="grp_status_desc">时间、电量与信号徽标、顶部未读图标</string>
+    <string name="grp_gesture">手势与快捷键</string>
+    <string name="grp_gesture_desc">双击息屏、下滑面板、系统快捷键与字母键</string>
+    <string name="grp_search">搜索</string>
+    <string name="grp_search_desc">搜索引擎、最近常用、搜索栏与搜索页</string>
+    <string name="grp_look">外观与壁纸</string>
+    <string name="grp_look_desc">播放面板、毛玻璃、壁纸轮换与图标包</string>
+    <string name="grp_system">更新与关于</string>
+    <string name="grp_system_desc">检查更新、备份恢复、隐私统计、语言与版本</string>
+    <!-- 重置所有设置 -->
+    <string name="reset_all_settings">重置所有设置</string>
+    <string name="reset_all_settings_desc">所有开关、滑块与布局参数恢复默认；桌面图标、文件夹与壁纸不受影响</string>
+    <string name="reset_all_title">重置所有设置？</string>
+    <string name="reset_all_body">所有设置项会恢复为默认值。桌面图标与位置、文件夹、分类、隐藏应用、分身与字母键绑定都会保留。</string>
+    <string name="reset_all_ok">重置</string>
+    <string name="reset_done">已恢复默认设置</string>
     <string name="sec_sidebar">侧边栏</string>
     <string name="sidebar_position">显示位置</string>
     <string name="sidebar_pos_left_long">左侧（自动避开摄像头挖孔）</string>

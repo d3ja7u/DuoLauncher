@@ -738,6 +738,42 @@ object DuoState {
         if (ready) load()
     }
 
+    /**
+     * 把所有「设置项」恢复为出厂默认，**不动用户数据**。
+     *
+     * 保留：主屏图标 / 顺序 / 格子坐标、文件夹、侧栏条目、分类、隐藏应用、分身与字母键绑定、
+     * 图标手动覆盖、使用频率、壁纸文件与当前壁纸状态、统计同意记录。
+     *
+     * 做法不是在这里再抄一份默认值（抄了迟早和 load() 的缺省漂移），而是把存档里
+     * 设置类的 key 删掉再走一遍 [load] —— 缺什么 key 就落回字段默认值，与「全新安装」同源。
+     * 迁移标记（cutoutV2 / statusTopVer / sbVer）必须保留，否则旧值迁移会再跑一次。
+     */
+    fun resetSettings() {
+        val raw = sp.getString("state", null)
+        val o = if (raw.isNullOrBlank()) JSONObject() else runCatching { JSONObject(raw) }
+            .getOrElse { JSONObject() }
+        SETTING_KEYS.forEach { o.remove(it) }
+        // 用 commit 而不是 apply：紧接着 load() 就要从 prefs 里读回这份 JSON
+        runCatching { sp.edit().putString("state", o.toString()).commit() }
+        load()
+        // 把「默认值 + 保留的数据」整份写回，避免存档里长期缺字段
+        save()
+    }
+
+    /** 由用户主动决定、可被「重置所有设置」清零的字段（key 与 [save] 里的一致） */
+    private val SETTING_KEYS = listOf(
+        "smart", "left", "cutout", "glass", "dark", "hideStatus", "dots", "reverse",
+        "dblSleep", "lockLayout", "gsPanels", "gsSearch", "iconScale", "sidebarIconScale",
+        "homeCols", "homeRows", "autoNew", "sbGlass", "sbAlign",
+        "npOn", "npPos", "npLyric",
+        "duoStatus", "statusRight", "status24h", "statusTop", "statusScale", "net4g",
+        "battNum", "stTime", "stBadge", "stNotifIcons", "stNotifNums",
+        "wpRotate", "wpInterval", "wpRandom", "wpSwipe", "wpSyncLs",
+        "badgeOn", "badgeColor", "recentCnt", "searchEng", "searchContacts",
+        "showSb", "libOn", "searchOn", "searchBarOn", "iconPack",
+        "updUrl", "updAuto", "statOn", "statUrl"
+    )
+
     private fun JSONObject.strArray(key: String): List<String> {
         val a = optJSONArray(key) ?: return emptyList()
         return (0 until a.length()).mapNotNull { a.optString(it, null) }

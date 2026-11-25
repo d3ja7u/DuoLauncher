@@ -129,11 +129,42 @@ private fun openPhonePermissionSettings(ctx: Context) {
     }.onFailure { runCatching { ctx.startActivity(detailsPage) } }
 }
 
+/**
+ * 设置首页的一个分类入口。
+ *
+ * id 同时是 [MainSettings] 里各 item 的过滤条件（`if (group == id)`），改 id 要同步改过滤。
+ */
+private class SettingsGroup(val id: String, val titleRes: Int, val descRes: Int)
+
+/** 分类顺序即首页显示顺序：常用的在前 */
+private val SETTINGS_GROUPS = listOf(
+    SettingsGroup("g_home", R.string.grp_home, R.string.grp_home_desc),
+    SettingsGroup("g_sidebar", R.string.grp_sidebar, R.string.grp_sidebar_desc),
+    SettingsGroup("g_status", R.string.grp_status, R.string.grp_status_desc),
+    SettingsGroup("g_gesture", R.string.grp_gesture, R.string.grp_gesture_desc),
+    SettingsGroup("g_search", R.string.grp_search, R.string.grp_search_desc),
+    SettingsGroup("g_look", R.string.grp_look, R.string.grp_look_desc),
+    SettingsGroup("g_system", R.string.grp_system, R.string.grp_system_desc)
+)
+
 @Composable
 private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (String) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val ver = remember { UpdateChecker.currentVersion(ctx) }
+
+    /**
+     * 二级菜单：null = 分类入口页，否则为某一组的设置子页。
+     *
+     * 设置项已经有十几组，一页铺下来要滑好久；这里只把「分组」搬到首页，
+     * 各组的内容仍是原来那些 item（用 if (group == "g_xxx") 圈起来），
+     * 所以状态、弹窗、权限回调全都留在同一作用域里，不存在子页拿不到状态的问题。
+     */
+    var group by remember { mutableStateOf<String?>(null) }
+    // 子页里按返回先退回入口页；入口页的返回交给外层的 SettingsScreen（关闭设置）
+    BackHandler(enabled = group != null) { group = null }
+    /** 「重置所有设置」的二次确认弹窗 */
+    var askReset by remember { mutableStateOf(false) }
 
     // 电话权限状态：从系统权限页返回时的刷新挂在下面已有的 onResume 观察者上
     var phoneGranted by remember { mutableStateOf(phonePermissionGranted(ctx)) }
@@ -360,397 +391,453 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     ) {
         item {
             Spacer(Modifier.height((DuoState.cutoutPadding.coerceAtLeast(56)).dp))
-            GlassTopBar(Lang.s(R.string.settings_title), dark, onClose)
+            val cur = group
+            if (cur == null) {
+                GlassTopBar(Lang.s(R.string.settings_title), dark, onClose)
+            } else {
+                val def = SETTINGS_GROUPS.firstOrNull { it.id == cur }
+                GlassTopBar(
+                    if (def != null) Lang.s(def.titleRes) else Lang.s(R.string.settings_title),
+                    dark,
+                    onBack = { group = null }
+                )
+            }
         }
-        item {
-            SectionTitle(Lang.s(R.string.sec_sidebar), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(
-                        Lang.s(R.string.show_sidebar),
-                        Lang.s(R.string.show_sidebar_desc),
-                        DuoState.showSidebar, dark
-                    ) { DuoState.showSidebar = it; DuoState.save() }
-                    SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.sidebarLeft) Lang.s(R.string.sidebar_pos_left_long) else Lang.s(R.string.sidebar_pos_right), dark,
-                        trailing = {
-                            Row {
-                                listOf(false to Lang.s(R.string.right_short), true to Lang.s(R.string.left_short)).forEach { (v, label) ->
-                                    val on = DuoState.sidebarLeft == v
-                                    Text(
-                                        label,
-                                        fontSize = 13.sp,
-                                        color = if (on) Color.White else glassTextColor(dark),
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
-                                            .clickable { DuoState.sidebarLeft = v; DuoState.save() }
-                                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                }
+        // 分类入口：每行一组，点进去才是具体设置项。
+        // 用紧凑行（标题 + 单行说明）而不是 SettingRow：7 组刚好一屏放下，不用再滚。
+        if (group == null) {
+            item {
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SETTINGS_GROUPS.forEach { g ->
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable { group = g.id }
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 标题在左、说明单行灰字靠右：比「标题 + 换行说明」矮一半，
+                                // 七组正好一屏，不必再往下滑
+                                Text(Lang.s(g.titleRes), fontSize = 15.sp, color = glassTextColor(dark))
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    Lang.s(g.descRes),
+                                    fontSize = 11.sp,
+                                    color = glassSubTextColor(dark),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark))
                             }
-                        })
-                    SettingRow(Lang.s(R.string.edit_sidebar), Lang.s(R.string.sidebar_edit_desc), dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { open("sidebar") })
-                    SettingSliderRow(Lang.s(R.string.cutout_padding), "${DuoState.cutoutPadding} dp", DuoState.cutoutPadding.toFloat(),
-                        0f..120f, dark) { DuoState.cutoutPadding = it.toInt(); DuoState.save() }
-                    SettingSliderRow(Lang.s(R.string.home_icon_size), "${"%.1f".format(DuoState.iconScale)}×", DuoState.iconScale,
-                        0.7f..1.4f, dark) { DuoState.iconScale = it; DuoState.save() }
-                    SettingSliderRow(Lang.s(R.string.sidebar_icon_size), "${"%.1f".format(DuoState.sidebarIconScale)}×", DuoState.sidebarIconScale,
-                        0.6f..1.1f, dark) { DuoState.sidebarIconScale = it; DuoState.save() }
-                    SettingSliderRow(Lang.s(R.string.sidebar_glass), "${"%.1f".format(DuoState.sidebarGlass)}×", DuoState.sidebarGlass,
-                        0.4f..2.4f, dark) { DuoState.sidebarGlass = it; DuoState.save() }
-                    SettingRow(Lang.s(R.string.sidebar_align), Lang.s(R.string.sidebar_align), dark)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                            .horizontalScroll(rememberScrollState())
-                    ) {
-                        SegmentedChips(
-                            options = listOf(
-                                "center" to Lang.s(R.string.sidebar_align_center),
-                                "bottom" to Lang.s(R.string.sidebar_align_bottom)
-                            ),
-                            selected = DuoState.sidebarAlign,
-                            dark = dark
-                        ) { DuoState.sidebarAlign = it; DuoState.save() }
+                        }
                     }
                 }
             }
         }
-        item {
-            SectionTitle(Lang.s(R.string.sec_home), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingRow(Lang.s(R.string.home_columns), Lang.s(R.string.home_columns_desc), dark)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                            .horizontalScroll(rememberScrollState())
-                    ) {
-                        SegmentedChips(
-                            options = listOf(3, 4, 5, 6, 7).map { it.toString() to it.toString() },
-                            selected = DuoState.homeColumns.toString(),
-                            dark = dark
-                        ) { DuoState.homeColumns = it.toInt(); DuoState.save() }
-                    }
-                    SettingRow(Lang.s(R.string.home_rows), Lang.s(R.string.home_rows_desc), dark)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                            .horizontalScroll(rememberScrollState())
-                    ) {
-                        SegmentedChips(
-                            options = listOf(4, 5, 6, 7).map { it.toString() to it.toString() },
-                            selected = DuoState.homeRows.toString(),
-                            dark = dark
-                        ) { DuoState.homeRows = it.toInt(); DuoState.save() }
-                    }
-                    SettingRow(
-                        Lang.s(R.string.batch_add_apps),
-                        Lang.s(R.string.batch_add_apps_desc),
-                        dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
-                    ) { open("batch_add") }
-                    SettingRow(
-                        Lang.s(R.string.batch_remove_apps),
-                        Lang.s(R.string.batch_remove_apps_desc),
-                        dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
-                    ) { open("batch_remove") }
-                    SettingToggle(
-                        Lang.s(R.string.auto_add_new_apps),
-                        Lang.s(R.string.auto_add_new_apps_desc),
-                        DuoState.autoAddNewApps, dark
-                    ) { DuoState.autoAddNewApps = it; DuoState.save() }
-                    SettingToggle(
-                        Lang.s(R.string.show_app_library),
-                        Lang.s(R.string.show_app_library_desc),
-                        DuoState.showLibrary, dark
-                    ) { DuoState.showLibrary = it; DuoState.save() }
-                    SettingRow(
-                        Lang.s(R.string.add_system_widget),
-                        Lang.s(R.string.add_system_widget_desc),
-                        dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
-                    ) { nav.addHomeWidget() }
-                }
-            }
-        }
-        item {
-            SectionTitle(Lang.s(R.string.sec_now_playing), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(
-                        Lang.s(R.string.now_playing_switch),
-                        Lang.s(R.string.now_playing_desc),
-                        DuoState.showNowPlaying, dark
-                    ) { on ->
-                        DuoState.showNowPlaying = on; DuoState.save()
-                        if (on && !badgeAccess) DuoNotificationListener.openSettings(ctx)
-                    }
-                    if (DuoState.showNowPlaying) {
-                        SettingRow(Lang.s(R.string.np_panel_position), dark = dark)
+        if (group == "g_sidebar") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_sidebar), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(
+                            Lang.s(R.string.show_sidebar),
+                            Lang.s(R.string.show_sidebar_desc),
+                            DuoState.showSidebar, dark
+                        ) { DuoState.showSidebar = it; DuoState.save() }
+                        SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.sidebarLeft) Lang.s(R.string.sidebar_pos_left_long) else Lang.s(R.string.sidebar_pos_right), dark,
+                            trailing = {
+                                Row {
+                                    listOf(false to Lang.s(R.string.right_short), true to Lang.s(R.string.left_short)).forEach { (v, label) ->
+                                        val on = DuoState.sidebarLeft == v
+                                        Text(
+                                            label,
+                                            fontSize = 13.sp,
+                                            color = if (on) Color.White else glassTextColor(dark),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
+                                                .clickable { DuoState.sidebarLeft = v; DuoState.save() }
+                                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                    }
+                                }
+                            })
+                        SettingRow(Lang.s(R.string.edit_sidebar), Lang.s(R.string.sidebar_edit_desc), dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { open("sidebar") })
+                        SettingSliderRow(Lang.s(R.string.cutout_padding), "${DuoState.cutoutPadding} dp", DuoState.cutoutPadding.toFloat(),
+                            0f..120f, dark) { DuoState.cutoutPadding = it.toInt(); DuoState.save() }
+                        SettingSliderRow(Lang.s(R.string.home_icon_size), "${"%.1f".format(DuoState.iconScale)}×", DuoState.iconScale,
+                            0.7f..1.4f, dark) { DuoState.iconScale = it; DuoState.save() }
+                        SettingSliderRow(Lang.s(R.string.sidebar_icon_size), "${"%.1f".format(DuoState.sidebarIconScale)}×", DuoState.sidebarIconScale,
+                            0.6f..1.1f, dark) { DuoState.sidebarIconScale = it; DuoState.save() }
+                        SettingSliderRow(Lang.s(R.string.sidebar_glass), "${"%.1f".format(DuoState.sidebarGlass)}×", DuoState.sidebarGlass,
+                            0.4f..2.4f, dark) { DuoState.sidebarGlass = it; DuoState.save() }
+                        SettingRow(Lang.s(R.string.sidebar_align), Lang.s(R.string.sidebar_align), dark)
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                                 .horizontalScroll(rememberScrollState())
                         ) {
                             SegmentedChips(
                                 options = listOf(
-                                    "top" to Lang.s(R.string.np_pos_top),
-                                    "center" to Lang.s(R.string.np_pos_center),
-                                    "bottom" to Lang.s(R.string.np_pos_bottom)
+                                    "center" to Lang.s(R.string.sidebar_align_center),
+                                    "bottom" to Lang.s(R.string.sidebar_align_bottom)
                                 ),
-                                selected = DuoState.playerPanelPosition,
+                                selected = DuoState.sidebarAlign,
                                 dark = dark
-                            ) {
-                                DuoState.playerPanelPosition = it; DuoState.save()
-                            }
-                        }
-                        SettingToggle(
-                            Lang.s(R.string.np_show_lyric),
-                            Lang.s(R.string.np_show_lyric_desc),
-                            DuoState.showLyricButton, dark
-                        ) { on ->
-                            DuoState.showLyricButton = on; DuoState.save()
+                            ) { DuoState.sidebarAlign = it; DuoState.save() }
                         }
                     }
-                    if (DuoState.showNowPlaying && !badgeAccess) {
+                }
+            }
+        }
+        if (group == "g_home") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_home), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingRow(Lang.s(R.string.home_columns), Lang.s(R.string.home_columns_desc), dark)
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                                .horizontalScroll(rememberScrollState())
+                        ) {
+                            SegmentedChips(
+                                options = listOf(3, 4, 5, 6, 7).map { it.toString() to it.toString() },
+                                selected = DuoState.homeColumns.toString(),
+                                dark = dark
+                            ) { DuoState.homeColumns = it.toInt(); DuoState.save() }
+                        }
+                        SettingRow(Lang.s(R.string.home_rows), Lang.s(R.string.home_rows_desc), dark)
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                                .horizontalScroll(rememberScrollState())
+                        ) {
+                            SegmentedChips(
+                                options = listOf(4, 5, 6, 7).map { it.toString() to it.toString() },
+                                selected = DuoState.homeRows.toString(),
+                                dark = dark
+                            ) { DuoState.homeRows = it.toInt(); DuoState.save() }
+                        }
                         SettingRow(
-                            Lang.s(R.string.notif_access),
-                            Lang.s(R.string.notif_access_off),
+                            Lang.s(R.string.batch_add_apps),
+                            Lang.s(R.string.batch_add_apps_desc),
                             dark,
-                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                            onClick = { DuoNotificationListener.openSettings(ctx) }
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                        ) { open("batch_add") }
+                        SettingRow(
+                            Lang.s(R.string.batch_remove_apps),
+                            Lang.s(R.string.batch_remove_apps_desc),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                        ) { open("batch_remove") }
+                        SettingToggle(
+                            Lang.s(R.string.auto_add_new_apps),
+                            Lang.s(R.string.auto_add_new_apps_desc),
+                            DuoState.autoAddNewApps, dark
+                        ) { DuoState.autoAddNewApps = it; DuoState.save() }
+                        SettingToggle(
+                            Lang.s(R.string.show_app_library),
+                            Lang.s(R.string.show_app_library_desc),
+                            DuoState.showLibrary, dark
+                        ) { DuoState.showLibrary = it; DuoState.save() }
+                        SettingRow(
+                            Lang.s(R.string.add_system_widget),
+                            Lang.s(R.string.add_system_widget_desc),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                        ) { nav.addHomeWidget() }
+                    }
+                }
+            }
+        }
+        if (group == "g_look") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_now_playing), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(
+                            Lang.s(R.string.now_playing_switch),
+                            Lang.s(R.string.now_playing_desc),
+                            DuoState.showNowPlaying, dark
+                        ) { on ->
+                            DuoState.showNowPlaying = on; DuoState.save()
+                            if (on && !badgeAccess) DuoNotificationListener.openSettings(ctx)
+                        }
+                        if (DuoState.showNowPlaying) {
+                            SettingRow(Lang.s(R.string.np_panel_position), dark = dark)
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .horizontalScroll(rememberScrollState())
+                            ) {
+                                SegmentedChips(
+                                    options = listOf(
+                                        "top" to Lang.s(R.string.np_pos_top),
+                                        "center" to Lang.s(R.string.np_pos_center),
+                                        "bottom" to Lang.s(R.string.np_pos_bottom)
+                                    ),
+                                    selected = DuoState.playerPanelPosition,
+                                    dark = dark
+                                ) {
+                                    DuoState.playerPanelPosition = it; DuoState.save()
+                                }
+                            }
+                            SettingToggle(
+                                Lang.s(R.string.np_show_lyric),
+                                Lang.s(R.string.np_show_lyric_desc),
+                                DuoState.showLyricButton, dark
+                            ) { on ->
+                                DuoState.showLyricButton = on; DuoState.save()
+                            }
+                        }
+                        if (DuoState.showNowPlaying && !badgeAccess) {
+                            SettingRow(
+                                Lang.s(R.string.notif_access),
+                                Lang.s(R.string.notif_access_off),
+                                dark,
+                                trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                                onClick = { DuoNotificationListener.openSettings(ctx) }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    Lang.s(R.string.now_playing_note),
+                    fontSize = 11.sp,
+                    color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                )
+            }
+        }
+        if (group == "g_search") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_search), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingRow(
+                            Lang.s(R.string.recent_count),
+                            Lang.s(R.string.recent_count_value, DuoState.recentCount), dark
+                        )
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            SegmentedChips(
+                                options = SearchEngines.RECENT_COUNTS.map { it.toString() to it.toString() },
+                                selected = DuoState.recentCount.toString(),
+                                dark = dark
+                            ) { DuoState.recentCount = it.toInt(); DuoState.save() }
+                        }
+                        Text(
+                            Lang.s(R.string.recent_count_hint),
+                            fontSize = 11.sp,
+                            color = glassSubTextColor(dark),
+                            modifier = Modifier.padding(start = 20.dp, end = 16.dp, bottom = 6.dp)
+                        )
+                        SettingRow(
+                            Lang.s(R.string.search_engine),
+                            SearchEngines.label(DuoState.searchEngine), dark
+                        )
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                            SegmentedChips(
+                                options = SearchEngines.ALL.map { it.id to Lang.s(it.labelRes) },
+                                selected = DuoState.searchEngine,
+                                dark = dark
+                            ) { DuoState.searchEngine = it; DuoState.save() }
+                        }
+                        SettingToggle(
+                            Lang.s(R.string.search_contacts),
+                            Lang.s(R.string.search_contacts_desc),
+                            DuoState.searchContacts, dark
+                        ) { DuoState.searchContacts = it; DuoState.save() }
+                        SettingToggle(
+                            Lang.s(R.string.search_show_bar),
+                            Lang.s(R.string.search_show_bar_desc),
+                            DuoState.showSearchBar, dark
+                        ) { DuoState.showSearchBar = it; DuoState.save() }
+                        // 搜索页若被整体关闭，页内的设置入口也就进不去了，所以这里必须留一份开关
+                        SettingToggle(
+                            Lang.s(R.string.search_show_page),
+                            Lang.s(R.string.search_show_page_desc),
+                            DuoState.showSearchPage, dark
+                        ) { on ->
+                            DuoState.showSearchPage = on; DuoState.save()
+                        }
+                    }
+                }
+            }
+        }
+        if (group == "g_status") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_status_bar), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(Lang.s(R.string.status_time_signal), Lang.s(R.string.status_time_signal_desc),
+                            DuoState.showDuoStatus, dark) { DuoState.showDuoStatus = it; DuoState.save() }
+                        SettingToggle(Lang.s(R.string.status_show_time), Lang.s(R.string.status_show_time_desc),
+                            DuoState.showStatusTime, dark) { DuoState.showStatusTime = it; DuoState.save() }
+                        SettingToggle(Lang.s(R.string.status_show_badge), Lang.s(R.string.status_show_badge_desc),
+                            DuoState.showStatusBadge, dark) { DuoState.showStatusBadge = it; DuoState.save() }
+                        // 系统状态栏被隐藏后桌面看不到通知，这一项把「有新消息的应用」图标排到时间旁边
+                        SettingToggle(Lang.s(R.string.status_notif_icons), Lang.s(R.string.status_notif_icons_desc),
+                            DuoState.showStatusNotifIcons, dark) { DuoState.showStatusNotifIcons = it; DuoState.save() }
+                        // 小图标上的未读条数单独一档：与桌面图标角标互不影响。
+                        // 只在上面「顶部显示未读图标」打开时出现，避免留下一个点了没反应的开关。
+                        if (DuoState.showStatusNotifIcons) {
+                            SettingToggle(Lang.s(R.string.status_notif_numbers), Lang.s(R.string.status_notif_numbers_desc),
+                                DuoState.showStatusNotifNumbers, dark) { DuoState.showStatusNotifNumbers = it; DuoState.save() }
+                        }
+                        SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.statusRight) Lang.s(R.string.status_pos_right) else Lang.s(R.string.status_pos_left), dark,
+                            trailing = {
+                                Row {
+                                    listOf(true to Lang.s(R.string.right_short), false to Lang.s(R.string.left_short)).forEach { (v, label) ->
+                                        val on = DuoState.statusRight == v
+                                        Text(
+                                            label,
+                                            fontSize = 13.sp,
+                                            color = if (on) Color.White else glassTextColor(dark),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
+                                                .clickable { DuoState.statusRight = v; DuoState.save() }
+                                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                    }
+                                }
+                            })
+                        SettingToggle(Lang.s(R.string.status_24h), Lang.s(R.string.status_24h_desc), DuoState.status24h, dark) {
+                            DuoState.status24h = it; DuoState.save()
+                        }
+                        // 其余制式按真实网络自动显示；这一项只决定 4G 时写 LTE 还是 4G
+                        SettingRow(
+                            Lang.s(R.string.status_network_label),
+                            Lang.s(R.string.status_network_label_desc),
+                            dark,
+                            trailing = {
+                                Row {
+                                    listOf("LTE", "4G").forEach { v ->
+                                        val on = DuoState.status4gLabel == v
+                                        Text(
+                                            v,
+                                            fontSize = 13.sp,
+                                            color = if (on) Color.White else glassTextColor(dark),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
+                                                .clickable { DuoState.status4gLabel = v; DuoState.save() }
+                                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                    }
+                                }
+                            })
+                        SettingToggle(
+                            Lang.s(R.string.status_battery_number),
+                            Lang.s(R.string.status_battery_number_desc),
+                            DuoState.showBatteryNumber, dark
+                        ) { DuoState.showBatteryNumber = it; DuoState.save() }
+                        SettingSliderRow(Lang.s(R.string.status_top_padding), "${DuoState.statusTop} dp", DuoState.statusTop.toFloat(),
+                            8f..140f, dark) { DuoState.statusTop = it.toInt(); DuoState.save() }
+                        SettingSliderRow(Lang.s(R.string.status_scale), "${"%.1f".format(DuoState.statusScale)}×", DuoState.statusScale,
+                            0.7f..1.6f, dark) { DuoState.statusScale = it; DuoState.save() }
+                        // 双卡信号依赖「电话」权限。首次启动拒绝过授权的用户，在这里可以重新开启。
+                        val openPhonePerm = { openPhonePermissionSettings(ctx) }
+                        SettingRow(
+                            Lang.s(R.string.status_phone_permission),
+                            Lang.s(R.string.status_phone_permission_desc),
+                            dark,
+                            trailing = {
+                                Text(
+                                    if (phoneGranted) Lang.s(R.string.status_phone_granted)
+                                    else Lang.s(R.string.status_phone_open),
+                                    fontSize = 13.sp,
+                                    color = if (phoneGranted) glassTextColor(dark) else Color.White,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(
+                                            if (phoneGranted) glassTextColor(dark).copy(alpha = 0.10f)
+                                            else glassBlue
+                                        )
+                                        .clickable(enabled = !phoneGranted) { openPhonePerm() }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+                            },
+                            onClick = if (phoneGranted) null else openPhonePerm
+                        )
+                        val st = rememberDuoStatus(DuoState.status24h).value
+                        val simInfo = if (st.simLevels.size >= 2)
+                            " · " + Lang.s(R.string.status_dual_sim, st.simLevels[0], st.simLevels[1]) else ""
+                        // 非 WiFi 时把自动识别出的制式也显示出来，方便核对 5GA / 5GUW 等
+                        val netInfo = if (st.wifi) "" else " · " + st.netLabel
+                        SettingRow(
+                            Lang.s(R.string.live_status),
+                            "${st.time} · " + when {
+                                st.wifi -> Lang.s(R.string.status_wifi, st.level)
+                                st.cellular -> Lang.s(R.string.status_cellular, st.level)
+                                else -> Lang.s(R.string.status_no_network)
+                            } + simInfo + netInfo + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
+                            dark
                         )
                     }
                 }
             }
-            Text(
-                Lang.s(R.string.now_playing_note),
-                fontSize = 11.sp,
-                color = glassSubTextColor(dark),
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
-            )
         }
-        item {
-            SectionTitle(Lang.s(R.string.sec_search), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingRow(
-                        Lang.s(R.string.recent_count),
-                        Lang.s(R.string.recent_count_value, DuoState.recentCount), dark
-                    )
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        SegmentedChips(
-                            options = SearchEngines.RECENT_COUNTS.map { it.toString() to it.toString() },
-                            selected = DuoState.recentCount.toString(),
-                            dark = dark
-                        ) { DuoState.recentCount = it.toInt(); DuoState.save() }
-                    }
-                    Text(
-                        Lang.s(R.string.recent_count_hint),
-                        fontSize = 11.sp,
-                        color = glassSubTextColor(dark),
-                        modifier = Modifier.padding(start = 20.dp, end = 16.dp, bottom = 6.dp)
-                    )
-                    SettingRow(
-                        Lang.s(R.string.search_engine),
-                        SearchEngines.label(DuoState.searchEngine), dark
-                    )
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        SegmentedChips(
-                            options = SearchEngines.ALL.map { it.id to Lang.s(it.labelRes) },
-                            selected = DuoState.searchEngine,
-                            dark = dark
-                        ) { DuoState.searchEngine = it; DuoState.save() }
-                    }
-                    SettingToggle(
-                        Lang.s(R.string.search_contacts),
-                        Lang.s(R.string.search_contacts_desc),
-                        DuoState.searchContacts, dark
-                    ) { DuoState.searchContacts = it; DuoState.save() }
-                    SettingToggle(
-                        Lang.s(R.string.search_show_bar),
-                        Lang.s(R.string.search_show_bar_desc),
-                        DuoState.showSearchBar, dark
-                    ) { DuoState.showSearchBar = it; DuoState.save() }
-                    // 搜索页若被整体关闭，页内的设置入口也就进不去了，所以这里必须留一份开关
-                    SettingToggle(
-                        Lang.s(R.string.search_show_page),
-                        Lang.s(R.string.search_show_page_desc),
-                        DuoState.showSearchPage, dark
-                    ) { on ->
-                        DuoState.showSearchPage = on; DuoState.save()
-                    }
-                }
-            }
-        }
-        item {
-            SectionTitle(Lang.s(R.string.sec_status_bar), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(Lang.s(R.string.status_time_signal), Lang.s(R.string.status_time_signal_desc),
-                        DuoState.showDuoStatus, dark) { DuoState.showDuoStatus = it; DuoState.save() }
-                    SettingToggle(Lang.s(R.string.status_show_time), Lang.s(R.string.status_show_time_desc),
-                        DuoState.showStatusTime, dark) { DuoState.showStatusTime = it; DuoState.save() }
-                    SettingToggle(Lang.s(R.string.status_show_badge), Lang.s(R.string.status_show_badge_desc),
-                        DuoState.showStatusBadge, dark) { DuoState.showStatusBadge = it; DuoState.save() }
-                    // 系统状态栏被隐藏后桌面看不到通知，这一项把「有新消息的应用」图标排到时间旁边
-                    SettingToggle(Lang.s(R.string.status_notif_icons), Lang.s(R.string.status_notif_icons_desc),
-                        DuoState.showStatusNotifIcons, dark) { DuoState.showStatusNotifIcons = it; DuoState.save() }
-                    // 小图标上的未读条数单独一档：与桌面图标角标互不影响。
-                    // 只在上面「顶部显示未读图标」打开时出现，避免留下一个点了没反应的开关。
-                    if (DuoState.showStatusNotifIcons) {
-                        SettingToggle(Lang.s(R.string.status_notif_numbers), Lang.s(R.string.status_notif_numbers_desc),
-                            DuoState.showStatusNotifNumbers, dark) { DuoState.showStatusNotifNumbers = it; DuoState.save() }
-                    }
-                    SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.statusRight) Lang.s(R.string.status_pos_right) else Lang.s(R.string.status_pos_left), dark,
-                        trailing = {
-                            Row {
-                                listOf(true to Lang.s(R.string.right_short), false to Lang.s(R.string.left_short)).forEach { (v, label) ->
-                                    val on = DuoState.statusRight == v
-                                    Text(
-                                        label,
-                                        fontSize = 13.sp,
-                                        color = if (on) Color.White else glassTextColor(dark),
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
-                                            .clickable { DuoState.statusRight = v; DuoState.save() }
-                                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                }
-                            }
-                        })
-                    SettingToggle(Lang.s(R.string.status_24h), Lang.s(R.string.status_24h_desc), DuoState.status24h, dark) {
-                        DuoState.status24h = it; DuoState.save()
-                    }
-                    // 其余制式按真实网络自动显示；这一项只决定 4G 时写 LTE 还是 4G
-                    SettingRow(
-                        Lang.s(R.string.status_network_label),
-                        Lang.s(R.string.status_network_label_desc),
-                        dark,
-                        trailing = {
-                            Row {
-                                listOf("LTE", "4G").forEach { v ->
-                                    val on = DuoState.status4gLabel == v
-                                    Text(
-                                        v,
-                                        fontSize = 13.sp,
-                                        color = if (on) Color.White else glassTextColor(dark),
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(if (on) glassBlue else glassTextColor(dark).copy(alpha = 0.10f))
-                                            .clickable { DuoState.status4gLabel = v; DuoState.save() }
-                                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                }
-                            }
-                        })
-                    SettingToggle(
-                        Lang.s(R.string.status_battery_number),
-                        Lang.s(R.string.status_battery_number_desc),
-                        DuoState.showBatteryNumber, dark
-                    ) { DuoState.showBatteryNumber = it; DuoState.save() }
-                    SettingSliderRow(Lang.s(R.string.status_top_padding), "${DuoState.statusTop} dp", DuoState.statusTop.toFloat(),
-                        8f..140f, dark) { DuoState.statusTop = it.toInt(); DuoState.save() }
-                    SettingSliderRow(Lang.s(R.string.status_scale), "${"%.1f".format(DuoState.statusScale)}×", DuoState.statusScale,
-                        0.7f..1.6f, dark) { DuoState.statusScale = it; DuoState.save() }
-                    // 双卡信号依赖「电话」权限。首次启动拒绝过授权的用户，在这里可以重新开启。
-                    val openPhonePerm = { openPhonePermissionSettings(ctx) }
-                    SettingRow(
-                        Lang.s(R.string.status_phone_permission),
-                        Lang.s(R.string.status_phone_permission_desc),
-                        dark,
-                        trailing = {
-                            Text(
-                                if (phoneGranted) Lang.s(R.string.status_phone_granted)
-                                else Lang.s(R.string.status_phone_open),
-                                fontSize = 13.sp,
-                                color = if (phoneGranted) glassTextColor(dark) else Color.White,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (phoneGranted) glassTextColor(dark).copy(alpha = 0.10f)
-                                        else glassBlue
-                                    )
-                                    .clickable(enabled = !phoneGranted) { openPhonePerm() }
-                                    .padding(horizontal = 14.dp, vertical = 6.dp)
-                            )
-                        },
-                        onClick = if (phoneGranted) null else openPhonePerm
-                    )
-                    val st = rememberDuoStatus(DuoState.status24h).value
-                    val simInfo = if (st.simLevels.size >= 2)
-                        " · " + Lang.s(R.string.status_dual_sim, st.simLevels[0], st.simLevels[1]) else ""
-                    // 非 WiFi 时把自动识别出的制式也显示出来，方便核对 5GA / 5GUW 等
-                    val netInfo = if (st.wifi) "" else " · " + st.netLabel
-                    SettingRow(
-                        Lang.s(R.string.live_status),
-                        "${st.time} · " + when {
-                            st.wifi -> Lang.s(R.string.status_wifi, st.level)
-                            st.cellular -> Lang.s(R.string.status_cellular, st.level)
-                            else -> Lang.s(R.string.status_no_network)
-                        } + simInfo + netInfo + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
-                        dark
-                    )
-                }
-            }
-        }
-        item {
-            SectionTitle(Lang.s(R.string.sec_home_gesture), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(Lang.s(R.string.show_sys_status), Lang.s(R.string.show_sys_status_desc),
-                        !DuoState.hideStatusBar, dark) {
-                        DuoState.hideStatusBar = !it; DuoState.save(); nav.toast(Lang.s(R.string.toast_restart_launcher))
-                    }
-                    SettingToggle(Lang.s(R.string.show_page_dots), null, DuoState.showPageDots, dark) { DuoState.showPageDots = it; DuoState.save() }
-                    SettingToggle(Lang.s(R.string.reverse_pages), Lang.s(R.string.reverse_pages_desc),
-                        DuoState.reversePages, dark) { DuoState.reversePages = it; DuoState.save() }
-                    SettingToggle(Lang.s(R.string.lock_layout), Lang.s(R.string.lock_layout_desc),
-                        DuoState.lockLayout, dark) { DuoState.lockLayout = it; DuoState.save() }
-                    SettingToggle(
-                        Lang.s(R.string.double_tap_lock),
-                        when {
-                            accReady -> Lang.s(R.string.double_tap_lock_on)
-                            // 连接途中的那一两秒不报警，只说在连
-                            accEnabled -> Lang.s(
-                                if (accBroken) R.string.double_tap_lock_broken
-                                else R.string.double_tap_lock_connecting
-                            )
-                            // 开过又被系统收权（更新、强行停止之后常见），说法要和首次开启分开
-                            DuoState.sleepGrantedOnce -> Lang.s(R.string.double_tap_lock_revoked)
-                            else -> Lang.s(R.string.double_tap_lock_off)
-                        },
-                        DuoState.doubleTapSleep, dark
-                    ) { on ->
-                        DuoState.doubleTapSleep = on; DuoState.save()
-                        // 无障碍连上了就无需任何跳转；没连上时按状态引导重绑或首次授权
-                        if (on && !accReady) {
-                            // 已开启但确实掉线（连了 4 秒还是没连上）：跳到本服务详情页，
-                            // 关一次再打开即可恢复，这是系统侧唯一允许的修复方式
-                            if (accEnabled && accBroken) ScreenOff.openServiceSettings(ctx)
-                            else if (!accEnabled) ScreenOff.requestPermission(ctx)
+        if (group == "g_gesture") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_home_gesture), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(Lang.s(R.string.show_sys_status), Lang.s(R.string.show_sys_status_desc),
+                            !DuoState.hideStatusBar, dark) {
+                            DuoState.hideStatusBar = !it; DuoState.save(); nav.toast(Lang.s(R.string.toast_restart_launcher))
                         }
+                        SettingToggle(Lang.s(R.string.show_page_dots), null, DuoState.showPageDots, dark) { DuoState.showPageDots = it; DuoState.save() }
+                        SettingToggle(Lang.s(R.string.reverse_pages), Lang.s(R.string.reverse_pages_desc),
+                            DuoState.reversePages, dark) { DuoState.reversePages = it; DuoState.save() }
+                        SettingToggle(Lang.s(R.string.lock_layout), Lang.s(R.string.lock_layout_desc),
+                            DuoState.lockLayout, dark) { DuoState.lockLayout = it; DuoState.save() }
+                        SettingToggle(
+                            Lang.s(R.string.double_tap_lock),
+                            when {
+                                accReady -> Lang.s(R.string.double_tap_lock_on)
+                                // 连接途中的那一两秒不报警，只说在连
+                                accEnabled -> Lang.s(
+                                    if (accBroken) R.string.double_tap_lock_broken
+                                    else R.string.double_tap_lock_connecting
+                                )
+                                // 开过又被系统收权（更新、强行停止之后常见），说法要和首次开启分开
+                                DuoState.sleepGrantedOnce -> Lang.s(R.string.double_tap_lock_revoked)
+                                else -> Lang.s(R.string.double_tap_lock_off)
+                            },
+                            DuoState.doubleTapSleep, dark
+                        ) { on ->
+                            DuoState.doubleTapSleep = on; DuoState.save()
+                            // 无障碍连上了就无需任何跳转；没连上时按状态引导重绑或首次授权
+                            if (on && !accReady) {
+                                // 已开启但确实掉线（连了 4 秒还是没连上）：跳到本服务详情页，
+                                // 关一次再打开即可恢复，这是系统侧唯一允许的修复方式
+                                if (accEnabled && accBroken) ScreenOff.openServiceSettings(ctx)
+                                else if (!accEnabled) ScreenOff.requestPermission(ctx)
+                            }
+                        }
+                        SettingToggle(
+                            Lang.s(R.string.swipe_down_panels),
+                            Lang.s(R.string.swipe_down_panels_desc),
+                            DuoState.gesturePanels, dark
+                        ) { on -> DuoState.gesturePanels = on; DuoState.save() }
+                        SettingToggle(
+                            Lang.s(R.string.swipe_right_search),
+                            Lang.s(R.string.swipe_right_search_desc),
+                            DuoState.gestureSearch, dark
+                        ) { on -> DuoState.gestureSearch = on; DuoState.save() }
                     }
-                    SettingToggle(
-                        Lang.s(R.string.swipe_down_panels),
-                        Lang.s(R.string.swipe_down_panels_desc),
-                        DuoState.gesturePanels, dark
-                    ) { on -> DuoState.gesturePanels = on; DuoState.save() }
-                    SettingToggle(
-                        Lang.s(R.string.swipe_right_search),
-                        Lang.s(R.string.swipe_right_search_desc),
-                        DuoState.gestureSearch, dark
-                    ) { on -> DuoState.gestureSearch = on; DuoState.save() }
                 }
             }
         }
         // 只有本机真有系统快捷键能力时才显示这一组：普通手机装上也配不了，
         // 摆个无效入口只会让人以为功能坏了。
-        if (ShortcutManager.hasSystemSupport(ctx)) {
+        if (group == "g_gesture" && ShortcutManager.hasSystemSupport(ctx)) {
             item {
                 SectionTitle(Lang.s(R.string.sec_shortcut), dark)
                 GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
@@ -765,313 +852,367 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                 }
             }
         }
-        item {
-            SectionTitle(Lang.s(R.string.app_library), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(Lang.s(R.string.smart_category_switch), Lang.s(R.string.smart_category_desc),
-                        DuoState.smartCategory, dark) { DuoState.smartCategory = it; DuoState.save() }
-                    SettingRow(Lang.s(R.string.edit_app_category), Lang.s(R.string.edit_category_desc), dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { open("cats") })
-                    SettingRow(Lang.s(R.string.hide_app), Lang.s(R.string.hidden_manage, DuoState.hidden.size), dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { open("hidden") })
-                }
-            }
-        }
-        item {
-            SectionTitle(Lang.s(R.string.sec_appearance), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingSliderRow(Lang.s(R.string.glass_blur), "${(DuoState.glassLevel * 100).toInt()}%",
-                        DuoState.glassLevel, 0f..1f, dark) { DuoState.glassLevel = it; DuoState.save() }
-                    SettingToggle(Lang.s(R.string.dark_glass), Lang.s(R.string.dark_glass_desc), DuoState.darkGlass, dark) {
-                        DuoState.darkGlass = it; DuoState.save()
+        if (group == "g_home") {
+            item {
+                SectionTitle(Lang.s(R.string.app_library), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(Lang.s(R.string.smart_category_switch), Lang.s(R.string.smart_category_desc),
+                            DuoState.smartCategory, dark) { DuoState.smartCategory = it; DuoState.save() }
+                        SettingRow(Lang.s(R.string.edit_app_category), Lang.s(R.string.edit_category_desc), dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { open("cats") })
+                        SettingRow(Lang.s(R.string.hide_app), Lang.s(R.string.hidden_manage, DuoState.hidden.size), dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { open("hidden") })
                     }
                 }
             }
         }
-        item {
-            SectionTitle(Lang.s(R.string.sec_wallpaper_rotate), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(
-                        Lang.s(R.string.wp_rotate), Lang.s(R.string.wp_rotate_desc),
-                        DuoState.wallpaperRotate, dark
-                    ) {
-                        DuoState.wallpaperRotate = it; DuoState.save()
-                        // 开启且已有图片时立刻换一张，让效果马上可见，并从现在开始计时
-                        if (it && wpCount > 0) {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) { WallpaperRotator.rotateNow(ctx) }
+        if (group == "g_look") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_appearance), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingSliderRow(Lang.s(R.string.glass_blur), "${(DuoState.glassLevel * 100).toInt()}%",
+                            DuoState.glassLevel, 0f..1f, dark) { DuoState.glassLevel = it; DuoState.save() }
+                        SettingToggle(Lang.s(R.string.dark_glass), Lang.s(R.string.dark_glass_desc), DuoState.darkGlass, dark) {
+                            DuoState.darkGlass = it; DuoState.save()
                         }
                     }
-                    SettingToggle(
-                        Lang.s(R.string.wp_swipe), Lang.s(R.string.wp_swipe_desc),
-                        DuoState.wallpaperSwipe, dark
-                    ) {
-                        DuoState.wallpaperSwipe = it; DuoState.save()
-                    }
-                    SettingToggle(
-                        Lang.s(R.string.wp_sync_ls), Lang.s(R.string.wp_sync_ls_desc),
-                        DuoState.wallpaperSyncLockscreen, dark
-                    ) {
-                        DuoState.wallpaperSyncLockscreen = it; DuoState.save()
-                        // 开启时立即按当前设置重设一次，锁屏马上生效（含同步关闭→只换主屏的回退）
-                        if (wpCount > 0) {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                WallpaperRotator.rotateNow(ctx)
+                }
+            }
+        }
+        if (group == "g_look") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_wallpaper_rotate), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(
+                            Lang.s(R.string.wp_rotate), Lang.s(R.string.wp_rotate_desc),
+                            DuoState.wallpaperRotate, dark
+                        ) {
+                            DuoState.wallpaperRotate = it; DuoState.save()
+                            // 开启且已有图片时立刻换一张，让效果马上可见，并从现在开始计时
+                            if (it && wpCount > 0) {
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) { WallpaperRotator.rotateNow(ctx) }
                             }
                         }
-                    }
-                    SettingRow(
-                        Lang.s(R.string.wp_pick),
-                        Lang.s(R.string.wp_pick_desc, wpCount),
-                        dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = {
-                            runCatching {
-                                pickWallpapers.launch(
-                                    androidx.activity.result.PickVisualMediaRequest(
-                                        ActivityResultContracts.PickVisualMedia.ImageOnly
-                                    )
-                                )
-                            }
+                        SettingToggle(
+                            Lang.s(R.string.wp_swipe), Lang.s(R.string.wp_swipe_desc),
+                            DuoState.wallpaperSwipe, dark
+                        ) {
+                            DuoState.wallpaperSwipe = it; DuoState.save()
                         }
-                    )
-                    SettingRow(
-                        Lang.s(R.string.wp_interval),
-                        wpIntervalLabel(DuoState.wallpaperIntervalMin),
-                        dark,
-                        onClick = { showWpInterval = true }
-                    )
-                    SettingToggle(
-                        Lang.s(R.string.wp_random), Lang.s(R.string.wp_random_desc),
-                        DuoState.wallpaperRandom, dark
-                    ) { DuoState.wallpaperRandom = it; DuoState.save() }
-                    SettingRow(
-                        Lang.s(R.string.wp_now), Lang.s(R.string.wp_now_desc), dark,
-                        onClick = {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                val ok = WallpaperRotator.rotateNow(ctx)
-                                if (!ok) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    nav.toast(Lang.s(R.string.wp_toast_fail))
+                        SettingToggle(
+                            Lang.s(R.string.wp_sync_ls), Lang.s(R.string.wp_sync_ls_desc),
+                            DuoState.wallpaperSyncLockscreen, dark
+                        ) {
+                            DuoState.wallpaperSyncLockscreen = it; DuoState.save()
+                            // 开启时立即按当前设置重设一次，锁屏马上生效（含同步关闭→只换主屏的回退）
+                            if (wpCount > 0) {
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    WallpaperRotator.rotateNow(ctx)
                                 }
                             }
                         }
-                    )
-                    SettingRow(
-                        Lang.s(R.string.wp_clear), Lang.s(R.string.wp_clear_desc), dark,
-                        onClick = {
-                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                WallpaperRotator.clear(ctx)
-                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { wpCount = 0 }
+                        SettingRow(
+                            Lang.s(R.string.wp_pick),
+                            Lang.s(R.string.wp_pick_desc, wpCount),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = {
+                                runCatching {
+                                    pickWallpapers.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageOnly
+                                        )
+                                    )
+                                }
                             }
+                        )
+                        SettingRow(
+                            Lang.s(R.string.wp_interval),
+                            wpIntervalLabel(DuoState.wallpaperIntervalMin),
+                            dark,
+                            onClick = { showWpInterval = true }
+                        )
+                        SettingToggle(
+                            Lang.s(R.string.wp_random), Lang.s(R.string.wp_random_desc),
+                            DuoState.wallpaperRandom, dark
+                        ) { DuoState.wallpaperRandom = it; DuoState.save() }
+                        SettingRow(
+                            Lang.s(R.string.wp_now), Lang.s(R.string.wp_now_desc), dark,
+                            onClick = {
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    val ok = WallpaperRotator.rotateNow(ctx)
+                                    if (!ok) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        nav.toast(Lang.s(R.string.wp_toast_fail))
+                                    }
+                                }
+                            }
+                        )
+                        SettingRow(
+                            Lang.s(R.string.wp_clear), Lang.s(R.string.wp_clear_desc), dark,
+                            onClick = {
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    WallpaperRotator.clear(ctx)
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { wpCount = 0 }
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+        if (group == "g_look") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_icon_pack), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingRow(
+                            Lang.s(R.string.current_icon_pack),
+                            if (DuoState.iconPack.isBlank()) Lang.s(R.string.system_default) else packs.firstOrNull { it.pkg == DuoState.iconPack }?.label ?: DuoState.iconPack,
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { pickIconPack = true }
+                        )
+                    }
+                }
+                Text(
+                    Lang.s(R.string.icon_pack_hint),
+                    fontSize = 11.sp,
+                    color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                )
+            }
+        }
+        if (group == "g_home") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_badges), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(
+                            Lang.s(R.string.show_badge),
+                            if (badgeAccess) Lang.s(R.string.show_badge_on)
+                            else Lang.s(R.string.show_badge_off),
+                            DuoState.showBadges, dark
+                        ) { on ->
+                            DuoState.showBadges = on; DuoState.save()
+                            if (on && !badgeAccess) DuoNotificationListener.openSettings(ctx)
                         }
-                    )
-                }
-            }
-        }
-        item {
-            SectionTitle(Lang.s(R.string.sec_icon_pack), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingRow(
-                        Lang.s(R.string.current_icon_pack),
-                        if (DuoState.iconPack.isBlank()) Lang.s(R.string.system_default) else packs.firstOrNull { it.pkg == DuoState.iconPack }?.label ?: DuoState.iconPack,
-                        dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { pickIconPack = true }
-                    )
-                }
-            }
-            Text(
-                Lang.s(R.string.icon_pack_hint),
-                fontSize = 11.sp,
-                color = glassSubTextColor(dark),
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
-            )
-        }
-        item {
-            SectionTitle(Lang.s(R.string.sec_badges), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(
-                        Lang.s(R.string.show_badge),
-                        if (badgeAccess) Lang.s(R.string.show_badge_on)
-                        else Lang.s(R.string.show_badge_off),
-                        DuoState.showBadges, dark
-                    ) { on ->
-                        DuoState.showBadges = on; DuoState.save()
-                        if (on && !badgeAccess) DuoNotificationListener.openSettings(ctx)
+                        BadgeColorRow(dark, DuoState.badgeColor) { argb ->
+                            DuoState.badgeColor = argb; DuoState.save()
+                        }
+                        SettingRow(
+                            Lang.s(R.string.notif_access),
+                            if (badgeAccess) Lang.s(R.string.notif_access_on) else Lang.s(R.string.notif_access_off),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { DuoNotificationListener.openSettings(ctx) }
+                        )
+                        SettingRow(
+                            Lang.s(R.string.clear_all_badges),
+                            Lang.s(R.string.clear_all_badges_desc),
+                            dark
+                        ) { DuoNotificationListener.dismissAll() }
                     }
-                    BadgeColorRow(dark, DuoState.badgeColor) { argb ->
-                        DuoState.badgeColor = argb; DuoState.save()
-                    }
-                    SettingRow(
-                        Lang.s(R.string.notif_access),
-                        if (badgeAccess) Lang.s(R.string.notif_access_on) else Lang.s(R.string.notif_access_off),
-                        dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { DuoNotificationListener.openSettings(ctx) }
-                    )
-                    SettingRow(
-                        Lang.s(R.string.clear_all_badges),
-                        Lang.s(R.string.clear_all_badges_desc),
-                        dark
-                    ) { DuoNotificationListener.dismissAll() }
                 }
+                Text(
+                    Lang.s(R.string.badge_note),
+                    fontSize = 11.sp,
+                    color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                )
             }
-            Text(
-                Lang.s(R.string.badge_note),
-                fontSize = 11.sp,
-                color = glassSubTextColor(dark),
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
-            )
         }
-        item {
-            SectionTitle(Lang.s(R.string.sec_update), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    val hasNew = DuoState.lastSeenVersion.isNotBlank() &&
-                            UpdateChecker.isNewer(DuoState.lastSeenVersion, ver)
-                    SettingRow(
-                        Lang.s(R.string.check_update),
-                        when {
-                            checking -> Lang.s(R.string.checking_update)
-                            hasNew -> Lang.s(R.string.update_new_found, DuoState.lastSeenVersion)
-                            DuoState.lastSeenVersion.isNotBlank() -> Lang.s(R.string.update_latest, ver)
-                            else -> Lang.s(R.string.update_current, ver)
-                        },
-                        dark,
-                        trailing = {
-                            if (checking) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+        if (group == "g_system") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_update), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        val hasNew = DuoState.lastSeenVersion.isNotBlank() &&
+                                UpdateChecker.isNewer(DuoState.lastSeenVersion, ver)
+                        SettingRow(
+                            Lang.s(R.string.check_update),
+                            when {
+                                checking -> Lang.s(R.string.checking_update)
+                                hasNew -> Lang.s(R.string.update_new_found, DuoState.lastSeenVersion)
+                                DuoState.lastSeenVersion.isNotBlank() -> Lang.s(R.string.update_latest, ver)
+                                else -> Lang.s(R.string.update_current, ver)
+                            },
+                            dark,
+                            trailing = {
+                                if (checking) {
+                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(
+                                        if (hasNew) Icons.Filled.NewReleases else Icons.Filled.Refresh,
+                                        null,
+                                        tint = if (hasNew) glassBlue else glassSubTextColor(dark),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
+                            onClick = { doCheck(silent = false) }
+                        )
+                        SettingToggle(
+                            Lang.s(R.string.auto_check_update), Lang.s(R.string.auto_check_desc),
+                            DuoState.autoCheckUpdate, dark
+                        ) { on -> DuoState.autoCheckUpdate = on; DuoState.save() }
+                        val shownUrl = if (DuoState.updateUrl.length > 48)
+                            DuoState.updateUrl.take(48) + "…" else DuoState.updateUrl
+                        SettingRow(Lang.s(R.string.update_source), shownUrl, dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { urlDraft = DuoState.updateUrl; editUpdateUrl = true })
+                        SettingRow(Lang.s(R.string.open_project), "github.com/d3ja7u/DuoLauncher", dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { UpdateChecker.openInBrowser(ctx, "https://github.com/d3ja7u/DuoLauncher") })
+                    }
+                }
+                Text(
+                    Lang.s(R.string.update_note),
+                    fontSize = 11.sp,
+                    color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                )
+            }
+        }
+        if (group == "g_system") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_privacy), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingToggle(
+                            Lang.s(R.string.stats_toggle),
+                            Lang.s(R.string.stats_toggle_desc),
+                            DuoState.statsEnabled, dark
+                        ) { on ->
+                            DuoState.statsEnabled = on
+                            if (on) {
+                                // 在设置里主动打开即视为已知情，不必再弹首次告知
+                                DuoState.statsConsentShown = true
+                                statsIdPreview = InstallStats.ensureId(ctx).take(8)
+                                InstallStats.reportIfAllowed(ctx, force = true)
                             } else {
-                                Icon(
-                                    if (hasNew) Icons.Filled.NewReleases else Icons.Filled.Refresh,
-                                    null,
-                                    tint = if (hasNew) glassBlue else glassSubTextColor(dark),
-                                    modifier = Modifier.size(20.dp)
-                                )
+                                InstallStats.clear(ctx)
+                                statsIdPreview = ""
                             }
-                        },
-                        onClick = { doCheck(silent = false) }
-                    )
-                    SettingToggle(
-                        Lang.s(R.string.auto_check_update), Lang.s(R.string.auto_check_desc),
-                        DuoState.autoCheckUpdate, dark
-                    ) { on -> DuoState.autoCheckUpdate = on; DuoState.save() }
-                    val shownUrl = if (DuoState.updateUrl.length > 48)
-                        DuoState.updateUrl.take(48) + "…" else DuoState.updateUrl
-                    SettingRow(Lang.s(R.string.update_source), shownUrl, dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { urlDraft = DuoState.updateUrl; editUpdateUrl = true })
-                    SettingRow(Lang.s(R.string.open_project), "github.com/d3ja7u/DuoLauncher", dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { UpdateChecker.openInBrowser(ctx, "https://github.com/d3ja7u/DuoLauncher") })
-                }
-            }
-            Text(
-                Lang.s(R.string.update_note),
-                fontSize = 11.sp,
-                color = glassSubTextColor(dark),
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
-            )
-        }
-        item {
-            SectionTitle(Lang.s(R.string.sec_privacy), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingToggle(
-                        Lang.s(R.string.stats_toggle),
-                        Lang.s(R.string.stats_toggle_desc),
-                        DuoState.statsEnabled, dark
-                    ) { on ->
-                        DuoState.statsEnabled = on
-                        if (on) {
-                            // 在设置里主动打开即视为已知情，不必再弹首次告知
-                            DuoState.statsConsentShown = true
-                            statsIdPreview = InstallStats.ensureId(ctx).take(8)
-                            InstallStats.reportIfAllowed(ctx, force = true)
-                        } else {
-                            InstallStats.clear(ctx)
-                            statsIdPreview = ""
+                            DuoState.save()
                         }
-                        DuoState.save()
+                        SettingRow(
+                            Lang.s(R.string.stats_anon_id),
+                            if (statsIdPreview.isBlank()) Lang.s(R.string.stats_anon_id_none) else "$statsIdPreview…",
+                            dark
+                        )
                     }
-                    SettingRow(
-                        Lang.s(R.string.stats_anon_id),
-                        if (statsIdPreview.isBlank()) Lang.s(R.string.stats_anon_id_none) else "$statsIdPreview…",
-                        dark
-                    )
                 }
+                Text(
+                    Lang.s(R.string.stats_note),
+                    fontSize = 11.sp,
+                    color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                )
             }
-            Text(
-                Lang.s(R.string.stats_note),
-                fontSize = 11.sp,
-                color = glassSubTextColor(dark),
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
-            )
         }
-        item {
-            SectionTitle(Lang.s(R.string.sec_backup), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingRow(
-                        Lang.s(R.string.backup_export), Lang.s(R.string.backup_export_desc), dark,
-                        trailing = { Icon(Icons.Filled.ArrowUpward, null, tint = glassSubTextColor(dark)) },
-                        onClick = {
-                            runCatching { exportLauncher.launch(BackupManager.fileName()) }
-                                .onFailure { nav.toast(Lang.s(R.string.backup_export_fail)) }
-                        }
-                    )
-                    SettingRow(
-                        Lang.s(R.string.backup_import), Lang.s(R.string.backup_import_desc), dark,
-                        trailing = { Icon(Icons.Filled.ArrowDownward, null, tint = glassSubTextColor(dark)) },
-                        onClick = {
-                            runCatching {
-                                importLauncher.launch(arrayOf(BackupManager.MIME, "text/plain", "*/*"))
-                            }.onFailure { nav.toast(Lang.s(R.string.backup_invalid)) }
-                        }
-                    )
+        if (group == "g_system") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_backup), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingRow(
+                            Lang.s(R.string.backup_export), Lang.s(R.string.backup_export_desc), dark,
+                            trailing = { Icon(Icons.Filled.ArrowUpward, null, tint = glassSubTextColor(dark)) },
+                            onClick = {
+                                runCatching { exportLauncher.launch(BackupManager.fileName()) }
+                                    .onFailure { nav.toast(Lang.s(R.string.backup_export_fail)) }
+                            }
+                        )
+                        SettingRow(
+                            Lang.s(R.string.backup_import), Lang.s(R.string.backup_import_desc), dark,
+                            trailing = { Icon(Icons.Filled.ArrowDownward, null, tint = glassSubTextColor(dark)) },
+                            onClick = {
+                                runCatching {
+                                    importLauncher.launch(arrayOf(BackupManager.MIME, "text/plain", "*/*"))
+                                }.onFailure { nav.toast(Lang.s(R.string.backup_invalid)) }
+                            }
+                        )
+                    }
                 }
+                Text(
+                    Lang.s(R.string.backup_note),
+                    fontSize = 11.sp,
+                    color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                )
             }
-            Text(
-                Lang.s(R.string.backup_note),
-                fontSize = 11.sp,
-                color = glassSubTextColor(dark),
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
-            )
         }
-        item {
-            SectionTitle(Lang.s(R.string.sec_system), dark)
-            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                Column(Modifier.padding(vertical = 6.dp)) {
-                    SettingRow(
-                        Lang.s(R.string.language),
-                        Lang.s(languageLabelRes(langChoice)),
-                        dark,
-                        trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                        onClick = { showLangPicker = true }
-                    )
-                    SettingRow(Lang.s(R.string.set_default_launcher), Lang.s(R.string.set_default_desc), dark) {
-                        AppRepository.setDefaultLauncher(ctx)
+        if (group == "g_system") {
+            item {
+                SectionTitle(Lang.s(R.string.sec_system), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingRow(
+                            Lang.s(R.string.language),
+                            Lang.s(languageLabelRes(langChoice)),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { showLangPicker = true }
+                        )
+                        SettingRow(Lang.s(R.string.set_default_launcher), Lang.s(R.string.set_default_desc), dark) {
+                            AppRepository.setDefaultLauncher(ctx)
+                        }
+                        SettingRow(Lang.s(R.string.change_wallpaper), dark = dark) { AppRepository.wallpaper(ctx) }
+                        SettingRow(Lang.s(R.string.app_info_self), dark = dark) {
+                            AppRepository.appDetails(ctx, ctx.packageName)
+                        }
+                        // 版本号直接从包信息读，避免每次发版忘了改这里的硬编码
+                        SettingRow(Lang.s(R.string.about), Lang.s(R.string.about_subtitle, ver), dark = dark)
                     }
-                    SettingRow(Lang.s(R.string.change_wallpaper), dark = dark) { AppRepository.wallpaper(ctx) }
-                    SettingRow(Lang.s(R.string.app_info_self), dark = dark) {
-                        AppRepository.appDetails(ctx, ctx.packageName)
+                }
+                Text(
+                    Lang.s(R.string.language_desc),
+                    fontSize = 11.sp,
+                    color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                )
+                // 「重置所有设置」单独一张卡：与日常项分开，避免手滑
+                Spacer(Modifier.height(14.dp))
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingRow(
+                            Lang.s(R.string.reset_all_settings),
+                            Lang.s(R.string.reset_all_settings_desc),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                        ) { askReset = true }
                     }
-                    // 版本号直接从包信息读，避免每次发版忘了改这里的硬编码
-                    SettingRow(Lang.s(R.string.about), Lang.s(R.string.about_subtitle, ver), dark = dark)
                 }
             }
+        }
+    }
+
+    if (askReset) {
+        DuoDialog(Lang.s(R.string.reset_all_title), dark, opaque = true, onDismiss = { askReset = false }) {
             Text(
-                Lang.s(R.string.language_desc),
-                fontSize = 11.sp,
-                color = glassSubTextColor(dark),
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)
+                Lang.s(R.string.reset_all_body),
+                fontSize = 13.sp, color = glassTextColor(dark)
             )
+            Spacer(Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { askReset = false }) {
+                    Text(Lang.s(R.string.cancel), fontSize = 13.sp, color = glassSubTextColor(dark))
+                }
+                Spacer(Modifier.weight(1f))
+                GlassPrimaryButton(Lang.s(R.string.reset_all_ok), dark, onClick = {
+                    DuoState.resetSettings()
+                    // 重置可能改到「是否隐藏系统状态栏」这类要重建 Activity 才生效的项
+                    val act = ctx.asActivity()
+                    askReset = false
+                    nav.toast(Lang.s(R.string.reset_done))
+                    if (act != null) act.recreate() else onClose()
+                })
+            }
         }
     }
 

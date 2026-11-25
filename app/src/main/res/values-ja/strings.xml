@@ -108,6 +108,28 @@
     <string name="action_lock">画面ロック</string>
     <string name="action_unknown">不明な操作</string>
     <string name="settings_title">DuoLauncher 設定</string>
+    <!-- 設定サブメニュー：大分類 -->
+    <string name="grp_home">ホーム画面</string>
+    <string name="grp_home_desc">グリッド、一括追加・削除、アプリライブラリとバッジ</string>
+    <string name="grp_sidebar">サイドバー</string>
+    <string name="grp_sidebar_desc">表示と位置、項目の編集、ガラス濃度とアイコンサイズ</string>
+    <string name="grp_status">ステータスバー</string>
+    <string name="grp_status_desc">時計、バッテリーと電波のバッジ、上部の未読アイコン</string>
+    <string name="grp_gesture">ジェスチャーとショートカット</string>
+    <string name="grp_gesture_desc">ダブルタップでスリープ、パネル、システムショートカットと英字キー</string>
+    <string name="grp_search">検索</string>
+    <string name="grp_search_desc">検索エンジン、最近使ったアプリ、検索バーとページ</string>
+    <string name="grp_look">外観と壁紙</string>
+    <string name="grp_look_desc">再生パネル、ガラス、壁紙の切り替えとアイコンパック</string>
+    <string name="grp_system">更新と情報</string>
+    <string name="grp_system_desc">更新確認、バックアップと復元、プライバシー、言語とバージョン</string>
+    <!-- すべての設定をリセット -->
+    <string name="reset_all_settings">すべての設定をリセット</string>
+    <string name="reset_all_settings_desc">スイッチ・スライダー・レイアウトを既定値に戻します。ホームのアイコン、フォルダ、壁紙はそのまま残ります</string>
+    <string name="reset_all_title">すべての設定をリセットしますか？</string>
+    <string name="reset_all_body">すべての設定が既定値に戻ります。ホームのアイコンと位置、フォルダ、カテゴリ、非表示アプリ、分身と英字キーの割り当ては保持されます。</string>
+    <string name="reset_all_ok">リセット</string>
+    <string name="reset_done">既定の設定に戻しました</string>
     <string name="sec_sidebar">サイドバー</string>
     <string name="sidebar_position">表示位置</string>
     <string name="sidebar_pos_left_long">左（カメラ穴を回避）</string>

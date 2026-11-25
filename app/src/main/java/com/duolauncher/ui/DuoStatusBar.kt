@@ -30,6 +30,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -685,7 +686,7 @@ private fun BoxScope.NotifCountBadge(count: Int) {
     Box(
         Modifier
             .align(Alignment.TopEnd)
-            .offset(x = 3.dp, y = (-3).dp)
+            .offset(x = 2.dp, y = (-2).dp)
             .shadow(2.dp, CircleShape)
             .height(h)
             .defaultMinSize(minWidth = h)
@@ -751,7 +752,6 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
     // 关掉电量数字后，顶部不再为数字留缺口，圆环连成完整一段
     val showNum = DuoState.showBatteryNumber
 
-    val timeSize = (18 * scale).sp
     val iconSize = (50 * scale).dp
     val measurer = rememberTextMeasurer()
 
@@ -776,17 +776,37 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
     // 轨道色：与内容色同色系、40% 透明度，深色/亮色壁纸上都稳
     val trackColor = inkColor.copy(alpha = 0.40f)
 
-        Column(
+    // 时间的可用宽度 = 状态块宽度（跟着侧栏图标大小走）。系统字体放大、侧栏图标调小、
+    // 时间又走到「20:02」这种 5 位，18sp 就会放不下而折成两行 ——
+    // 这里按实测文本宽度等比缩字号（最低 0.72 倍），保证时间永远是单行。
+    BoxWithConstraints(
         modifier.then(Modifier.onGloballyPositioned { blockBounds = it.boundsInWindow() }),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        val availPx = constraints.maxWidth
+        val fitTimeSize = remember(status.time, availPx, scale) {
+            val base = 18f * scale
+            if (availPx <= 0) base else {
+                val w = measurer.measure(
+                    AnnotatedString(status.time),
+                    TextStyle(fontSize = base.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                ).size.width
+                if (w <= availPx || w <= 0) base else (base * availPx / w).coerceAtLeast(base * 0.72f)
+            }
+        }
+        Column(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (DuoState.showStatusTime) {
+            // 绝不换行：宁可缩字号也不折行（折行会把徽标整块往下顶）
             Text(
                 text = status.time,
-                fontSize = timeSize,
+                fontSize = fitTimeSize.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.5.sp,
                 color = inkColor,
+                maxLines = 1,
+                softWrap = false,
                 style = TextStyle(shadow = Shadow(shade, Offset(0f, 1.8f * scale), 4f * scale))
             )
         }
@@ -932,6 +952,7 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
             }
         }
         }
+    }
     }
 }
 
