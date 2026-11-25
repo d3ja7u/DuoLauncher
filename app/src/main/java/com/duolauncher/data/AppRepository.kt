@@ -1,6 +1,5 @@
 package com.duolauncher.data
 
-import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -24,7 +23,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.duolauncher.R
 import com.duolauncher.util.Lang
-import com.duolauncher.DuoDeviceAdmin
+import com.duolauncher.util.ScreenOff
 import com.duolauncher.service.DuoNotificationListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -148,8 +147,12 @@ object AppRepository {
             }
         }
 
-        // 按「包名 + 用户」去重：两个微信包名相同但属于不同用户，必须都保留
-        val result = out.distinctBy { it.id }.sortedWith(compareBy(collator) { it.label })
+        // 按「包名 + 用户」去重：两个微信包名相同但属于不同用户，必须都保留。
+        // 快捷键的「分身 1..6」入口只是给系统快捷键页选用的跳板，不该出现在应用列表里。
+        val result = out
+            .distinctBy { it.id }
+            .filterNot { it.packageName == ctx.packageName && it.activityClass.contains("ShortcutProxy") }
+            .sortedWith(compareBy(collator) { it.label })
         result
     }
 
@@ -303,20 +306,12 @@ object DuoActions {
         }
     }
 
+    /** 侧边栏锁屏动作：只走无障碍服务，不用设备管理员（DPM 锁屏后解锁必须输密码） */
     private fun lock(context: Context) {
-        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        val admin = ComponentName(context, DuoDeviceAdmin::class.java)
-        if (dpm.isAdminActive(admin)) {
-            runCatching { dpm.lockNow() }
-        } else {
-            runCatching {
-                context.startActivity(
-                    Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
-                        .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin)
-                        .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, Lang.s(R.string.admin_explain))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            }
+        if (!ScreenOff.lock()) {
+            // 服务没连上：已开启但失效的引导去详情页关开一次，从未开启的跳无障碍列表
+            if (ScreenOff.isEnabled(context)) ScreenOff.openServiceSettings(context)
+            else ScreenOff.requestPermission(context)
         }
     }
 }

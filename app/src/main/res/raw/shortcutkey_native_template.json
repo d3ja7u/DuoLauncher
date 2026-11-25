@@ -1,0 +1,388 @@
+{
+  "schema": "agui.shortcutkey\/2",
+  "device": {
+    "project": "g72",
+    "model": "Titan2 (A72)",
+    "keymap": "VOLUMEUP-VOLUMEDOWN-FUNC1-SYM-FUNCTION",
+    "build_product": "Titan_2"
+  },
+  "exported_at": "2026-11-25 13:32:49",
+  "layout": {
+    "model": "Titan2 (A72)",
+    "project": "g72",
+    "edges": {
+      "left": [
+        {
+          "type": "fixed",
+          "id": "volup",
+          "span": 3,
+          "offset": 4
+        },
+        {
+          "type": "fixed",
+          "id": "voldn",
+          "span": 3,
+          "offset": 1
+        }
+      ],
+      "right": [
+        {
+          "type": "fixed",
+          "id": "power",
+          "span": 3,
+          "offset": 3
+        },
+        {
+          "type": "prog",
+          "id": "func1_",
+          "keycode": 401,
+          "span": 3,
+          "offset": 5
+        }
+      ]
+    },
+    "rows": [
+      {
+        "style": 0,
+        "keys": [
+          {
+            "type": "char",
+            "label": "Q"
+          },
+          {
+            "type": "char",
+            "label": "W"
+          },
+          {
+            "type": "char",
+            "label": "E"
+          },
+          {
+            "type": "char",
+            "label": "R"
+          },
+          {
+            "type": "char",
+            "label": "T"
+          },
+          {
+            "type": "char",
+            "label": "Y"
+          },
+          {
+            "type": "char",
+            "label": "U"
+          },
+          {
+            "type": "char",
+            "label": "I"
+          },
+          {
+            "type": "char",
+            "label": "O"
+          },
+          {
+            "type": "char",
+            "label": "P"
+          }
+        ]
+      },
+      {
+        "style": 0,
+        "keys": [
+          {
+            "type": "char",
+            "label": "A"
+          },
+          {
+            "type": "char",
+            "label": "S"
+          },
+          {
+            "type": "char",
+            "label": "D"
+          },
+          {
+            "type": "char",
+            "label": "F"
+          },
+          {
+            "type": "char",
+            "label": "G"
+          },
+          {
+            "type": "char",
+            "label": "H"
+          },
+          {
+            "type": "char",
+            "label": "J"
+          },
+          {
+            "type": "char",
+            "label": "K"
+          },
+          {
+            "type": "char",
+            "label": "L"
+          },
+          {
+            "type": "char",
+            "label": "⌫"
+          }
+        ]
+      },
+      {
+        "style": 0,
+        "keys": [
+          {
+            "type": "prog",
+            "id": "alt_l_",
+            "keycode": 57
+          },
+          {
+            "type": "char",
+            "label": "Z"
+          },
+          {
+            "type": "char",
+            "label": "X"
+          },
+          {
+            "type": "char",
+            "label": "C"
+          },
+          {
+            "type": "char",
+            "label": "V"
+          },
+          {
+            "type": "char",
+            "label": "B"
+          },
+          {
+            "type": "char",
+            "label": "N"
+          },
+          {
+            "type": "char",
+            "label": "M"
+          },
+          {
+            "type": "prog",
+            "id": "sym_",
+            "keycode": 63
+          },
+          {
+            "type": "char",
+            "label": "↵"
+          }
+        ]
+      },
+      {
+        "style": 0,
+        "keys": [
+          {
+            "type": "prog",
+            "id": "shift_l_",
+            "keycode": 59
+          },
+          {
+            "type": "prog",
+            "id": "home_",
+            "keycode": 3
+          },
+          {
+            "type": "prog",
+            "id": "back_",
+            "keycode": 4
+          },
+          {
+            "type": "entry",
+            "id": "space_",
+            "weight": 3
+          },
+          {
+            "type": "prog",
+            "id": "recent_",
+            "keycode": 187
+          },
+          {
+            "type": "prog",
+            "id": "fn_",
+            "keycode": 403
+          },
+          {
+            "type": "prog",
+            "id": "shift_r_",
+            "keycode": 60
+          }
+        ]
+      }
+    ]
+  },
+  "bindings": {
+    "func1_": {
+      "keycode": 401,
+      "mode": "shortcut_key_enable",
+      "programmable_key_function": "0",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "Shortcut_function30"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "Shortcut_function32"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "Shortcut_function7"
+      }
+    },
+    "alt_l_": {
+      "keycode": 57,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "8",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    },
+    "sym_": {
+      "keycode": 63,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "2",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    },
+    "shift_l_": {
+      "keycode": 59,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "7",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    },
+    "home_": {
+      "keycode": 3,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "12",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    },
+    "back_": {
+      "keycode": 4,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "9",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    },
+    "recent_": {
+      "keycode": 187,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "1",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    },
+    "fn_": {
+      "keycode": 403,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "3",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    },
+    "shift_r_": {
+      "keycode": 60,
+      "mode": "programmable_key_enable",
+      "programmable_key_function": "7",
+      "camping_lamp_key_function": "0",
+      "short_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "long_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      },
+      "double_press": {
+        "package": "com.agui.shortcutsettings",
+        "activity": "NoOperate"
+      }
+    }
+  }
+}

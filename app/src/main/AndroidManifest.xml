@@ -14,6 +14,15 @@
     <uses-permission android:name="android.permission.BIND_APPWIDGET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!--
+        快捷键设置：实体按键绑定存在 Settings.System 的自定义键里（如 func1_short_press_package）。
+        Android 只允许第三方应用写 Settings.System 白名单内的键，这些自定义键不在白名单里，
+        所以「修改系统设置」权限也写不进去，必须 WRITE_SECURE_SETTINGS。
+        该权限不能弹窗申请，也不随 APK 安装自动获得，需用户用 ADB 一次性授予：
+            adb shell pm grant com.duolauncher android.permission.WRITE_SECURE_SETTINGS
+        未授权时设置页会给出这条命令并允许复制，功能不报错、只是写不进去。
+    -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <!-- 状态徽标里的蜂窝信号格 / 双卡双排：读取真实信号强度（首次启动弹一次授权框；
          拒绝后可在「设置 → iOS 风格状态栏 → 电话权限」重新开启，未授权时回退为单卡满格） -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
@@ -55,6 +64,74 @@
             </intent-filter>
         </activity>
 
+        <!--
+            快捷键转发：系统原生快捷键页只能用「当前用户」的应用写绑定，分身应用在那里选不到。
+            这里把 6 个「分身 N」声明成普通桌面入口（带 LAUNCHER category），
+            系统原生页面的应用列表按 LAUNCHER activity 枚举，于是用户能直接选到它们；
+            绑定由系统自己写入（第三方应用没有写这些设置项的权限），按键触发后进
+            ShortcutProxyActivity，再按槽位表打开真正的分身应用。
+            槽位数量必须与 ShortcutManager.SLOT_COUNT 一致。
+        -->
+        <activity
+            android:name=".ShortcutProxyActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true" />
+        <activity-alias android:name=".ShortcutProxySlot1"
+            android:targetActivity=".ShortcutProxyActivity"
+            android:exported="true"
+            android:label="@string/clone_slot_1">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".ShortcutProxySlot2"
+            android:targetActivity=".ShortcutProxyActivity"
+            android:exported="true"
+            android:label="@string/clone_slot_2">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".ShortcutProxySlot3"
+            android:targetActivity=".ShortcutProxyActivity"
+            android:exported="true"
+            android:label="@string/clone_slot_3">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".ShortcutProxySlot4"
+            android:targetActivity=".ShortcutProxyActivity"
+            android:exported="true"
+            android:label="@string/clone_slot_4">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".ShortcutProxySlot5"
+            android:targetActivity=".ShortcutProxyActivity"
+            android:exported="true"
+            android:label="@string/clone_slot_5">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias android:name=".ShortcutProxySlot6"
+            android:targetActivity=".ShortcutProxyActivity"
+            android:exported="true"
+            android:label="@string/clone_slot_6">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
         <!-- 在线更新下载的 APK 放在 cache/updates/，只临时授权给系统安装器 -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -88,17 +165,5 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/duo_lock_service" />
         </service>
-
-        <receiver
-            android:name=".DuoDeviceAdmin"
-            android:exported="false"
-            android:permission="android.permission.BIND_DEVICE_ADMIN">
-            <meta-data
-                android:name="android.app.device_admin"
-                android:resource="@xml/device_admin" />
-            <intent-filter>
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>

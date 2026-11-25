@@ -14,6 +14,8 @@ class Nav(
     /** 添加系统小组件到主屏幕 */
     val addHomeWidget: () -> Unit,
     val showAppMenu: (AppInfo, String) -> Unit,
+    /** 长按先弹菜单、手指不松继续拖动时，把刚弹出的菜单收掉 */
+    val dismissAppMenu: () -> Unit,
     val showCategoryPicker: (AppInfo) -> Unit,
     val goPage: (Int) -> Unit,
     /** 跳转到 App 资源库页（自动处理倒序翻页与页数变化） */

@@ -65,7 +65,6 @@ This is a personal open-source project. Source and issue tracker: https://github
 | `REQUEST_DELETE_PACKAGES` | 图标菜单中的卸载入口，需系统确认 | 可选 |
 | `REQUEST_INSTALL_PACKAGES` | 在线更新时调起系统安装器；安装仍须你在系统弹窗中确认 | 可选，仅手动点「下载并安装」时用到，可在系统设置中撤销 |
 | `BIND_APPWIDGET` | 桌面小组件 | 可选 |
-| 设备管理器（`BIND_DEVICE_ADMIN`） | 个别 ROM 上息屏的备用方案 | 可选，从不自动激活，可在系统设置中停用 |
 
 所有可选权限都可以在系统设置中随时撤销，撤销后对应功能停用，不影响桌面主体功能。匿名统计**不需要任何额外权限**（只用已有的 `INTERNET`）。
 
@@ -143,7 +142,6 @@ The app makes only two kinds of network requests, both of which you can disable.
 | `REQUEST_DELETE_PACKAGES` | Uninstall shortcut in the icon menu, with system confirmation | Optional |
 | `REQUEST_INSTALL_PACKAGES` | Opens the system installer for in-place updates; install still needs your confirmation | Optional, only when you tap Download and install; revocable |
 | `BIND_APPWIDGET` | Home screen widgets | Optional |
-| Device Admin (`BIND_DEVICE_ADMIN`) | Fallback screen-off on some ROMs | Optional; never auto-activated |
 
 Every optional permission can be revoked at any time. Anonymous statistics need **no additional permission** (only the existing `INTERNET`).
 
@@ -221,7 +219,6 @@ Any future feature that changes the above will be reflected here first and noted
 | `REQUEST_DELETE_PACKAGES` | アイコンメニューのアンインストール（システム確認あり） | 任意 |
 | `REQUEST_INSTALL_PACKAGES` | アプリ内更新でシステムのインストーラーを起動（インストールはシステム画面で要確認） | 任意。「ダウンロードしてインストール」時のみ、取り消し可能 |
 | `BIND_APPWIDGET` | ホーム画面ウィジェット | 任意 |
-| デバイス管理（`BIND_DEVICE_ADMIN`） | 一部 ROM での代替スリープ | 任意。自動有効化しない |
 
 任意の権限はいつでも取り消せます。匿名統計に**追加の権限は不要**です（既存の `INTERNET` のみ）。
 

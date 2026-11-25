@@ -100,26 +100,34 @@ fun LibraryPage(nav: Nav, dark: Boolean, wallpaper: Bitmap?, isActive: Boolean =
     var indexActive by remember { mutableStateOf<Char?>(null) }
     // false = 文件夹视图，true = 字母列表视图。两者互斥，列表视图里不会有文件夹卡
     var listMode by remember { mutableStateOf(false) }
-    val all = DuoState.visibleApps().filter { !DuoState.hidden.contains(it.id) }
+    // 这几个列表每次都参与 buildLetterSections / groupBy（上百个应用 × 每个分类判定），
+    // 以前每次组合都新建一份实例，remember(all) 之类的键永远不相等 →
+    // 滑一下、状态栏跳一下就把全量分组重算一遍。这里用「内容相等」的键缓存住。
+    val all = remember(DuoState.apps.toList(), DuoState.hidden.toList()) {
+        DuoState.visibleApps()
+    }
     val textColor = glassTextColor(dark)
     val subColor = glassSubTextColor(dark)
 
     // 分类卡：按运行时的分类表来（内置可改名/可删，用户在设置里自建的追加在后面）。
     // 分类被删掉后，原本挂在它下面的应用不能凭空消失，统一收进「其他」卡。
-    val groups: List<Pair<String, List<AppInfo>>> = if (DuoState.smartCategory) {
-        val cats = DuoState.categoryList()
-        val known = cats.map { it.first }.toHashSet()
-        val grouped = all.groupBy { DuoState.categoryOf(it) }
-        buildList {
-            cats.forEach { (id, _) ->
-                grouped[id]?.takeIf { it.isNotEmpty() }?.let { add(id to it) }
+    val groups: List<Pair<String, List<AppInfo>>> =
+        remember(all, DuoState.smartCategory, DuoState.categoryList(), DuoState.categoryOverride.toMap()) {
+            if (DuoState.smartCategory) {
+                val cats = DuoState.categoryList()
+                val known = cats.map { it.first }.toHashSet()
+                val grouped = all.groupBy { DuoState.categoryOf(it) }
+                buildList {
+                    cats.forEach { (id, _) ->
+                        grouped[id]?.takeIf { it.isNotEmpty() }?.let { add(id to it) }
+                    }
+                    val orphans = all.filter { DuoState.categoryOf(it) !in known }
+                    if (orphans.isNotEmpty()) add(CATEGORY_OTHER to orphans)
+                }
+            } else {
+                listOf("all" to all)
             }
-            val orphans = all.filter { DuoState.categoryOf(it) !in known }
-            if (orphans.isNotEmpty()) add(CATEGORY_OTHER to orphans)
         }
-    } else {
-        listOf("all" to all)
-    }
 
     // ── 字母列表（iOS 样式）：列表视图专用，从第一个字母开始铺满整屏 ──
     val sections = remember(all) { buildLetterSections(all) }

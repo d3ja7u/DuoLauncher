@@ -34,7 +34,6 @@ PERMISSIONS - WHAT EACH ONE IS FOR
 * ACCESS_WIFI_STATE / ACCESS_NETWORK_STATE: draws Wi-Fi and signal indicators in the custom status bar.
 * VIBRATE: haptic feedback. REQUEST_DELETE_PACKAGES: the uninstall shortcut in the icon menu.
 * BIND_APPWIDGET: home screen widgets.
-* Device Admin: optional fallback for screen-off on ROMs where the accessibility action is unavailable. It is never activated automatically and can be turned off in system settings.
 
 PRIVACY
 

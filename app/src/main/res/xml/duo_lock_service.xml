@@ -3,6 +3,7 @@
     android:description="@string/duo_lock_desc"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
+    android:accessibilityFlags="flagDefault|flagRequestFilterKeyEvents"
     android:notificationTimeout="100"
+    android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="false" />

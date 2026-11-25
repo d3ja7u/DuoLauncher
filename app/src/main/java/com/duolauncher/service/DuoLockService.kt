@@ -3,10 +3,18 @@ package com.duolauncher.service
 import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
+import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.provider.Settings
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
+import com.duolauncher.data.AppRepository
+import com.duolauncher.data.DuoState
+import com.duolauncher.util.LetterKeys
 
 /**
  * 纯「锁屏」用途的无障碍服务。
@@ -20,9 +28,66 @@ import android.view.accessibility.AccessibilityManager
  */
 class DuoLockService : AccessibilityService() {
 
+    /** 正在按住的可绑定按键；-1 表示没有 */
+    private var pressedCode = -1
+    private var pressedAt = 0L
+
+    private fun dbg(): Boolean =
+        (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+    }
+
+    /**
+     * 桌面上的「字母键长按启动应用」。
+     *
+     * 只处理已绑定的键、只在桌面处理：离开桌面时返回 false，字母照常输入。
+     * 按下计时、长按到阈值后松手才启动，并把这次事件拦下来，桌面不会收到多余的按键。
+     */
+    override fun onKeyEvent(event: KeyEvent?): Boolean {
+        val code = event?.keyCode ?: return false
+        if (dbg()) {
+            android.util.Log.d(
+                "DuoKey",
+                "code=$code action=${event.action} fg=${DuoState.homeForeground} n=${DuoState.keyLetterApps.size} bound=${LetterKeys.appIdOf(code)}"
+            )
+        }
+        if (!DuoState.homeForeground || !LetterKeys.isBindable(code)) return false
+        val appId = LetterKeys.appIdOf(code) ?: return false
+
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                pressedCode = code
+                pressedAt = SystemClock.uptimeMillis()
+                return false
+            }
+
+            KeyEvent.ACTION_UP -> {
+                val held = SystemClock.uptimeMillis() - pressedAt
+                val triggered = pressedCode == code && held >= LetterKeys.HOLD_MS
+                pressedCode = -1
+                if (dbg()) android.util.Log.d("DuoKey", "held=$held triggered=$triggered")
+                if (!triggered) return false
+                // 松手时再启动：按住期间不做任何打断，松手才知道是长按
+                val ctx = applicationContext
+                val ok = AppRepository.launch(ctx, appId)
+                if (dbg()) android.util.Log.d("DuoKey", "launch $appId -> $ok")
+                if (ok) {
+                    runCatching {
+                        val v = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            v.vibrate(VibrationEffect.createOneShot(18, 90))
+                        } else {
+                            @Suppress("DEPRECATION") v.vibrate(18)
+                        }
+                    }
+                }
+                return true
+            }
+        }
+        return false
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit

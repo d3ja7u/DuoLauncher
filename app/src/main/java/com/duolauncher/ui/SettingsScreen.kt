@@ -44,12 +44,15 @@ import com.duolauncher.R
 import com.duolauncher.util.Lang
 import com.duolauncher.data.*
 import com.duolauncher.data.IconPacks
+import com.duolauncher.service.DuoLockService
 import com.duolauncher.service.DuoNotificationListener
 import com.duolauncher.util.ApkUpdater
 import com.duolauncher.util.BackupManager
 import com.duolauncher.util.InstallStats
+import com.duolauncher.util.LetterKeys
 import com.duolauncher.util.ScreenOff
 import com.duolauncher.util.SearchEngines
+import com.duolauncher.util.ShortcutManager
 import com.duolauncher.util.UpdateChecker
 import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.CancellationException
@@ -76,6 +79,7 @@ fun SettingsScreen(
             "hidden" -> HiddenEditorScreen(dark, onBack = { sub = null })
             "batch_add" -> BatchEditScreen(BatchMode.ADD, nav, dark, onBack = { sub = null })
             "batch_remove" -> BatchEditScreen(BatchMode.REMOVE, nav, dark, onBack = { sub = null })
+            "shortcuts" -> ShortcutSettingsScreen(nav, dark, onBack = { sub = null })
             else -> MainSettings(nav, dark, onClose) { sub = it }
         }
     }
@@ -267,7 +271,6 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     // 此时设置页仍显示「已开启」，只认前者就会给出无解提示（旧版「正在启动」）。
     var accEnabled by remember { mutableStateOf(ScreenOff.isEnabled(ctx)) }
     var accReady by remember { mutableStateOf(ScreenOff.isReady()) }
-    var adminReady by remember { mutableStateOf(ScreenOff.isAdminActive(ctx)) }
     // 通知使用权状态，同样需要在从系统页返回时刷新
     var badgeAccess by remember { mutableStateOf(DuoNotificationListener.hasAccess(ctx)) }
     // 有些 ROM 会在后台自行回收第三方无障碍服务，用户并没有再进过系统设置页，
@@ -304,7 +307,6 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     phoneGranted = phonePermissionGranted(ctx)
                     accEnabled = ScreenOff.isEnabled(ctx)
                     accReady = ScreenOff.isReady()
-                    adminReady = ScreenOff.isAdminActive(ctx)
                     badgeAccess = DuoNotificationListener.hasAccess(ctx)
                     // 从「安装未知来源应用」设置页返回：授权通过就接着下载
                     val waiting = pendingRelease
@@ -328,7 +330,6 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         while (true) {
             accReady = ScreenOff.isReady()
             accEnabled = ScreenOff.isEnabled(ctx)
-            adminReady = ScreenOff.isAdminActive(ctx)
             kotlinx.coroutines.delay(1_500L)
         }
     }
@@ -680,38 +681,24 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     SettingToggle(Lang.s(R.string.show_page_dots), null, DuoState.showPageDots, dark) { DuoState.showPageDots = it; DuoState.save() }
                     SettingToggle(Lang.s(R.string.reverse_pages), Lang.s(R.string.reverse_pages_desc),
                         DuoState.reversePages, dark) { DuoState.reversePages = it; DuoState.save() }
+                    SettingToggle(Lang.s(R.string.lock_layout), Lang.s(R.string.lock_layout_desc),
+                        DuoState.lockLayout, dark) { DuoState.lockLayout = it; DuoState.save() }
                     SettingToggle(
                         Lang.s(R.string.double_tap_lock),
                         when {
                             accReady -> Lang.s(R.string.double_tap_lock_on)
                             accEnabled -> Lang.s(R.string.double_tap_lock_broken)
-                            adminReady -> Lang.s(R.string.double_tap_lock_admin)
                             else -> Lang.s(R.string.double_tap_lock_off)
                         },
                         DuoState.doubleTapSleep, dark
                     ) { on ->
                         DuoState.doubleTapSleep = on; DuoState.save()
-                        // 已经有可用通道时不要再弹无障碍授权：无障碍连上了就无需任何跳转，
-                        // 只开了设备管理员备用方式时也足够息屏。只有两条路都不通时才引导。
-                        if (on && !accReady && !adminReady) {
+                        // 无障碍连上了就无需任何跳转；没连上时按状态引导重绑或首次授权
+                        if (on && !accReady) {
                             // 已开启但没连上：直接跳到本服务的详情页，让用户关一次再打开
                             if (accEnabled) ScreenOff.openServiceSettings(ctx)
                             else ScreenOff.requestPermission(ctx)
                         }
-                    }
-                    SettingToggle(
-                        Lang.s(R.string.lock_admin_title),
-                        Lang.s(R.string.lock_admin_desc),
-                        adminReady, dark
-                    ) { on ->
-                        if (on) {
-                            // 系统授权页必须由 Activity 原地启动，跳过去后由用户点「激活」
-                            if (ScreenOff.requestAdmin(ctx)) nav.toast(Lang.s(R.string.toast_admin_confirm))
-                            else nav.toast(Lang.s(R.string.toast_admin_fail))
-                        } else {
-                            ScreenOff.removeAdmin(ctx)
-                        }
-                        // 真实状态以系统为准：授权页返回时 ON_RESUME、以及本页轮询都会纠正文案
                     }
                     SettingToggle(
                         Lang.s(R.string.swipe_down_panels),
@@ -723,6 +710,23 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         Lang.s(R.string.swipe_right_search_desc),
                         DuoState.gestureSearch, dark
                     ) { on -> DuoState.gestureSearch = on; DuoState.save() }
+                }
+            }
+        }
+        // 只有本机真有系统快捷键能力时才显示这一组：普通手机装上也配不了，
+        // 摆个无效入口只会让人以为功能坏了。
+        if (ShortcutManager.hasSystemSupport(ctx)) {
+            item {
+                SectionTitle(Lang.s(R.string.sec_shortcut), dark)
+                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        SettingRow(
+                            Lang.s(R.string.shortcut_settings),
+                            Lang.s(R.string.shortcut_settings_desc),
+                            dark,
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                        ) { open("shortcuts") }
+                    }
                 }
             }
         }
@@ -2024,6 +2028,398 @@ private fun BadgeColorRow(dark: Boolean, current: Int, onPick: (Int) -> Unit) {
                     if (on) Icon(Icons.Filled.Check, Lang.s(nameRes), tint = Color.White, modifier = Modifier.size(15.dp))
                 }
             }
+        }
+    }
+}
+
+/* ────────────────────────── 快捷键设置 ────────────────────────── */
+
+/**
+ * 快捷键设置：按键绑定全部交给系统原生页面，这里只补系统做不到的一件事 —— 分身应用。
+ *
+ * 系统原生页面只能用「当前用户」的应用写绑定，分身应用在那里选不到；而绑定本身写在
+ * Settings.System 的自定义键里，只有系统 / privileged 应用能写（第三方应用即使拿到
+ * WRITE_SECURE_SETTINGS 也会被拒），所以 DuoLauncher 不自己写配置，而是：
+ *
+ *  1) 清单里声明 6 个普通桌面入口「分身 1」…「分身 6」，系统应用列表按 LAUNCHER
+ *     activity 枚举，于是原生页面能直接选到它们；
+ *  2) 这里把「分身 N」指派给具体分身应用；
+ *  3) 用户在原生页面把某个键指向「分身 N」，绑定由系统写入，按键触发由转发 Activity 打开分身。
+ */
+@Composable
+private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    DuoState.init(ctx)
+
+    var refresh by remember { mutableStateOf(0) }
+    /** 正在指派应用的槽位；null 表示没开弹窗 */
+    var editing by remember { mutableStateOf<Int?>(null) }
+    /** 正在指派应用的字母键（KeyEvent.keyCode）；null 表示没开弹窗 */
+    var editingLetter by remember { mutableStateOf<Int?>(null) }
+
+    // 从系统快捷键页返回时刷新（用户可能刚在里面改了绑定）
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                // 配置时临时放出的「分身 N」入口，回来后只保留真的被按键引用的
+                runCatching { ShortcutManager.collapseIfPending(ctx) }
+                refresh++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 排除 DuoLauncher 自己：把自己「分身」一份没任何用处，只会让列表多出一条噪音
+    val cloneApps = DuoState.apps.filter { it.isClone && it.packageName != ctx.packageName }
+    // 只读：系统里已经指向「分身 N」的按键，用来核对是否真的生效
+    val boundKeys = remember(refresh) {
+        ShortcutManager.configured(ctx).filter { it.third.slotFor(ctx) != null }
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 18.dp).padding(bottom = 28.dp)
+    ) {
+        GlassTopBar(Lang.s(R.string.shortcut_settings), dark, onBack)
+
+        // ① 系统原生设置：普通应用、字母键、快捷功能都在系统页面里配
+        Spacer(Modifier.height(6.dp))
+        GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
+            Column(Modifier.padding(16.dp)) {
+                Text(
+                    Lang.s(R.string.shortcut_native_title),
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark)
+                )
+                Text(
+                    Lang.s(R.string.shortcut_native_desc),
+                    fontSize = 12.sp, color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        // 「分身 N」入口平时不出现在桌面，这里临时放出来再跳，
+                        // 否则系统页的应用列表里选不到它们。
+                        ShortcutManager.showAllSlots(ctx)
+                        if (!ShortcutManager.openSystemPage(ctx)) {
+                            ShortcutManager.collapseIfPending(ctx)
+                            nav.toast(Lang.s(R.string.shortcut_native_missing))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(Lang.s(R.string.shortcut_native_open), fontSize = 14.sp) }
+            }
+        }
+
+        // ② 分身入口：系统页面里看到的就是这 6 个「分身 N」
+        SectionTitle(Lang.s(R.string.shortcut_clone_title), dark)
+        GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
+            Column(Modifier.padding(vertical = 6.dp)) {
+                Text(
+                    Lang.s(R.string.shortcut_clone_desc),
+                    fontSize = 12.sp, color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+                if (cloneApps.isEmpty()) {
+                    Text(
+                        Lang.s(R.string.shortcut_clone_empty),
+                        fontSize = 13.sp, color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                } else {
+                    for (slot in 1..ShortcutManager.SLOT_COUNT) {
+                        val app = ShortcutManager.appIdOfSlot(slot)?.let { DuoState.appOf(it) }
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                .clickable { editing = slot }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (app != null) {
+                                Image(
+                                    rememberDrawablePainter(rememberAppIcon(app)), null,
+                                    Modifier.size(32.dp).clip(squircle(24))
+                                )
+                            } else {
+                                Box(
+                                    Modifier.size(32.dp).clip(squircle(24))
+                                        .background(glassSubTextColor(dark).copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Add, null,
+                                        tint = glassSubTextColor(dark), modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    Lang.s(R.string.clone_slot_n, slot.toString()),
+                                    fontSize = 14.sp, color = glassTextColor(dark), maxLines = 1
+                                )
+                                Text(
+                                    app?.label ?: Lang.s(R.string.clone_slot_unassigned),
+                                    fontSize = 11.sp, color = glassSubTextColor(dark),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark))
+                        }
+                    }
+                }
+            }
+        }
+
+        // ③ 桌面快捷键：没有系统自带按键设置的全键盘机，靠这张表也能一键开应用
+        SectionTitle(Lang.s(R.string.letter_keys_title), dark)
+        GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
+            Column(Modifier.padding(vertical = 12.dp)) {
+                Text(
+                    Lang.s(R.string.letter_keys_desc),
+                    fontSize = 12.sp, color = glassSubTextColor(dark),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(Modifier.height(10.dp))
+                LetterKeyGrid(dark = dark) { editingLetter = it }
+                if (!DuoLockService.isConnected()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            Lang.s(R.string.letter_keys_need_service),
+                            fontSize = 11.sp, color = Color(0xFFFFB454), modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { ScreenOff.openServiceSettings(ctx) }) {
+                            Text(Lang.s(R.string.letter_keys_open_service), fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ④ 已经指向「分身 N」的按键：让用户能确认系统里确实挂上了
+        if (boundKeys.isNotEmpty()) {
+            SectionTitle(Lang.s(R.string.shortcut_bound_keys), dark)
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(vertical = 6.dp)) {
+                    boundKeys.forEach { (key, press, binding) ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                Lang.s(key.labelRes) + " " + Lang.s(press.labelRes),
+                                fontSize = 13.sp, color = glassTextColor(dark), modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                binding.label(ctx), fontSize = 12.sp,
+                                color = glassSubTextColor(dark), maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Text(
+            Lang.s(R.string.shortcut_footer),
+            fontSize = 11.sp, color = glassSubTextColor(dark),
+            modifier = Modifier.padding(horizontal = 6.dp)
+        )
+    }
+
+    editing?.let { slot ->
+        CloneSlotDialog(
+            ctx = ctx, nav = nav, dark = dark, slot = slot, apps = cloneApps,
+            onDismiss = { editing = null },
+            onPicked = { refresh++; editing = null }
+        )
+    }
+
+    editingLetter?.let { code ->
+        LetterKeyDialog(
+            nav = nav, dark = dark, code = code, apps = DuoState.apps,
+            onDismiss = { editingLetter = null },
+            onPicked = { refresh++; editingLetter = null }
+        )
+    }
+}
+
+/** A–Z + 0–9 的字母键网格；已指定的键显示应用图标 */
+@Composable
+private fun LetterKeyGrid(dark: Boolean, onPick: (Int) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        LetterKeys.CODES.chunked(7).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { code ->
+                    val app = LetterKeys.appIdOf(code)?.let { DuoState.appOf(it) }
+                    Box(
+                        Modifier.weight(1f).height(52.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (app != null) glassBlue.copy(alpha = 0.20f)
+                                else glassSubTextColor(dark).copy(alpha = 0.10f)
+                            )
+                            .clickable { onPick(code) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (app != null) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Image(
+                                    rememberDrawablePainter(rememberAppIcon(app)), null,
+                                    Modifier.size(22.dp).clip(squircle(20))
+                                )
+                                Text(
+                                    LetterKeys.label(code), fontSize = 9.sp,
+                                    color = glassSubTextColor(dark)
+                                )
+                            }
+                        } else {
+                            Text(
+                                LetterKeys.label(code), fontSize = 14.sp,
+                                color = glassSubTextColor(dark)
+                            )
+                        }
+                    }
+                }
+                repeat(7 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+/** 给某个字母键指定「长按打开哪个应用」 */
+@Composable
+private fun LetterKeyDialog(
+    nav: Nav,
+    dark: Boolean,
+    code: Int,
+    apps: List<AppInfo>,
+    onDismiss: () -> Unit,
+    onPicked: () -> Unit
+) {
+    val label = LetterKeys.label(code)
+    val current = LetterKeys.appIdOf(code)
+    val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+    DuoDialog(Lang.s(R.string.letter_keys_pick_title, label), dark, onDismiss) {
+        if (current != null) {
+            TextButton(onClick = {
+                LetterKeys.clear(code)
+                nav.toast(Lang.s(R.string.letter_keys_cleared, label))
+                onPicked()
+            }) { Text(Lang.s(R.string.clone_slot_clear), color = Color(0xFFFF6B6B), fontSize = 13.sp) }
+            Spacer(Modifier.height(6.dp))
+        }
+        Column(
+            Modifier.heightIn(max = (screenH.dp - 260.dp).coerceAtLeast(180.dp))
+                .verticalScroll(rememberScrollState())
+        ) {
+            apps.forEach { app ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            LetterKeys.assign(code, app.id)
+                            nav.toast(Lang.s(R.string.letter_keys_saved, label, app.label))
+                            onPicked()
+                        }
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Image(
+                        rememberDrawablePainter(rememberAppIcon(app)), null,
+                        Modifier.size(32.dp).clip(squircle(24))
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            app.label, fontSize = 14.sp, color = glassTextColor(dark),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            app.packageName, fontSize = 10.sp, color = glassSubTextColor(dark),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (current == app.id) {
+                        Icon(Icons.Filled.Check, null, tint = glassBlue, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) { Text(Lang.s(R.string.cancel)) }
+        }
+    }
+}
+
+/** 给「分身 N」指定具体的分身应用 */
+@Composable
+private fun CloneSlotDialog(
+    ctx: Context,
+    nav: Nav,
+    dark: Boolean,
+    slot: Int,
+    apps: List<AppInfo>,
+    onDismiss: () -> Unit,
+    onPicked: () -> Unit
+) {
+    val current = ShortcutManager.appIdOfSlot(slot)
+    val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
+    DuoDialog(Lang.s(R.string.clone_slot_pick_title, slot.toString()), dark, onDismiss) {
+        if (current != null) {
+            TextButton(onClick = {
+                ShortcutManager.clearSlot(slot)
+                nav.toast(Lang.s(R.string.clone_slot_cleared, slot.toString()))
+                onPicked()
+            }) { Text(Lang.s(R.string.clone_slot_clear), color = Color(0xFFFF6B6B), fontSize = 13.sp) }
+            Spacer(Modifier.height(6.dp))
+        }
+        Column(
+            Modifier.heightIn(max = (screenH.dp - 260.dp).coerceAtLeast(180.dp))
+                .verticalScroll(rememberScrollState())
+        ) {
+            apps.forEach { app ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            ShortcutManager.assign(slot, app.id)
+                            nav.toast(Lang.s(R.string.clone_slot_saved, slot.toString(), app.label))
+                            onPicked()
+                        }
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Image(
+                        rememberDrawablePainter(rememberAppIcon(app)), null,
+                        Modifier.size(32.dp).clip(squircle(24))
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            app.label, fontSize = 14.sp, color = glassTextColor(dark),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            app.packageName, fontSize = 10.sp, color = glassSubTextColor(dark),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (current == app.id) {
+                        Icon(Icons.Filled.Check, null, tint = glassBlue, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) { Text(Lang.s(R.string.cancel)) }
         }
     }
 }

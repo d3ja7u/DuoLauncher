@@ -152,9 +152,14 @@ class MainActivity : ComponentActivity() {
         runCatching { com.duolauncher.service.DuoNotificationListener.ensureBound(this) }
         // 匿名统计：只有已确认告知且开关打开才会联网，内部有 24 小时心跳节流
         InstallStats.reportIfAllowed(this)
+        // 无障碍服务只在桌面拦字母键，离开桌面时字母照常输入
+        DuoState.homeForeground = true
+        // 从系统快捷键页回到桌面时，把配置用的「分身 N」临时入口收掉（已被按键引用的保留）
+        runCatching { com.duolauncher.util.ShortcutManager.collapseIfPending(this) }
     }
 
     override fun onPause() {
+        DuoState.homeForeground = false
         // 配置写盘做了 250ms 合并（避免拖滑块时连续写盘），离开桌面时强制落一次，
         // 保证用户切走 / 熄屏后改动不会停在合并窗口里。
         com.duolauncher.data.DuoState.flush()
@@ -471,6 +476,7 @@ class MainActivity : ComponentActivity() {
                 openHiddenEditor = { leaveSearchIfNeeded(); settingsSub = "hidden"; overlay = "settings" },
                 addHomeWidget = { widgetPickerOpen = true },
                 showAppMenu = { app, src -> menuApp = app; menuSource = src },
+                dismissAppMenu = { menuApp = null },
                 showCategoryPicker = { app -> categoryTarget = app },
                 goPage = { page ->
                     overlay = null
@@ -583,6 +589,9 @@ class MainActivity : ComponentActivity() {
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize(),
+                        // 不设 beyondBoundsPageCount：实测预组合相邻页会让冷启动从
+                        // 320ms 涨到 450ms（每页都要跑 layoutHome + 手势），
+                        // 代价比翻页少掉的那 0.3% 卡顿大得多。
                         userScrollEnabled = overlay == null && !DuoState.dragging
                     ) { page ->
                         when {
