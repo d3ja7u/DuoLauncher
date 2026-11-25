@@ -175,7 +175,14 @@ fun HomePage(
     else maxOf(DuoState.statusTop, 64)
     // 时间 + 电量三合一再往上提：只挪绘制位置，网格 topGap 仍用 statusTopPad，不动图标行距。
     // 侧栏「靠下居中」的基准也用这个真实下沿（见下方 sbRegionTop），两者始终对齐。
-    val statusDrawTop = (statusTopPad - 20f).coerceAtLeast(2f)
+    //
+    // 但右上角是圆角时（TT2 Elite 约 46dp，TT2 的角小得多）不能贴到 2dp：
+    // 贴顶的时间最后一位会被圆角削掉一块，同一套设置在两台机器上表现不一样。
+    // 按角半径算一个最小下移量，角越圆让得越多；无圆角或圆角很小基本等于原来的位置。
+    val cornerDropDp = if (DuoState.statusRight) {
+        (DuoState.cornerTopRightDp * 0.22f).coerceIn(2f, 14f)
+    } else 2f
+    val statusDrawTop = (statusTopPad - 20f).coerceAtLeast(cornerDropDp)
     // 状态块真实高度（时间 / 三合一徽标可分别关闭）走 DuoState 的唯一口径，
     // 关掉其中一项后，胶囊与侧栏会跟着上移，不会留下空档。
     val statusHeight = DuoState.statusBlockHeightDp()

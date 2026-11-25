@@ -787,7 +787,7 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
         // 留 3% 余量：贴着边缘看起来就像被裁掉了，留一点空更稳
         val fitPx = (availPx * 0.97f).toInt()
         val fitTimeSize = remember(status.time, availPx, scale) {
-            val base = 15.5f * scale
+            val base = 14f * scale
             if (fitPx <= 0) base else {
                 val w = measurer.measure(
                     AnnotatedString(status.time),

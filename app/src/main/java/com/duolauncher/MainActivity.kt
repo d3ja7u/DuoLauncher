@@ -96,6 +96,12 @@ class MainActivity : ComponentActivity() {
                 maxOf(barsTop, holeBottom, cutTop),
                 resources.displayMetrics.density
             )
+            // 圆角半径一起记下来：同一个人两台机器（TT2 / TT2 Elite）角半径不同，
+            // 紧贴顶部的时间在角大的那台上会被圆角削掉一截，顶部状态块据此往下让。
+            DuoState.setCornerTopRight(
+                topRightCornerRadiusPx(),
+                resources.displayMetrics.density
+            )
             insets
         }
         ViewCompat.requestApplyInsets(window.decorView)
@@ -125,6 +131,17 @@ class MainActivity : ComponentActivity() {
         // 状态徽标的蜂窝信号格 / 双卡双排需要 READ_PHONE_STATE：只在第一次启动问一次，
         // 拒绝后写标记不再打扰（回退成单卡满格）；用户可在「设置 → iOS 风格状态栏 → 电话权限」重新开启
         maybeAskPhonePermission()
+    }
+
+    /**
+     * 屏幕右上角的圆角半径（px）。圆角越大，紧贴屏幕顶部的内容越容易被角削掉：
+     * TT2 与 TT2 Elite 用同一套设置，角半径不同，表现就不一样。读不到时返回 0。
+     */
+    private fun topRightCornerRadiusPx(): Int {
+        if (Build.VERSION.SDK_INT < 31) return 0
+        return runCatching {
+            display?.getRoundedCorner(android.view.RoundedCorner.POSITION_TOP_RIGHT)?.radius ?: 0
+        }.getOrDefault(0)
     }
 
     /** 首次启动申请一次「电话状态」权限，用于显示真实蜂窝信号格与双卡双排；拒绝后可在设置页重新开启 */

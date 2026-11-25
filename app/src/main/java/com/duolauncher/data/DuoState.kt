@@ -189,6 +189,25 @@ object DuoState {
      */
     var systemTopInsetPx by mutableStateOf(0)          // 临时状态，不持久化
     var insetDensity by mutableStateOf(1f)
+    /**
+     * 屏幕右上圆圆角半径（px）：由 MainActivity 读 Display.getRoundedCorner 写入。
+     * 圆角大的机型（Titan 2 Elite 约 46dp）会把紧贴顶部的时间最后一位削掉一块，
+     * 顶部状态块据此往下让一点；读不到（无圆角 / 低版本）时为 0，按原来的位置画。
+     */
+    var cornerTopRightPx by mutableStateOf(0)          // 临时状态，不持久化
+    var cornerDensity by mutableStateOf(1f)
+
+    val cornerTopRightDp: Float
+        get() = if (cornerDensity > 0f) cornerTopRightPx / cornerDensity else 0f
+
+    fun setCornerTopRight(px: Int, density: Float) {
+        if (density <= 0f) return
+        val p = if (px < 0) 0 else px
+        if (p != cornerTopRightPx || density != cornerDensity) {
+            cornerTopRightPx = p
+            cornerDensity = density
+        }
+    }
 
     /** 系统顶部占用（dp）；还没收到 inset 时为 0，调用方按平台经验值兜底 */
     val systemTopDp: Float
