@@ -43,8 +43,11 @@ import kotlinx.coroutines.delay
 import com.duolauncher.util.InstallStats
 import com.duolauncher.util.Lang
 import com.duolauncher.util.NetworkLabelResolver
+import com.duolauncher.util.UpdateChecker
 import com.duolauncher.util.WallpaperRotator
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** pager 页语义标记：与主屏真实页序号（0..N-1）不冲突的负数 */
 private const val PAGER_SEARCH = -1
@@ -152,6 +155,31 @@ class MainActivity : ComponentActivity() {
         runCatching { com.duolauncher.service.DuoNotificationListener.ensureBound(this) }
         // 匿名统计：只有已确认告知且开关打开才会联网，内部有 24 小时心跳节流
         InstallStats.reportIfAllowed(this)
+        // 自动检查更新：回到桌面就查一次（间隔可设 12/24/48/72 小时），不必先进设置页。
+        // 查不到静默；只有真的更高版本才提示一次，同一版本不重复打扰。
+        lifecycleScope.launch(Dispatchers.IO) {
+            if (!DuoState.autoCheckUpdate) return@launch
+            val interval = UpdateChecker.intervalMillis(DuoState.updateIntervalHours)
+            if (System.currentTimeMillis() - DuoState.lastUpdateCheck < interval) return@launch
+            val local = UpdateChecker.currentVersion(this@MainActivity)
+            val r = UpdateChecker.fetch(UpdateChecker.urlFor(DuoState.updateSource), local)
+            // 失败也记一次时间：断网时否则每次回桌面都要重试一遍超时
+            DuoState.lastUpdateCheck = System.currentTimeMillis()
+            r.onSuccess { info ->
+                DuoState.lastSeenVersion = info.version
+                if (UpdateChecker.isNewer(info.version, local) && DuoState.notifiedVersion != info.version) {
+                    DuoState.notifiedVersion = info.version
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            Lang.s(R.string.update_found_toast, info.version),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+            DuoState.save()
+        }
         // 无障碍服务只在桌面拦字母键，离开桌面时字母照常输入
         DuoState.homeForeground = true
         // 从系统快捷键页回到桌面时，把配置用的「分身 N」临时入口收掉（已被按键引用的保留）

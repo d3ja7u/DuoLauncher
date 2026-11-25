@@ -73,14 +73,24 @@ fun SettingsScreen(
     Box(Modifier.fillMaxSize()) {
         // 设置页信息密度高，底板要比别处实：壁纸只留约一成透出，避免背后桌面图标透上来干扰文字和色板
         GlassBackdrop(wallpaper, DuoState.glassLevel, dark, extraDim = 0.42f)
-        when (sub) {
-            "sidebar" -> SidebarEditorScreen(dark, onBack = { sub = null })
-            "cats" -> CategoryEditorScreen(dark, onBack = { sub = null })
-            "hidden" -> HiddenEditorScreen(dark, onBack = { sub = null })
-            "batch_add" -> BatchEditScreen(BatchMode.ADD, nav, dark, onBack = { sub = null })
-            "batch_remove" -> BatchEditScreen(BatchMode.REMOVE, nav, dark, onBack = { sub = null })
-            "shortcuts" -> ShortcutSettingsScreen(nav, dark, onBack = { sub = null })
-            else -> MainSettings(nav, dark, onClose) { sub = it }
+        // 平板 / 折叠屏展开 / 横屏这些大屏上，设置页不跟着拉成一条通栏：
+        // 主体限宽 600dp 并水平居中，卡片和开关的视觉密度和手机上一致。
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .widthIn(max = 600.dp)
+                .fillMaxWidth()
+                .fillMaxHeight()
+        ) {
+            when (sub) {
+                "sidebar" -> SidebarEditorScreen(dark, onBack = { sub = null })
+                "cats" -> CategoryEditorScreen(dark, onBack = { sub = null })
+                "hidden" -> HiddenEditorScreen(dark, onBack = { sub = null })
+                "batch_add" -> BatchEditScreen(BatchMode.ADD, nav, dark, onBack = { sub = null })
+                "batch_remove" -> BatchEditScreen(BatchMode.REMOVE, nav, dark, onBack = { sub = null })
+                "shortcuts" -> ShortcutSettingsScreen(nav, dark, onBack = { sub = null })
+                else -> MainSettings(nav, dark, onClose) { sub = it }
+            }
         }
     }
 }
@@ -229,10 +239,10 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     }
 
     var pickIconPack by remember { mutableStateOf(false) }
-    var editUpdateUrl by remember { mutableStateOf(false) }
+    var pickUpdateSource by remember { mutableStateOf(false) }
+    var pickUpdateInterval by remember { mutableStateOf(false) }
     var showLangPicker by remember { mutableStateOf(false) }
     var langChoice by remember { mutableStateOf(Lang.get(ctx)) }
-    var urlDraft by remember(DuoState.updateUrl) { mutableStateOf(DuoState.updateUrl) }
     var statsIdPreview by remember { mutableStateOf(InstallStats.anonymousId(ctx)?.take(8) ?: "") }
     var checking by remember { mutableStateOf(false) }
     var showUpdateResult by remember { mutableStateOf(false) }
@@ -268,7 +278,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         if (checking) return
         checking = true
         scope.launch {
-            val r = UpdateChecker.fetch(DuoState.updateUrl, ver)
+            val r = UpdateChecker.fetch(UpdateChecker.urlFor(DuoState.updateSource), ver)
             checking = false
             r.onSuccess { info ->
                 DuoState.lastSeenVersion = info.version
@@ -294,7 +304,13 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     /** 开始下载；若还没拿到「安装未知来源应用」授权，先跳系统设置，回来自动继续 */
     fun startDownload(rel: UpdateChecker.ReleaseInfo) {
         if (rel.apkUrl.isBlank()) {
-            UpdateChecker.openInBrowser(ctx, rel.pageUrl.ifBlank { UpdateChecker.DEFAULT_URL })
+            UpdateChecker.openInBrowser(
+                ctx,
+                rel.pageUrl.ifBlank {
+                    if (DuoState.updateSource == UpdateChecker.SOURCE_GITHUB) UpdateChecker.GITHUB_PROJECT
+                    else UpdateChecker.GITEE_PROJECT
+                }
+            )
             return
         }
         if (!ApkUpdater.canInstall(ctx)) {
@@ -331,10 +347,11 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         dlState = ApkUpdater.State.Idle
     }
 
-    // 进设置页时静默检查一次，12 小时节流，不弹窗
+    // 进设置页时如果距上次超过设定间隔，再静默补查一次（回到桌面时也会查）
     LaunchedEffect(Unit) {
         if (DuoState.autoCheckUpdate &&
-            System.currentTimeMillis() - DuoState.lastUpdateCheck > UpdateChecker.CHECK_INTERVAL
+            System.currentTimeMillis() - DuoState.lastUpdateCheck >
+            UpdateChecker.intervalMillis(DuoState.updateIntervalHours)
         ) {
             doCheck(silent = true)
         }
@@ -1123,15 +1140,33 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             Lang.s(R.string.auto_check_update), Lang.s(R.string.auto_check_desc),
                             DuoState.autoCheckUpdate, dark
                         ) { on -> DuoState.autoCheckUpdate = on; DuoState.save() }
-                        val shownUrl = if (DuoState.updateUrl.length > 48)
-                            DuoState.updateUrl.take(48) + "…" else DuoState.updateUrl
-                        SettingRow(Lang.s(R.string.update_source), shownUrl, dark,
+                        // 关掉自动检查时间隔就没有意义，整行不渲染，避免死开关
+                        if (DuoState.autoCheckUpdate) {
+                            SettingRow(
+                                Lang.s(R.string.update_interval),
+                                Lang.s(R.string.update_interval_value, DuoState.updateIntervalHours),
+                                dark,
+                                trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                                onClick = { pickUpdateInterval = true }
+                            )
+                        }
+                        SettingRow(
+                            Lang.s(R.string.update_server),
+                            Lang.s(
+                                if (DuoState.updateSource == UpdateChecker.SOURCE_GITHUB)
+                                    R.string.update_srv_github else R.string.update_srv_gitee
+                            ),
+                            dark,
                             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                            onClick = { urlDraft = DuoState.updateUrl; editUpdateUrl = true })
-                        SettingRow(Lang.s(R.string.open_project), "github.com/d3ja7u/DuoLauncher", dark,
+                            onClick = { pickUpdateSource = true }
+                        )
+                        SettingRow(Lang.s(R.string.open_project_github), "github.com/d3ja7u/DuoLauncher", dark,
                             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { UpdateChecker.openInBrowser(ctx, UpdateChecker.GITHUB_PROJECT) })
+                        SettingRow(Lang.s(R.string.open_project_gitee), "gitee.com/d3ja7u/DuoLauncher", dark,
                             divider = false,
-                            onClick = { UpdateChecker.openInBrowser(ctx, "https://github.com/d3ja7u/DuoLauncher") })
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            onClick = { UpdateChecker.openInBrowser(ctx, UpdateChecker.GITEE_PROJECT) })
                     }
                 }
                 Text(
@@ -1395,44 +1430,76 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         }
     }
 
-    if (editUpdateUrl) {
-        DuoDialog(Lang.s(R.string.update_source_title), dark, opaque = true, onDismiss = { editUpdateUrl = false }) {
-            Text(
-                Lang.s(R.string.update_source_hint),
-                fontSize = 12.sp, color = glassSubTextColor(dark)
-            )
-            Spacer(Modifier.height(10.dp))
-            GlassCard(Modifier.fillMaxWidth().heightIn(min = 60.dp), radius = 12.dp, level = 0.8f, dark = dark) {
-                Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-                    if (urlDraft.isEmpty()) Text("https://…", fontSize = 12.sp, color = glassSubTextColor(dark))
-                    BasicTextField(
-                        urlDraft, { urlDraft = it }, maxLines = 3,
-                        textStyle = TextStyle(fontSize = 12.sp, color = glassTextColor(dark)),
-                        cursorBrush = SolidColor(glassBlue),
-                        modifier = Modifier.fillMaxWidth()
+    // 更新服务器只给两个官方源，不让手填地址：地址写错只会让人以为「检查更新坏了」
+    if (pickUpdateSource) {
+        DuoDialog(Lang.s(R.string.update_server), dark, opaque = true, onDismiss = { pickUpdateSource = false }) {
+            listOf(
+                UpdateChecker.SOURCE_GITEE to R.string.update_srv_gitee,
+                UpdateChecker.SOURCE_GITHUB to R.string.update_srv_github
+            ).forEach { (id, labelRes) ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            if (DuoState.updateSource != id) {
+                                DuoState.updateSource = id
+                                // 换源后清掉上次结果，设置行上的「已是最新」别误导
+                                DuoState.lastUpdateCheck = 0L
+                                DuoState.lastSeenVersion = ""
+                                DuoState.save()
+                            }
+                            pickUpdateSource = false
+                        }
+                        .padding(horizontal = 10.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        Lang.s(labelRes),
+                        fontSize = 15.sp,
+                        color = glassTextColor(dark),
+                        modifier = Modifier.weight(1f)
                     )
+                    if (DuoState.updateSource == id) {
+                        Icon(Icons.Filled.Check, null, tint = glassBlue, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { urlDraft = UpdateChecker.DEFAULT_URL }) {
-                    Text(Lang.s(R.string.restore_default), fontSize = 13.sp, color = glassSubTextColor(dark))
-                }
-                Spacer(Modifier.weight(1f))
-                GlassPrimaryButton(Lang.s(R.string.save), dark, onClick = {
-                    // 多行输入框里可能混进换行/空格，存盘前一并去掉
-                    val t = urlDraft.replace(Regex("\\s+"), "")
-                    if (t.isBlank()) {
-                        nav.toast(Lang.s(R.string.toast_url_empty))
-                    } else {
-                        DuoState.updateUrl = t
-                        DuoState.lastUpdateCheck = 0L
-                        DuoState.lastSeenVersion = ""
-                        DuoState.save()
-                        editUpdateUrl = false
-                        nav.toast(Lang.s(R.string.toast_url_saved))
+            Spacer(Modifier.height(6.dp))
+            Text(
+                Lang.s(R.string.update_server_hint),
+                fontSize = 11.sp, color = glassSubTextColor(dark)
+            )
+        }
+    }
+
+    if (pickUpdateInterval) {
+        DuoDialog(Lang.s(R.string.update_interval), dark, opaque = true, onDismiss = { pickUpdateInterval = false }) {
+            UpdateChecker.INTERVAL_CHOICES.forEach { hours ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            if (DuoState.updateIntervalHours != hours) {
+                                DuoState.updateIntervalHours = hours
+                                // 选更短的间隔后立刻生效：把上次检查时间往前推
+                                DuoState.lastUpdateCheck = 0L
+                                DuoState.save()
+                            }
+                            pickUpdateInterval = false
+                        }
+                        .padding(horizontal = 10.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        Lang.s(R.string.update_interval_value, hours),
+                        fontSize = 15.sp,
+                        color = glassTextColor(dark),
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (DuoState.updateIntervalHours == hours) {
+                        Icon(Icons.Filled.Check, null, tint = glassBlue, modifier = Modifier.size(20.dp))
                     }
-                })
+                }
             }
         }
     }
@@ -1558,6 +1625,12 @@ private fun UpdateResultDialog(
             Row {
                 Spacer(Modifier.weight(1f))
                 GlassPrimaryButton(Lang.s(R.string.retry), dark, onRetry)
+            }
+        } else if (info != null && !hasNew) {
+            // 已是最新：只留标题和一个关闭按钮。
+            // 版本对比「当前 vX → 最新 vX」与复制/打开链接在这里没有任何用处。
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                GlassPrimaryButton(Lang.s(R.string.close), dark, onDismiss)
             }
         } else if (info != null) {
             val rel = info

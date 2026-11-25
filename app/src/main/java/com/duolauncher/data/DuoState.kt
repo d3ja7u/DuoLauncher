@@ -154,14 +154,18 @@ object DuoState {
     /** 搜索页是否显示搜索输入框（关闭后仍可用「最近常用」启动应用） */
     var showSearchBar by mutableStateOf(true)
 
-    // ── GitHub Releases 更新检查 ──
-    /** 更新源地址；可以改成自建镜像，空串会自动回落到默认地址 */
-    var updateUrl by mutableStateOf(UpdateChecker.DEFAULT_URL)
-    /** 进入设置页时静默检查，12 小时内只查一次；默认关闭，避免未经操作的联网 */
-    var autoCheckUpdate by mutableStateOf(false)
+    // ── GitHub / Gitee Releases 更新检查 ──
+    /** 当前用哪个官方源：github / gitee（默认 Gitee，国内直连更稳） */
+    var updateSource by mutableStateOf(UpdateChecker.SOURCE_GITEE)
+    /** 进入设置页 / 回到桌面时静默检查；默认开启，可在「更新与关于」里关闭 */
+    var autoCheckUpdate by mutableStateOf(true)
+    /** 自动检查间隔（小时）：12 / 24 / 48 / 72 */
+    var updateIntervalHours by mutableStateOf(UpdateChecker.DEFAULT_INTERVAL_HOURS)
     var lastUpdateCheck by mutableStateOf(0L)
     /** 上次查到的最新版本号，只用来在设置行上显示提示，不弹窗打扰 */
     var lastSeenVersion by mutableStateOf("")
+    /** 已经通过桌面提示告知过的版本，同一版本不再重复弹提示 */
+    var notifiedVersion by mutableStateOf("")
 
     // ── 匿名使用统计 ──
     /** 是否启用匿名统计；可在「设置 → 隐私与统计」随时关闭，关闭即删除本地匿名 ID */
@@ -525,11 +529,17 @@ object DuoState {
             // 旧版本用独立开关控制「最近常用」显隐，现在只有数量为 0 才不显示：
             // 关过那个开关的存档，迁移成 0，效果保持不变
             if (!o.optBoolean("searchRecentOn", true)) recentCount = 0
-            updateUrl = o.optString("updUrl", UpdateChecker.DEFAULT_URL)
-                .ifBlank { UpdateChecker.DEFAULT_URL }
+            // 只支持两个官方源：老存档（含自建镜像地址）一律按新默认落到 Gitee
+            updateSource = when (o.optString("updSrc", "")) {
+                UpdateChecker.SOURCE_GITHUB -> UpdateChecker.SOURCE_GITHUB
+                else -> UpdateChecker.SOURCE_GITEE
+            }
             autoCheckUpdate = o.optBoolean("updAuto", true)
+            updateIntervalHours = o.optInt("updInt", UpdateChecker.DEFAULT_INTERVAL_HOURS)
+                .takeIf { it in UpdateChecker.INTERVAL_CHOICES } ?: UpdateChecker.DEFAULT_INTERVAL_HOURS
             lastUpdateCheck = o.optLong("updAt", 0L)
             lastSeenVersion = o.optString("updVer", "")
+            notifiedVersion = o.optString("updNotified", "")
             statsEnabled = o.optBoolean("statOn", true)
             statsConsentShown = o.optBoolean("statConsent", false)
             // 上报地址不再从存档读：老存档里可能还是已停用的云服务地址，
@@ -718,10 +728,12 @@ object DuoState {
             o.put("libOn", showLibrary)
             o.put("searchOn", showSearchPage)
             o.put("searchBarOn", showSearchBar)
-            o.put("updUrl", updateUrl)
+            o.put("updSrc", updateSource)
             o.put("updAuto", autoCheckUpdate)
+            o.put("updInt", updateIntervalHours)
             o.put("updAt", lastUpdateCheck)
             o.put("updVer", lastSeenVersion)
+            o.put("updNotified", notifiedVersion)
             o.put("statOn", statsEnabled)
             o.put("statConsent", statsConsentShown)
             o.put("statUrl", statsUrl)
@@ -771,7 +783,7 @@ object DuoState {
         "wpRotate", "wpInterval", "wpRandom", "wpSwipe", "wpSyncLs",
         "badgeOn", "badgeColor", "recentCnt", "searchEng", "searchContacts",
         "showSb", "libOn", "searchOn", "searchBarOn", "iconPack",
-        "updUrl", "updAuto", "statOn", "statUrl"
+        "updSrc", "updAuto", "updInt", "statOn", "statUrl"
     )
 
     private fun JSONObject.strArray(key: String): List<String> {

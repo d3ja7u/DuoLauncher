@@ -245,17 +245,19 @@
     <string name="badge_black">Black</string>
     <string name="sec_update">Updates</string>
     <string name="check_update">Check for updates</string>
-    <string name="checking_update">Checking GitHub Releases…</string>
+    <string name="checking_update">Checking for updates…</string>
     <string name="auto_check_update">Auto-check for updates</string>
-    <string name="auto_check_desc">Silently checks once when Settings opens, if 12+ hours have passed</string>
-    <string name="update_source">Update source</string>
-    <string name="open_project">Open project page</string>
-    <string name="update_note">Checks the public GitHub API (no login required). New versions can be downloaded and installed in place (requires the Install unknown apps permission). You can point the update source at your own mirror.</string>
-    <string name="update_source_title">Update source URL</string>
-    <string name="update_source_hint">Accepts a GitHub repo URL, a Releases page, or an api.github.com endpoint. Web URLs are converted to the API; self-hosted mirrors returning the same JSON also work.</string>
-    <string name="restore_default">Restore default</string>
-    <string name="toast_url_empty">URL cannot be empty</string>
-    <string name="toast_url_saved">Saved. Tap Check for updates to verify</string>
+    <string name="auto_check_desc">Checks periodically and notifies you when a new version is available</string>
+    <string name="update_interval">Check interval</string>
+    <string name="update_interval_value">Every %1$d hours</string>
+    <string name="update_server">Update server</string>
+    <string name="update_srv_gitee">Gitee (default)</string>
+    <string name="update_srv_github">GitHub</string>
+    <string name="update_server_hint">Both servers return the same release; Gitee is better suited for access from China.</string>
+    <string name="open_project_github">GitHub project page</string>
+    <string name="open_project_gitee">Gitee project page</string>
+    <string name="update_found_toast">New version v%1$s found. Update in Settings → Updates &amp; About</string>
+    <string name="update_note">Checks use public APIs (no login required). New versions can be downloaded and installed in place (requires the Install unknown apps permission).</string>
     <string name="update_check_failed">Check failed</string>
     <string name="update_up_to_date">You\'re up to date</string>
     <string name="update_error_hint">Check your connection and the update source URL, then try again.</string>
@@ -303,7 +305,7 @@
     <string name="hidden_manage">Manage hidden apps (%1$d)</string>
     <string name="update_new_found">New version v%1$s available · tap to view</string>
     <string name="update_latest">Up to date v%1$s · tap to check again</string>
-    <string name="update_current">Current v%1$s · tap to check GitHub Releases</string>
+    <string name="update_current">Current v%1$s · tap to check for updates</string>
     <string name="update_new_version">New version v%1$s available</string>
     <string name="update_versions">Current v%1$s  →  Latest v%2$s</string>
     <string name="update_published">Published %1$s</string>
@@ -311,7 +313,7 @@
     <string name="update_apk_size"> (%1$s)</string>
     <string name="about_subtitle">DuoLauncher %1$s · Made for the Titan 2 Elite</string>
     <string name="copied_toast">Copied %1$s</string>
-    <string name="err_rate_limit">GitHub API rate limit reached (HTTP %1$d, remaining %2$s)</string>
+    <string name="err_rate_limit">Request limit reached (HTTP %1$d, remaining %2$s)</string>
     <string name="err_http">Server returned HTTP %1$d</string>
     <!-- In-app update: download and install -->
     <string name="update_download_install">Download and install</string>

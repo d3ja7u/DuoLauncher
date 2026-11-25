@@ -19,19 +19,43 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 从 GitHub Releases 检查更新。
+ * 从 GitHub / Gitee Releases 检查更新。
  *
- * 走公开的 REST 接口，不需要 token；设置里可以换成任意返回同样 JSON 的地址
- * （例如自建镜像 / 代理），所以这里对地址做了宽松的规范化处理。
+ * 两边都是公开的 REST 接口，不需要 token；设置里可以在两个官方源之间切换，
+ * 也可以填任意返回同样 JSON 的自建镜像（例如代理），所以这里对地址做了宽松的规范化处理。
  */
 object UpdateChecker {
 
-    /** 项目自身的 Release 接口，设置里可改 */
-    const val DEFAULT_URL = "https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest"
+    /** GitHub 官方接口（默认源） */
+    const val GITHUB_URL = "https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest"
+
+    /** Gitee 镜像接口：字段与 GitHub 基本一致，国内直连更稳 */
+    const val GITEE_URL = "https://gitee.com/api/v5/repos/d3ja7u/DuoLauncher/releases/latest"
+
+    /** 默认仍走 GitHub；设置里的「更新服务器」可切到 Gitee */
+    const val DEFAULT_URL = GITHUB_URL
+
+    const val GITHUB_PROJECT = "https://github.com/d3ja7u/DuoLauncher"
+    const val GITEE_PROJECT = "https://gitee.com/d3ja7u/DuoLauncher"
+
+    /** 「更新服务器」当前选的是哪一个，和设置里的开关一起存盘 */
+    const val SOURCE_GITHUB = "github"
+    const val SOURCE_GITEE = "gitee"
+
+    /** 按选择返回实际请求的接口地址；未知值一律走 Gitee（默认源） */
+    fun urlFor(source: String): String =
+        if (source == SOURCE_GITHUB) GITHUB_URL else GITEE_URL
+
     private const val TAG = "DuoUpdate"
 
-    /** 自动检查的最小间隔：12 小时，避免每次进设置都请求 GitHub */
+    /** 自动检查的最小间隔（默认 12 小时），设置里可选 12 / 24 / 48 / 72 */
+    const val DEFAULT_INTERVAL_HOURS = 12
+    val INTERVAL_CHOICES = listOf(12, 24, 48, 72)
     const val CHECK_INTERVAL = 12 * 60 * 60 * 1000L
+
+    /** 把「小时」换算成毫秒；传进来的值不在选项里时按默认 12 小时算 */
+    fun intervalMillis(hours: Int): Long =
+        (if (hours in INTERVAL_CHOICES) hours else DEFAULT_INTERVAL_HOURS) * 60L * 60L * 1000L
 
     data class ReleaseInfo(
         val tag: String,
@@ -53,23 +77,36 @@ object UpdateChecker {
     }.getOrDefault("")
 
     /**
-     * 允许直接贴 GitHub 的网页地址（…/releases 或仓库主页），自动换成 API 地址；
-     * 已经是 api.github.com 或其它自定义 JSON 接口时原样保留。
+     * 允许直接贴 GitHub / Gitee 的网页地址（…/releases 或仓库主页），自动换成对应 API 地址；
+     * 已经是 API 地址或其它自定义 JSON 接口时原样保留。
      */
     fun normalize(input: String): String {
         val s = input.trim()
         // 已经是 API 地址（或任意自建 JSON 接口）时原样返回。
         // 正则必须锚定开头：否则 "api.github.com" 里的 "github.com" 也会被当成网页地址误改。
         if (s.startsWith("http://api.github.com/", true) ||
-            s.startsWith("https://api.github.com/", true)
+            s.startsWith("https://api.github.com/", true) ||
+            s.startsWith("https://gitee.com/api/", true) ||
+            s.startsWith("http://gitee.com/api/", true)
         ) return s
-        val m = Regex(
+        Regex(
             """^(?:https?://)?(?:www\.)?github\.com/([^/\s?#]+)/([^/\s?#]+)(?:[/?#].*)?""",
             RegexOption.IGNORE_CASE
-        ).find(s) ?: return s
-        val owner = m.groupValues[1]
-        val repo = m.groupValues[2].removeSuffix(".git")
-        return "https://api.github.com/repos/$owner/$repo/releases/latest"
+        ).find(s)?.let { m ->
+            val owner = m.groupValues[1]
+            val repo = m.groupValues[2].removeSuffix(".git")
+            return "https://api.github.com/repos/$owner/$repo/releases/latest"
+        }
+        Regex(
+            """^(?:https?://)?(?:www\.)?gitee\.com/([^/\s?#]+)/([^/\s?#]+)(?:[/?#].*)?""",
+            RegexOption.IGNORE_CASE
+        ).find(s)?.let { m ->
+            val owner = m.groupValues[1]
+            val repo = m.groupValues[2].removeSuffix(".git")
+            // Gitee 的网页路径里可能带 releases / blob 之类的子路径，下面两段已裁过，这里只取 owner/repo
+            return "https://gitee.com/api/v5/repos/$owner/$repo/releases/latest"
+        }
+        return s
     }
 
     /** 按数字段比较，兼容 1.3.9 / 1.3.10 / 1.4.0-beta 这类写法 */
@@ -95,15 +132,16 @@ object UpdateChecker {
             )
         }
 
-        val first = request(target, localVersion).mapCatching { parse(it) }
+        val first = request(target, localVersion).mapCatching { parse(it, target) }
         Log.d(TAG, "主源 $target -> ${first.exceptionOrNull()?.message ?: "成功"}")
         if (first.isSuccess) return@withContext first
 
         // api.github.com 匿名请求每小时只有 60 次，校园网 / 运营商共享出口很容易撞限。
         // releases.atom 是 GitHub 官方公开订阅源，没有配额限制，自动作为备用源。
+        // Gitee 的接口没有这个限制，也不需要备用源。
         val fallback = atomFallback(target)
         if (fallback != null) {
-            val second = request(fallback, localVersion).mapCatching { parse(it) }
+            val second = request(fallback, localVersion).mapCatching { parse(it, fallback) }
             Log.d(TAG, "备用源 $fallback -> ${second.exceptionOrNull()?.message ?: "成功"}")
             if (second.isSuccess) return@withContext second
         }
@@ -145,24 +183,36 @@ object UpdateChecker {
         return "https://github.com/${m.groupValues[1]}/${m.groupValues[2]}/releases.atom"
     }
 
-    /** 按内容自动识别：GitHub API JSON / Release 数组 / releases.atom XML / 自建 JSON */
-    private fun parse(body: String): ReleaseInfo {
+    /** 从接口地址反推项目主页：GitHub / Gitee 两套接口的路径不同，但返回格式一样 */
+    private fun projectBase(url: String): String? {
+        Regex("""api\.github\.com/repos/([^/]+)/([^/]+)""").find(url)?.let {
+            return "https://github.com/${it.groupValues[1]}/${it.groupValues[2]}"
+        }
+        Regex("""gitee\.com/api/v\d+/repos/([^/]+)/([^/]+)""").find(url)?.let {
+            return "https://gitee.com/${it.groupValues[1]}/${it.groupValues[2]}"
+        }
+        return null
+    }
+
+    /** 按内容自动识别：GitHub API JSON / Gitee API JSON / Release 数组 / releases.atom XML / 自建 JSON */
+    private fun parse(body: String, sourceUrl: String): ReleaseInfo {
         val t = body.trim()
         return when {
             t.startsWith("<") -> parseAtom(t)
             t.startsWith("[") -> {
                 val arr = JSONArray(t)
                 if (arr.length() == 0) error(Lang.s(R.string.err_no_release))
-                parseJson(arr.getJSONObject(0))
+                parseJson(arr.getJSONObject(0), sourceUrl)
             }
-            else -> parseJson(JSONObject(t))
+            else -> parseJson(JSONObject(t), sourceUrl)
         }
     }
 
     /** 单个 Release 对象（/latest），或自建镜像里同结构的 JSON */
-    private fun parseJson(o: JSONObject): ReleaseInfo {
+    private fun parseJson(o: JSONObject, sourceUrl: String): ReleaseInfo {
         val tag = o.optString("tag_name", "")
         if (tag.isBlank()) error(Lang.s(R.string.err_bad_json))
+        val version = tag.removePrefix("v").removePrefix("V")
 
         var apkUrl = ""
         var apkName = ""
@@ -180,13 +230,27 @@ object UpdateChecker {
             }
         }
 
+        // Gitee 的 Release 对象既没有 html_url 也没有资产大小，按 tag 自己拼出页面与直链；
+        // 本项目的 APK 命名固定为 DuoLauncher-<version>.apk，规则与 GitHub 一致。
+        val project = projectBase(sourceUrl)
+        var pageUrl = o.optString("html_url", "")
+        if (pageUrl.isBlank() && project != null) pageUrl = "$project/releases/tag/$tag"
+        if (apkUrl.isBlank() && project != null) {
+            apkName = "DuoLauncher-$version.apk"
+            apkUrl = "$project/releases/download/$tag/$apkName"
+        }
+        // 发布时间：GitHub 用 published_at，Gitee 只有 created_at，个别自建源用 released_at
+        val published = o.optString("published_at", "")
+            .ifBlank { o.optString("created_at", "") }
+            .ifBlank { o.optString("released_at", "") }
+
         return ReleaseInfo(
             tag = tag,
-            version = tag.removePrefix("v").removePrefix("V"),
+            version = version,
             name = o.optString("name", tag),
             notes = o.optString("body", ""),
-            pageUrl = o.optString("html_url", ""),
-            publishedAt = o.optString("published_at", "").take(10),
+            pageUrl = pageUrl,
+            publishedAt = published.take(10),
             apkUrl = apkUrl,
             apkName = apkName,
             apkSize = apkSize
