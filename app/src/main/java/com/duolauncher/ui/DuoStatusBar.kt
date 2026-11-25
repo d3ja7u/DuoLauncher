@@ -777,21 +777,23 @@ fun DuoStatusBar(dark: Boolean, modifier: Modifier = Modifier) {
     val trackColor = inkColor.copy(alpha = 0.40f)
 
     // 时间的可用宽度 = 状态块宽度（跟着侧栏图标大小走）。系统字体放大、侧栏图标调小、
-    // 时间又走到「20:02」这种 5 位，18sp 就会放不下而折成两行 ——
-    // 这里按实测文本宽度等比缩字号（最低 0.72 倍），保证时间永远是单行。
+    // 时间又走到「20:02」这种 5 位，字号一大会放不下而折成两行、或顶到屏幕右边缘 ——
+    // 这里按实测文本宽度等比缩字号（最低 0.62 倍），保证时间永远是单行且整段可见。
     BoxWithConstraints(
         modifier.then(Modifier.onGloballyPositioned { blockBounds = it.boundsInWindow() }),
         contentAlignment = Alignment.TopCenter
     ) {
         val availPx = constraints.maxWidth
+        // 留 3% 余量：贴着边缘看起来就像被裁掉了，留一点空更稳
+        val fitPx = (availPx * 0.97f).toInt()
         val fitTimeSize = remember(status.time, availPx, scale) {
-            val base = 18f * scale
-            if (availPx <= 0) base else {
+            val base = 15.5f * scale
+            if (fitPx <= 0) base else {
                 val w = measurer.measure(
                     AnnotatedString(status.time),
                     TextStyle(fontSize = base.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                 ).size.width
-                if (w <= availPx || w <= 0) base else (base * availPx / w).coerceAtLeast(base * 0.72f)
+                if (w <= fitPx || w <= 0) base else (base * fitPx / w).coerceAtLeast(base * 0.62f)
             }
         }
         Column(
