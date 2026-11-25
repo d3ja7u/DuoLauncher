@@ -133,19 +133,61 @@ private fun openPhonePermissionSettings(ctx: Context) {
  * 设置首页的一个分类入口。
  *
  * id 同时是 [MainSettings] 里各 item 的过滤条件（`if (group == id)`），改 id 要同步改过滤。
+ * [accent] / [icon] 是 iOS 设置那种彩色圆角方块图标：颜色只做识别，不承载状态。
  */
-private class SettingsGroup(val id: String, val titleRes: Int, val descRes: Int)
+private class SettingsGroup(
+    val id: String,
+    val titleRes: Int,
+    val descRes: Int,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val accent: Color
+)
 
 /** 分类顺序即首页显示顺序：常用的在前 */
 private val SETTINGS_GROUPS = listOf(
-    SettingsGroup("g_home", R.string.grp_home, R.string.grp_home_desc),
-    SettingsGroup("g_sidebar", R.string.grp_sidebar, R.string.grp_sidebar_desc),
-    SettingsGroup("g_status", R.string.grp_status, R.string.grp_status_desc),
-    SettingsGroup("g_gesture", R.string.grp_gesture, R.string.grp_gesture_desc),
-    SettingsGroup("g_search", R.string.grp_search, R.string.grp_search_desc),
-    SettingsGroup("g_look", R.string.grp_look, R.string.grp_look_desc),
-    SettingsGroup("g_system", R.string.grp_system, R.string.grp_system_desc)
+    SettingsGroup(
+        "g_home", R.string.grp_home, R.string.grp_home_desc,
+        Icons.Filled.GridView, Color(0xFF0A84FF)
+    ),
+    SettingsGroup(
+        "g_sidebar", R.string.grp_sidebar, R.string.grp_sidebar_desc,
+        Icons.Filled.ViewSidebar, Color(0xFF5E5CE6)
+    ),
+    SettingsGroup(
+        "g_status", R.string.grp_status, R.string.grp_status_desc,
+        Icons.Filled.SignalCellularAlt, Color(0xFF30D158)
+    ),
+    SettingsGroup(
+        "g_gesture", R.string.grp_gesture, R.string.grp_gesture_desc,
+        Icons.Filled.Gesture, Color(0xFFFF9F0A)
+    ),
+    SettingsGroup(
+        "g_search", R.string.grp_search, R.string.grp_search_desc,
+        Icons.Filled.Search, Color(0xFF8E8E93)
+    ),
+    SettingsGroup(
+        "g_look", R.string.grp_look, R.string.grp_look_desc,
+        Icons.Filled.Palette, Color(0xFFFF375F)
+    ),
+    SettingsGroup(
+        "g_system", R.string.grp_system, R.string.grp_system_desc,
+        Icons.Filled.SystemUpdate, Color(0xFF64D2FF)
+    )
 )
+
+/** 分类前的彩色圆角图标（26dp 方块 + 白符号，边角弧度按 iOS 设置的比例） */
+@Composable
+private fun SettingsGroupIcon(group: SettingsGroup) {
+    Box(
+        Modifier
+            .size(26.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(group.accent),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(group.icon, null, tint = Color.White, modifier = Modifier.size(16.dp))
+    }
+}
 
 @Composable
 private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (String) -> Unit) {
@@ -404,22 +446,23 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             }
         }
         // 分类入口：每行一组，点进去才是具体设置项。
-        // 用紧凑行（标题 + 单行说明）而不是 SettingRow：7 组刚好一屏放下，不用再滚。
+        // 仿 iOS 设置：左彩色圆角图标、中间标题、右侧箭头，行间一条内缩细线。
         if (group == null) {
             item {
                 GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                     Column(Modifier.padding(vertical = 6.dp)) {
-                        SETTINGS_GROUPS.forEach { g ->
+                        SETTINGS_GROUPS.forEachIndexed { i, g ->
                             Row(
                                 Modifier.fillMaxWidth()
                                     .clickable { group = g.id }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // 标题在左、说明单行灰字靠右：比「标题 + 换行说明」矮一半，
-                                // 七组正好一屏，不必再往下滑
+                                SettingsGroupIcon(g)
+                                Spacer(Modifier.width(12.dp))
                                 Text(Lang.s(g.titleRes), fontSize = 15.sp, color = glassTextColor(dark))
                                 Spacer(Modifier.width(10.dp))
+                                // 说明单行靠右、放不下就省略：保住「七组一屏」，也保留每组是干什么的
                                 Text(
                                     Lang.s(g.descRes),
                                     fontSize = 11.sp,
@@ -431,6 +474,16 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                                 )
                                 Spacer(Modifier.width(4.dp))
                                 Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark))
+                            }
+                            // 最后一行不画线（iOS 的卡片收尾是干净的圆角）
+                            if (i != SETTINGS_GROUPS.lastIndex) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 52.dp)
+                                        .height(0.5.dp)
+                                        .background(if (dark) Color.White.copy(alpha = 0.075f) else Color.Black.copy(alpha = 0.08f))
+                                )
                             }
                         }
                     }
@@ -548,7 +601,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             Lang.s(R.string.add_system_widget),
                             Lang.s(R.string.add_system_widget_desc),
                             dark,
-                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            divider = false
                         ) { nav.addHomeWidget() }
                     }
                 }
@@ -599,6 +653,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                                 Lang.s(R.string.notif_access_off),
                                 dark,
                                 trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                                divider = false,
                                 onClick = { DuoNotificationListener.openSettings(ctx) }
                             )
                         }
@@ -659,7 +714,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         SettingToggle(
                             Lang.s(R.string.search_show_page),
                             Lang.s(R.string.search_show_page_desc),
-                            DuoState.showSearchPage, dark
+                            DuoState.showSearchPage, dark,
+                            divider = false
                         ) { on ->
                             DuoState.showSearchPage = on; DuoState.save()
                         }
@@ -777,7 +833,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                                 st.cellular -> Lang.s(R.string.status_cellular, st.level)
                                 else -> Lang.s(R.string.status_no_network)
                             } + simInfo + netInfo + Lang.s(R.string.status_battery, st.battery) + if (st.charging) " " + Lang.s(R.string.charging) else "",
-                            dark
+                            dark,
+                            divider = false
                         )
                     }
                 }
@@ -829,7 +886,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         SettingToggle(
                             Lang.s(R.string.swipe_right_search),
                             Lang.s(R.string.swipe_right_search_desc),
-                            DuoState.gestureSearch, dark
+                            DuoState.gestureSearch, dark,
+                            divider = false
                         ) { on -> DuoState.gestureSearch = on; DuoState.save() }
                     }
                 }
@@ -846,7 +904,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             Lang.s(R.string.shortcut_settings),
                             Lang.s(R.string.shortcut_settings_desc),
                             dark,
-                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            divider = false
                         ) { open("shortcuts") }
                     }
                 }
@@ -864,6 +923,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             onClick = { open("cats") })
                         SettingRow(Lang.s(R.string.hide_app), Lang.s(R.string.hidden_manage, DuoState.hidden.size), dark,
                             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            divider = false,
                             onClick = { open("hidden") })
                     }
                 }
@@ -876,7 +936,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     Column(Modifier.padding(vertical = 6.dp)) {
                         SettingSliderRow(Lang.s(R.string.glass_blur), "${(DuoState.glassLevel * 100).toInt()}%",
                             DuoState.glassLevel, 0f..1f, dark) { DuoState.glassLevel = it; DuoState.save() }
-                        SettingToggle(Lang.s(R.string.dark_glass), Lang.s(R.string.dark_glass_desc), DuoState.darkGlass, dark) {
+                        SettingToggle(Lang.s(R.string.dark_glass), Lang.s(R.string.dark_glass_desc), DuoState.darkGlass, dark, divider = false) {
                             DuoState.darkGlass = it; DuoState.save()
                         }
                     }
@@ -954,6 +1014,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         )
                         SettingRow(
                             Lang.s(R.string.wp_clear), Lang.s(R.string.wp_clear_desc), dark,
+                            divider = false,
                             onClick = {
                                 scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     WallpaperRotator.clear(ctx)
@@ -975,6 +1036,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             if (DuoState.iconPack.isBlank()) Lang.s(R.string.system_default) else packs.firstOrNull { it.pkg == DuoState.iconPack }?.label ?: DuoState.iconPack,
                             dark,
                             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            divider = false,
                             onClick = { pickIconPack = true }
                         )
                     }
@@ -1014,7 +1076,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         SettingRow(
                             Lang.s(R.string.clear_all_badges),
                             Lang.s(R.string.clear_all_badges_desc),
-                            dark
+                            dark,
+                            divider = false
                         ) { DuoNotificationListener.dismissAll() }
                     }
                 }
@@ -1067,6 +1130,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             onClick = { urlDraft = DuoState.updateUrl; editUpdateUrl = true })
                         SettingRow(Lang.s(R.string.open_project), "github.com/d3ja7u/DuoLauncher", dark,
                             trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            divider = false,
                             onClick = { UpdateChecker.openInBrowser(ctx, "https://github.com/d3ja7u/DuoLauncher") })
                     }
                 }
@@ -1103,7 +1167,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         SettingRow(
                             Lang.s(R.string.stats_anon_id),
                             if (statsIdPreview.isBlank()) Lang.s(R.string.stats_anon_id_none) else "$statsIdPreview…",
-                            dark
+                            dark,
+                            divider = false
                         )
                     }
                 }
@@ -1131,6 +1196,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         SettingRow(
                             Lang.s(R.string.backup_import), Lang.s(R.string.backup_import_desc), dark,
                             trailing = { Icon(Icons.Filled.ArrowDownward, null, tint = glassSubTextColor(dark)) },
+                            divider = false,
                             onClick = {
                                 runCatching {
                                     importLauncher.launch(arrayOf(BackupManager.MIME, "text/plain", "*/*"))
@@ -1167,7 +1233,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             AppRepository.appDetails(ctx, ctx.packageName)
                         }
                         // 版本号直接从包信息读，避免每次发版忘了改这里的硬编码
-                        SettingRow(Lang.s(R.string.about), Lang.s(R.string.about_subtitle, ver), dark = dark)
+                        SettingRow(Lang.s(R.string.about), Lang.s(R.string.about_subtitle, ver), dark = dark, divider = false)
                     }
                 }
                 Text(
@@ -1184,7 +1250,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                             Lang.s(R.string.reset_all_settings),
                             Lang.s(R.string.reset_all_settings_desc),
                             dark,
-                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) }
+                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
+                            divider = false
                         ) { askReset = true }
                     }
                 }

@@ -577,36 +577,103 @@ fun SectionTitle(text: String, dark: Boolean) {
     )
 }
 
+/** iOS 设置卡里的细分隔线：深色用极淡白、浅色用极淡黑，只在卡片内出现 */
+private fun settingDividerColor(dark: Boolean): Color =
+    if (dark) Color.White.copy(alpha = 0.075f) else Color.Black.copy(alpha = 0.08f)
+
+/** iOS 开关的绿色（不跟随 App 主题色，开关本身就是系统语言的绿） */
+private val IOS_SWITCH_GREEN = Color(0xFF34C759)
+
 @Composable
 fun SettingRow(
     title: String,
     subtitle: String? = null,
     dark: Boolean,
     trailing: @Composable (() -> Unit)? = null,
+    /** 行首图标（iOS 设置那种圆角方块）。传了之后行高、分隔线起点都跟着它走 */
+    leading: @Composable (() -> Unit)? = null,
+    /** 行底细线；卡片里除最后一行都画 */
+    divider: Boolean = true,
     onClick: (() -> Unit)? = null
 ) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp, color = glassTextColor(dark))
-            if (subtitle != null) {
-                Text(subtitle, fontSize = 12.sp, color = glassSubTextColor(dark), modifier = Modifier.padding(top = 2.dp))
+    // 外层 Column 是为了把「行」和「分隔线」分开：线要贴到整行底部，
+    // 不能算进 clickable 的 padding 里，否则点线也会触发这一行。
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = if (leading != null) 11.dp else 13.dp,
+                    bottom = if (leading != null) 11.dp else 13.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (leading != null) {
+                leading()
+                Spacer(Modifier.width(12.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = 15.sp, color = glassTextColor(dark))
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        fontSize = 12.sp,
+                        color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+            if (trailing != null) {
+                Spacer(Modifier.width(8.dp))
+                trailing()
             }
         }
-        trailing?.invoke()
+        if (divider) {
+            // 起点跟着图标走（iOS 的线从文字左边缘开始，不切到图标下面）
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = if (leading != null) 63.dp else 16.dp)
+                    .height(0.5.dp)
+                    .background(settingDividerColor(dark))
+            )
+        }
     }
 }
 
 @Composable
-fun SettingToggle(title: String, subtitle: String? = null, checked: Boolean, dark: Boolean, onChange: (Boolean) -> Unit) {
-    SettingRow(title, subtitle, dark, trailing = {
-        Switch(checked = checked, onCheckedChange = onChange)
-    }, onClick = { onChange(!checked) })
+fun SettingToggle(
+    title: String,
+    subtitle: String? = null,
+    checked: Boolean,
+    dark: Boolean,
+    leading: @Composable (() -> Unit)? = null,
+    divider: Boolean = true,
+    onChange: (Boolean) -> Unit
+) {
+    SettingRow(
+        title, subtitle, dark,
+        trailing = {
+            Switch(
+                checked = checked,
+                onCheckedChange = onChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = IOS_SWITCH_GREEN,
+                    checkedBorderColor = Color.Transparent,
+                    uncheckedThumbColor = Color.White,
+                    uncheckedTrackColor = if (dark) Color(0xFF39393D) else Color(0xFFE9E9EB),
+                    uncheckedBorderColor = Color.Transparent
+                )
+            )
+        },
+        onClick = { onChange(!checked) },
+        leading = leading,
+        divider = divider
+    )
 }
 
 @Composable
