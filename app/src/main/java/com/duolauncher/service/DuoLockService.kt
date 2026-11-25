@@ -117,6 +117,17 @@ class DuoLockService : AccessibilityService() {
         super.onDestroy()
     }
 
+    /**
+     * 一次全局动作的结果。
+     *
+     * 必须区分「服务没连上」和「服务连上了、但系统没执行」：
+     * 后者的现场是系统侧 `SystemActionPerformer` 的 PendingIntent 已失效
+     * （logcat 里是 `PendingIntent$CanceledException`），所有无障碍全局动作一起失效，
+     * 重启手机可以恢复。旧代码把这两种都当成「未连接」，把用户送去无障碍页，
+     * 结果怎么重新开关都没用 —— 2026-11-25 齐老师遇到的「双击还是报错」就是它。
+     */
+    enum class Action { OK, NOT_CONNECTED, FAILED }
+
     companion object {
         @Volatile
         private var instance: DuoLockService? = null
@@ -172,28 +183,34 @@ class DuoLockService : AccessibilityService() {
             }
         }
 
-        /** 息屏；返回 false 表示服务尚未连上 */
-        fun lockScreen(): Boolean {
-            val svc = instance ?: return false
-            return runCatching {
-                svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
-            }.getOrDefault(false)
+        /**
+         * 执行一次全局动作，并把「没连上」和「系统没执行」分开。
+         *
+         * `performGlobalAction` 返回 false 有两种完全不同的原因，提示与后续引导也不同：
+         * 服务实例为空 = 授权没了 / 进程刚被拉起；实例在但返回 false = 系统侧动作失效。
+         */
+        private fun runAction(action: Int): Action {
+            val svc = instance ?: return Action.NOT_CONNECTED
+            val ok = runCatching { svc.performGlobalAction(action) }.getOrDefault(false)
+            return if (ok) Action.OK else Action.FAILED
         }
 
-        /** 下拉通知栏；返回 false 表示服务尚未连上 */
-        fun openNotifications(): Boolean {
-            val svc = instance ?: return false
-            return runCatching {
-                svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
-            }.getOrDefault(false)
-        }
+        /** 息屏；返回 false 表示服务尚未连上或系统未执行（用 [lockScreenAction] 区分） */
+        fun lockScreen(): Boolean = lockScreenAction() == Action.OK
 
-        /** 展开快捷开关 / 控制中心；返回 false 表示服务尚未连上 */
-        fun openQuickSettings(): Boolean {
-            val svc = instance ?: return false
-            return runCatching {
-                svc.performGlobalAction(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
-            }.getOrDefault(false)
-        }
+        fun lockScreenAction(): Action =
+            runAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)
+
+        /** 下拉通知栏 */
+        fun openNotifications(): Boolean = openNotificationsAction() == Action.OK
+
+        fun openNotificationsAction(): Action =
+            runAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
+
+        /** 展开快捷开关 / 控制中心 */
+        fun openQuickSettings(): Boolean = openQuickSettingsAction() == Action.OK
+
+        fun openQuickSettingsAction(): Action =
+            runAction(AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS)
     }
 }

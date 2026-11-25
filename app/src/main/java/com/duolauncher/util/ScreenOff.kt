@@ -44,8 +44,21 @@ object ScreenOff {
      */
     fun isStale(ctx: Context): Boolean = !isReady() && DuoLockService.isEnabled(ctx)
 
-    /** 无障碍息屏；返回 false 表示服务未连上，调用方负责引导重绑 */
-    fun lock(): Boolean = DuoLockService.lockScreen()
+    /** 无障碍息屏；返回 false 表示服务未连上或系统未执行（要区分原因用 [lockAction]） */
+    fun lock(): Boolean = lockAction() == DuoLockService.Action.OK
+
+    /** 息屏的三态结果：连上了但系统没执行 ≠ 没连上，两者的引导完全不同 */
+    fun lockAction(): DuoLockService.Action = DuoLockService.lockScreenAction()
+
+    /** 「服务正常、但系统没执行」的提示节流：连续双击不出两遍同样的话 */
+    private var lastFailAt = 0L
+
+    fun shouldTellActionFailed(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastFailAt < 4_000L) return false
+        lastFailAt = now
+        return true
+    }
 
     // ---------------- 引导 ----------------
 

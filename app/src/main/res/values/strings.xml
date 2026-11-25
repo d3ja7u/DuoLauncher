@@ -260,6 +260,7 @@
     <string name="err_no_release">该仓库还没有发布过 Release</string>
     <string name="err_bad_json">返回内容不是 Release 信息（缺少 tag_name）</string>
     <string name="err_no_tag">订阅源里找不到版本标签</string>
+    <string name="toast_system_action_failed">系统动作暂时没有响应，重启手机后即可恢复</string>
     <string name="toast_sleep_revoked">息屏及快捷键服务已被系统关闭，请在设置中重新开启</string>
     <string name="toast_sleep_rebind">息屏及快捷键服务未连接：请在无障碍中把本服务关闭后再打开</string>
     <string name="toast_enable_accessibility">请在「无障碍 → 已下载的服务」中开启 DuoLauncher 息屏服务</string>

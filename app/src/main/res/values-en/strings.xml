@@ -260,6 +260,7 @@
     <string name="err_no_release">This repository has no releases yet</string>
     <string name="err_bad_json">Response is not a Release (missing tag_name)</string>
     <string name="err_no_tag">No version tag found in the feed</string>
+    <string name="toast_system_action_failed">The system action is not responding — restart the phone to restore it</string>
     <string name="toast_sleep_revoked">The sleep &amp; shortcut service was turned off by the system. Re-enable it in Settings.</string>
     <string name="toast_sleep_rebind">Sleep &amp; shortcut service not connected: turn it off and on again in Accessibility</string>
     <string name="toast_enable_accessibility">Enable the DuoLauncher sleep service under Accessibility → Downloaded services</string>

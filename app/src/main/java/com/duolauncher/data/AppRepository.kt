@@ -308,10 +308,14 @@ object DuoActions {
 
     /** 侧边栏锁屏动作：只走无障碍服务，不用设备管理员（DPM 锁屏后解锁必须输密码） */
     private fun lock(context: Context) {
-        if (!ScreenOff.lock()) {
+        when (ScreenOff.lockAction()) {
+            // 成功；或服务正常但系统这次没执行（重启手机可恢复）—— 都不该把人送去无障碍页
+            com.duolauncher.service.DuoLockService.Action.OK,
+            com.duolauncher.service.DuoLockService.Action.FAILED -> Unit
             // 服务没连上：已开启但失效的引导去详情页关开一次，从未开启的跳无障碍列表
-            if (ScreenOff.isEnabled(context)) ScreenOff.openServiceSettings(context)
-            else ScreenOff.requestPermission(context)
+            com.duolauncher.service.DuoLockService.Action.NOT_CONNECTED ->
+                if (ScreenOff.isEnabled(context)) ScreenOff.openServiceSettings(context)
+                else ScreenOff.requestPermission(context)
         }
     }
 }

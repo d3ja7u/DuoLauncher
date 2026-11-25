@@ -260,6 +260,7 @@
     <string name="err_no_release">このリポジトリにはまだ Release がありません</string>
     <string name="err_bad_json">Release 情報ではありません（tag_name がありません）</string>
     <string name="err_no_tag">フィードにバージョンタグがありません</string>
+    <string name="toast_system_action_failed">システムの動作が応答しません。端末を再起動すると回復します</string>
     <string name="toast_sleep_revoked">スリープ＆ショートカットサービスがシステムにより無効化されました。設定から再度有効にしてください</string>
     <string name="toast_sleep_rebind">スリープ＆ショートカットサービスが未接続です。「ユーザー補助」で一度オフにし、再度オンにしてください</string>
     <string name="toast_enable_accessibility">「ユーザー補助 → インストール済みサービス」で DuoLauncher スリープサービスを有効にしてください</string>

@@ -226,20 +226,26 @@ fun HomePage(
                 detectTapGestures(
                     onDoubleTap = {
                         if (!DuoState.doubleTapSleep) return@detectTapGestures
-                        when {
-                            // ① 无障碍服务已连上
-                            ScreenOff.lock() -> Unit
-                            // ② 系统里显示已开启、但服务没连上（覆盖安装后的典型状态）。
-                            //    旧逻辑在这里只说「正在启动，请稍后再试」，而它永远不会启动 ——
-                            //    必须明确告诉用户「关一次再打开」，并直接跳到本服务的详情页。
-                            ScreenOff.isEnabled(ctx) -> {
-                                nav.toast(Lang.s(R.string.toast_sleep_rebind))
-                                ScreenOff.guideToRebind(ctx)
+                        when (ScreenOff.lockAction()) {
+                            // ① 一切正常
+                            com.duolauncher.service.DuoLockService.Action.OK -> Unit
+                            // ② 服务连上了，但系统没执行（系统侧的锁屏动作失效，
+                            //    logcat 里是 PendingIntent$CanceledException，重启手机可恢复）。
+                            //    这时候千万别再往无障碍页送 —— 服务本身是好的，怎么重新开关都没用。
+                            com.duolauncher.service.DuoLockService.Action.FAILED -> {
+                                if (ScreenOff.shouldTellActionFailed()) {
+                                    nav.toast(Lang.s(R.string.toast_system_action_failed))
+                                }
                             }
-                            // ③ 从未开启过
-                            else -> {
-                                ScreenOff.requestPermission(ctx)
-                                nav.toast(Lang.s(R.string.toast_enable_accessibility))
+                            // ③ 服务没连上：系统里显示已开启 → 引导关一次再打开；否则引导去开启
+                            com.duolauncher.service.DuoLockService.Action.NOT_CONNECTED -> {
+                                if (ScreenOff.isEnabled(ctx)) {
+                                    nav.toast(Lang.s(R.string.toast_sleep_rebind))
+                                    ScreenOff.guideToRebind(ctx)
+                                } else {
+                                    ScreenOff.requestPermission(ctx)
+                                    nav.toast(Lang.s(R.string.toast_enable_accessibility))
+                                }
                             }
                         }
                     },
@@ -295,8 +301,15 @@ fun HomePage(
                                     if (leftHalf) SystemPanel.openNotifications(ctx)
                                     else SystemPanel.openQuickSettings(ctx)
                                 if (!ok) {
-                                    nav.toast(Lang.s(R.string.toast_enable_service))
-                                    ScreenOff.requestPermission(ctx)
+                                    // 服务在、系统没执行 → 说清原因；服务没开 → 才引导去开
+                                    if (com.duolauncher.service.DuoLockService.isRunning()) {
+                                        if (ScreenOff.shouldTellActionFailed()) {
+                                            nav.toast(Lang.s(R.string.toast_system_action_failed))
+                                        }
+                                    } else {
+                                        nav.toast(Lang.s(R.string.toast_enable_service))
+                                        ScreenOff.requestPermission(ctx)
+                                    }
                                 }
                             }
                             // 兜底：正常情况已在拖动过程中触发，这里防止极短促的一划漏掉
