@@ -276,7 +276,7 @@ echo "sdk.dir=$HOME/Library/Android/sdk" > local.properties
 
 ## 八、下载与发行版
 
-**不想自己编译**：直接到 [Releases](/releases/latest) 下载最新一版的 `DuoLauncher-x.y.z.apk` 安装（GitHub / Gitee 两边同步发布，任选其一）。
+**不想自己编译**：到 [GitHub Releases](https://github.com/d3ja7u/DuoLauncher/releases/latest) 或 [Gitee Releases](https://gitee.com/d3ja7u/DuoLauncher/releases/latest) 下载最新一版的 `DuoLauncher-x.y.z.apk` 安装（两边同步发布，任选其一）。
 
 发版流程：改 `app/build.gradle.kts` 里的 `versionName` / `versionCode` → 提交 → 打 `v*` tag → **GitHub 与 Gitee 两边都推送源码和 tag**，并分别在两个平台创建 Release、上传同一个 APK 包。两端的版本号、更新说明和资产保持一致。
 

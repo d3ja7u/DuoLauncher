@@ -276,7 +276,7 @@ Version matrix:
 
 ## 8. Downloads and releases
 
-**Don't want to build it?** Grab `DuoLauncher-x.y.z.apk` from [Releases](/releases/latest) (published on both GitHub and Gitee; pick either one).
+**Don't want to build it?** Grab `DuoLauncher-x.y.z.apk` from [GitHub Releases](https://github.com/d3ja7u/DuoLauncher/releases/latest) or [Gitee Releases](https://gitee.com/d3ja7u/DuoLauncher/releases/latest) (both are kept in sync; pick either one).
 
 Release flow: bump `versionName` / `versionCode` in `app/build.gradle.kts` → commit → tag `v*` → **push source and tags to both GitHub and Gitee**, then create a Release and upload the same APK on each platform. Version numbers, release notes and assets stay identical on both.
 
