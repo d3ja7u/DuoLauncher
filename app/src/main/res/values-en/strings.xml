@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_clone_suffix">" (Clone)"</string>
-    <string name="duo_lock_label">DuoLauncher Sleep Service</string>
+    <string name="duo_lock_label">DuoLauncher Sleep &amp; Shortcut Service</string>
     <string name="duo_lock_desc">Used only for double-tap to sleep and for home-screen key shortcuts (hold a letter key to open an app). This service does not read screen content, and only handles key presses on the home screen — typing in other apps is unaffected.</string>
     <string name="search">Search</string>
     <string name="clear">Clear</string>
@@ -175,9 +175,11 @@
     <string name="reverse_pages">Reverse swipe direction</string>
     <string name="reverse_pages_desc">Puts the App Library on the left when on</string>
     <string name="double_tap_lock">Double-tap to sleep</string>
-    <string name="double_tap_lock_on">Accessibility sleep service enabled</string>
-    <string name="double_tap_lock_broken">Enabled but not connected — tap to turn it off and on again</string>
-    <string name="double_tap_lock_off">First use: enable the DuoLauncher sleep service in Accessibility (screen lock only)</string>
+    <string name="double_tap_lock_on">Accessibility service enabled (sleep and shortcuts)</string>
+    <string name="double_tap_lock_broken">Service enabled but not connected — tap to turn it off and on again</string>
+    <string name="double_tap_lock_connecting">Connecting to the accessibility service…</string>
+    <string name="double_tap_lock_revoked">Service was turned off by the system — tap to enable it again</string>
+    <string name="double_tap_lock_off">First use: enable the DuoLauncher sleep &amp; shortcut service in Accessibility</string>
     <string name="swipe_right_search">Swipe right to search</string>
     <string name="swipe_right_search_desc">Swipe right on the first page opens search; on other pages it goes back</string>
     <string name="swipe_down_panels">Swipe down for notifications / quick settings</string>
@@ -258,7 +260,8 @@
     <string name="err_no_release">This repository has no releases yet</string>
     <string name="err_bad_json">Response is not a Release (missing tag_name)</string>
     <string name="err_no_tag">No version tag found in the feed</string>
-    <string name="toast_sleep_rebind">Sleep service not connected: turn it off and on again in Accessibility</string>
+    <string name="toast_sleep_revoked">The sleep &amp; shortcut service was turned off by the system. Re-enable it in Settings.</string>
+    <string name="toast_sleep_rebind">Sleep &amp; shortcut service not connected: turn it off and on again in Accessibility</string>
     <string name="toast_enable_accessibility">Enable the DuoLauncher sleep service under Accessibility → Downloaded services</string>
     <string name="toast_enable_service">Enable the DuoLauncher service in Accessibility and try again</string>
     <string name="search_results">Results · %1$d</string>

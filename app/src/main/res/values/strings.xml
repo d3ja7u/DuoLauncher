@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_clone_suffix">（分身）</string>
-    <string name="duo_lock_label">DuoLauncher 息屏服务</string>
+    <string name="duo_lock_label">DuoLauncher 息屏及快捷键服务</string>
     <string name="duo_lock_desc">仅用于「双击桌面息屏」和「桌面快捷键」（长按字母键打开应用）。此服务不读取屏幕内容，只在桌面处理按键，其他应用里打字不受影响。</string>
     <string name="search">搜索</string>
     <string name="clear">清空</string>
@@ -175,9 +175,11 @@
     <string name="reverse_pages">反转左右滑页方向</string>
     <string name="reverse_pages_desc">开启后资源库出现在左边</string>
     <string name="double_tap_lock">双击桌面息屏</string>
-    <string name="double_tap_lock_on">已开启无障碍息屏服务</string>
-    <string name="double_tap_lock_broken">已开启但未连接，点此关闭后重新打开</string>
-    <string name="double_tap_lock_off">首次使用需在「无障碍」中开启 DuoLauncher 息屏服务（仅锁屏）</string>
+    <string name="double_tap_lock_on">已开启无障碍服务（息屏与快捷键）</string>
+    <string name="double_tap_lock_broken">服务已开启但未连接，点此关闭后重新打开</string>
+    <string name="double_tap_lock_connecting">正在连接无障碍服务…</string>
+    <string name="double_tap_lock_revoked">服务已被系统关闭，点此重新开启</string>
+    <string name="double_tap_lock_off">首次使用需在「无障碍」中开启 DuoLauncher 息屏及快捷键服务</string>
     <string name="swipe_right_search">右滑打开搜索</string>
     <string name="swipe_right_search_desc">第一页桌面右滑呼出搜索；其它页右滑仍是翻回上一页</string>
     <string name="swipe_down_panels">下滑打开通知栏 / 控制中心</string>
@@ -258,7 +260,8 @@
     <string name="err_no_release">该仓库还没有发布过 Release</string>
     <string name="err_bad_json">返回内容不是 Release 信息（缺少 tag_name）</string>
     <string name="err_no_tag">订阅源里找不到版本标签</string>
-    <string name="toast_sleep_rebind">息屏服务未连接：请在无障碍中把本服务关闭后再打开</string>
+    <string name="toast_sleep_revoked">息屏及快捷键服务已被系统关闭，请在设置中重新开启</string>
+    <string name="toast_sleep_rebind">息屏及快捷键服务未连接：请在无障碍中把本服务关闭后再打开</string>
     <string name="toast_enable_accessibility">请在「无障碍 → 已下载的服务」中开启 DuoLauncher 息屏服务</string>
     <string name="toast_enable_service">请在「无障碍」中开启 DuoLauncher 服务后重试</string>
     <string name="search_results">搜索结果 · %1$d</string>

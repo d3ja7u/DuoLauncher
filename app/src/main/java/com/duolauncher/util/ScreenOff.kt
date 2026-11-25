@@ -19,6 +19,12 @@ import com.duolauncher.service.DuoLockService
  * 这里刻意不保留设备管理员（DevicePolicyManager.lockNow）作为备用：
  * DPM 主动锁屏会置上 STRONG_AUTH_REQUIRED_AFTER_DPM_LOCK_NOW，
  * 解锁时必须输入一次设备密码、生物识别无效，体验上像是出了故障。
+ *
+ * 另有一条实测结论，不要试图拿它「自愈」：
+ * 用 PackageManager.setComponentEnabledSetting 把本服务组件禁用再启用，
+ * 系统会直接把本服务从 enabled_accessibility_services 里删除（等于用户的授权被撤销），
+ * 重新启用组件也不会自动恢复 —— 只会把「没连上」变成「彻底没开」。
+ * 唯一的修复方式是由用户在系统设置里关一次再打开，App 能做的只有把状态说清楚、把入口送到跟前。
  */
 object ScreenOff {
 

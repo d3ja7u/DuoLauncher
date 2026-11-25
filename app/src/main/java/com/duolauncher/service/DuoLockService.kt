@@ -35,6 +35,19 @@ class DuoLockService : AccessibilityService() {
     private fun dbg(): Boolean =
         (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
+    /**
+     * 实例在 onCreate 就登记，而不是等 onServiceConnected。
+     *
+     * 系统把服务「建好」到「回调 onServiceConnected」之间有一次 Binder 往返，
+     * 界面恰好在这段时间里采样就看得到「已开启但未连接」——其实服务已经在跑了。
+     * 提前登记可以消掉这段假空窗；[performGlobalAction] 要在连接完成后才有效，
+     * 所以调用方仍以 [lockScreen] 的返回值为准。
+     */
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this

@@ -156,6 +156,35 @@ class MainActivity : ComponentActivity() {
         DuoState.homeForeground = true
         // 从系统快捷键页回到桌面时，把配置用的「分身 N」临时入口收掉（已被按键引用的保留）
         runCatching { com.duolauncher.util.ShortcutManager.collapseIfPending(this) }
+        // 自检「息屏及快捷键服务」：应用被覆盖安装、或被系统强行停止之后，系统会把无障碍
+        // 授权收回（设置项里直接消失），此时开关仍是开的、双击却毫无反应。这属于系统侧的
+        // 安全行为，App 没有任何权限替用户重新开启，只能主动说清楚，别让人以为功能坏了。
+        runCatching {
+            if (DuoState.doubleTapSleep) {
+                if (com.duolauncher.util.ScreenOff.isReady()) {
+                    // 真的连上了：记下「开过」，掉线后才知道该提示重新开启而不是「首次开启」
+                    if (!DuoState.sleepGrantedOnce || DuoState.sleepRevokedNotified) {
+                        DuoState.sleepGrantedOnce = true
+                        DuoState.sleepRevokedNotified = false
+                        DuoState.save()
+                    }
+                } else if (com.duolauncher.util.ScreenOff.isEnabled(this)) {
+                    // 已授权、正在重绑：正常过程，不打扰
+                    if (!DuoState.sleepGrantedOnce) {
+                        DuoState.sleepGrantedOnce = true
+                        DuoState.save()
+                    }
+                } else if (DuoState.sleepGrantedOnce && !DuoState.sleepRevokedNotified) {
+                    DuoState.sleepRevokedNotified = true
+                    DuoState.save()
+                    android.widget.Toast.makeText(
+                        this,
+                        com.duolauncher.util.Lang.s(R.string.toast_sleep_revoked),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     override fun onPause() {

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_clone_suffix">（クローン）</string>
-    <string name="duo_lock_label">DuoLauncher スリープサービス</string>
+    <string name="duo_lock_label">DuoLauncher スリープ＆ショートカットサービス</string>
     <string name="duo_lock_desc">ダブルタップでスリープする場合と、ホーム画面のキーショートカット（英字キー長押しでアプリを開く）にのみ使用します。画面内容は読み取らず、キー入力を扱うのはホーム画面のみで、他のアプリでの文字入力には影響しません。</string>
     <string name="search">検索</string>
     <string name="clear">クリア</string>
@@ -175,9 +175,11 @@
     <string name="reverse_pages">スワイプ方向を反転</string>
     <string name="reverse_pages_desc">オンにすると App ライブラリが左に来ます</string>
     <string name="double_tap_lock">ダブルタップでスリープ</string>
-    <string name="double_tap_lock_on">ユーザー補助によるスリープが有効</string>
+    <string name="double_tap_lock_on">ユーザー補助サービスが有効（スリープとショートカット）</string>
     <string name="double_tap_lock_broken">有効ですが未接続です。タップして一度オフにし、再度オンにしてください</string>
-    <string name="double_tap_lock_off">初回は「ユーザー補助」で DuoLauncher スリープサービスを有効にしてください（画面ロックのみ）</string>
+    <string name="double_tap_lock_connecting">ユーザー補助サービスに接続中…</string>
+    <string name="double_tap_lock_revoked">サービスがシステムにより無効化されました。タップして再度有効にしてください</string>
+    <string name="double_tap_lock_off">初回は「ユーザー補助」で DuoLauncher スリープ＆ショートカットサービスを有効にしてください</string>
     <string name="swipe_right_search">右スワイプで検索</string>
     <string name="swipe_right_search_desc">1 ページ目で右スワイプすると検索。他のページでは前のページに戻ります</string>
     <string name="swipe_down_panels">下スワイプで通知 / クイック設定</string>
@@ -258,7 +260,8 @@
     <string name="err_no_release">このリポジトリにはまだ Release がありません</string>
     <string name="err_bad_json">Release 情報ではありません（tag_name がありません）</string>
     <string name="err_no_tag">フィードにバージョンタグがありません</string>
-    <string name="toast_sleep_rebind">スリープサービスが未接続です。「ユーザー補助」で一度オフにし、再度オンにしてください</string>
+    <string name="toast_sleep_revoked">スリープ＆ショートカットサービスがシステムにより無効化されました。設定から再度有効にしてください</string>
+    <string name="toast_sleep_rebind">スリープ＆ショートカットサービスが未接続です。「ユーザー補助」で一度オフにし、再度オンにしてください</string>
     <string name="toast_enable_accessibility">「ユーザー補助 → インストール済みサービス」で DuoLauncher スリープサービスを有効にしてください</string>
     <string name="toast_enable_service">「ユーザー補助」で DuoLauncher サービスを有効にして再試行してください</string>
     <string name="search_results">検索結果 · %1$d</string>

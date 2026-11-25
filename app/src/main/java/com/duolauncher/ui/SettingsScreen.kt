@@ -271,6 +271,9 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
     // 此时设置页仍显示「已开启」，只认前者就会给出无解提示（旧版「正在启动」）。
     var accEnabled by remember { mutableStateOf(ScreenOff.isEnabled(ctx)) }
     var accReady by remember { mutableStateOf(ScreenOff.isReady()) }
+    // 「已开启但没连上」要持续几秒才算真异常：系统重绑是异步的，刚进这一页时
+    // 往往还在连接途中，直接报「未连接」会让人以为坏了、跑去关开一遍（越折腾越乱）。
+    var accBroken by remember { mutableStateOf(false) }
     // 通知使用权状态，同样需要在从系统页返回时刷新
     var badgeAccess by remember { mutableStateOf(DuoNotificationListener.hasAccess(ctx)) }
     // 有些 ROM 会在后台自行回收第三方无障碍服务，用户并没有再进过系统设置页，
@@ -330,8 +333,24 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
         while (true) {
             accReady = ScreenOff.isReady()
             accEnabled = ScreenOff.isEnabled(ctx)
+            // 记下「确实连上过」，之后万一被系统收权，文案才能说清是被关掉了
+            if (accReady && (!DuoState.sleepGrantedOnce || DuoState.sleepRevokedNotified)) {
+                DuoState.sleepGrantedOnce = true
+                DuoState.sleepRevokedNotified = false
+                DuoState.save()
+            }
             kotlinx.coroutines.delay(1_500L)
         }
+    }
+    // 连续 4 秒都是「开着却没连上」才判定为掉线：给系统留出重绑时间。
+    // 判定成立后再复核一次，避免延迟期间状态已经恢复却仍显示异常。
+    LaunchedEffect(accEnabled, accReady, screenResumed) {
+        if (!screenResumed || accReady || !accEnabled) {
+            accBroken = false
+            return@LaunchedEffect
+        }
+        kotlinx.coroutines.delay(4_000L)
+        accBroken = !ScreenOff.isReady() && ScreenOff.isEnabled(ctx)
     }
     val packs = remember { IconPacks.listPacks(ctx) }
     LazyColumn(
@@ -687,7 +706,13 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         Lang.s(R.string.double_tap_lock),
                         when {
                             accReady -> Lang.s(R.string.double_tap_lock_on)
-                            accEnabled -> Lang.s(R.string.double_tap_lock_broken)
+                            // 连接途中的那一两秒不报警，只说在连
+                            accEnabled -> Lang.s(
+                                if (accBroken) R.string.double_tap_lock_broken
+                                else R.string.double_tap_lock_connecting
+                            )
+                            // 开过又被系统收权（更新、强行停止之后常见），说法要和首次开启分开
+                            DuoState.sleepGrantedOnce -> Lang.s(R.string.double_tap_lock_revoked)
                             else -> Lang.s(R.string.double_tap_lock_off)
                         },
                         DuoState.doubleTapSleep, dark
@@ -695,9 +720,10 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         DuoState.doubleTapSleep = on; DuoState.save()
                         // 无障碍连上了就无需任何跳转；没连上时按状态引导重绑或首次授权
                         if (on && !accReady) {
-                            // 已开启但没连上：直接跳到本服务的详情页，让用户关一次再打开
-                            if (accEnabled) ScreenOff.openServiceSettings(ctx)
-                            else ScreenOff.requestPermission(ctx)
+                            // 已开启但确实掉线（连了 4 秒还是没连上）：跳到本服务详情页，
+                            // 关一次再打开即可恢复，这是系统侧唯一允许的修复方式
+                            if (accEnabled && accBroken) ScreenOff.openServiceSettings(ctx)
+                            else if (!accEnabled) ScreenOff.requestPermission(ctx)
                         }
                     }
                     SettingToggle(

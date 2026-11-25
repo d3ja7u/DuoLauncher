@@ -205,6 +205,15 @@ object DuoState {
     var showPageDots by mutableStateOf(true)
     var reversePages by mutableStateOf(false)
     var doubleTapSleep by mutableStateOf(true)      // 双击桌面空白处息屏
+    /**
+     * 息屏及快捷键服务「曾经连上过」。
+     *
+     * 用来区分两种没连上的情形：从没开过（要引导去开）和开过但被系统关掉了
+     * （更新/强停后系统会把无障碍授权收回，文案要说得更准，别让人以为要重新学一遍）。
+     */
+    var sleepGrantedOnce by mutableStateOf(false)
+    /** 这次「被系统收权」是否已经提醒过：同一轮只提示一次，不反复打扰 */
+    var sleepRevokedNotified by mutableStateOf(false)
     /** 锁定布局：图标固定，不能拖动 / 移除，防误操作（设置里可关） */
     var lockLayout by mutableStateOf(false)
 
@@ -419,6 +428,8 @@ object DuoState {
             showPageDots = o.optBoolean("dots", true)
             reversePages = o.optBoolean("reverse", false)
             doubleTapSleep = o.optBoolean("dblSleep", true)
+            sleepGrantedOnce = o.optBoolean("sleepGranted", false)
+            sleepRevokedNotified = o.optBoolean("sleepRevoked", false)
             lockLayout = o.optBoolean("lockLayout", false)
             cloneSlots.clear()
             // 只认数字槽位号；旧版本存在这里的「按键+触发方式」键（如 func2_short）直接丢弃，
@@ -599,6 +610,8 @@ object DuoState {
             o.put("dots", showPageDots)
             o.put("reverse", reversePages)
             o.put("dblSleep", doubleTapSleep)
+            o.put("sleepGranted", sleepGrantedOnce)
+            o.put("sleepRevoked", sleepRevokedNotified)
             o.put("lockLayout", lockLayout)
             val scSlots = JSONObject()
             cloneSlots.forEach { (k, v) -> scSlots.put(k, v) }
