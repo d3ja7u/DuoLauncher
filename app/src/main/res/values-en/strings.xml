@@ -159,6 +159,8 @@
     <string name="status_show_time_desc">Turn off to keep only the battery and signal badge</string>
     <string name="status_show_badge">Show status badge</string>
     <string name="status_show_badge_desc">Battery ring plus Wi-Fi/signal dots; turn off to show only the clock</string>
+    <string name="status_notif_icons">Show unread icons at the top</string>
+    <string name="status_notif_icons_desc">App icons with unread notifications appear next to the clock; hidden while the system status bar is shown</string>
     <string name="status_pos_right">Top right (avoids the top-left cutout)</string>
     <string name="status_pos_left">Top left (shifts down when the sidebar is also on the left)</string>
     <string name="status_24h">24-hour clock</string>

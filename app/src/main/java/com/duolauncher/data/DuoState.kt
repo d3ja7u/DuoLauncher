@@ -303,6 +303,14 @@ object DuoState {
     var showStatusTime by mutableStateOf(true)
     /** 右上角是否显示三合一徽标（电量环 + WiFi / 信号点） */
     var showStatusBadge by mutableStateOf(true)
+    /**
+     * 顶部是否显示「未读通知」的应用小图标。
+     *
+     * 系统状态栏被隐藏后，通知栏里来了消息桌面完全看不到（时间与三合一徽标不显示通知），
+     * 这里把有新消息的应用图标排在时间旁边，一眼就能看出是哪个应用。
+     * 只在系统状态栏隐藏时生效 —— 系统状态栏本身就在显示同一批图标，同时出现会重复且重叠。
+     */
+    var showStatusNotifIcons by mutableStateOf(true)
 
     /**
      * 时间 + 三合一徽标的实际高度（dp）。**唯一口径**：HomePage 排版、
@@ -483,6 +491,7 @@ object DuoState {
             showBatteryNumber = o.optBoolean("battNum", true)
             showStatusTime = o.optBoolean("stTime", true)
             showStatusBadge = o.optBoolean("stBadge", true)
+            showStatusNotifIcons = o.optBoolean("stNotifIcons", true)
             wallpaperRotate = o.optBoolean("wpRotate", false)
             wallpaperIntervalMin = o.optInt("wpInterval", 60).let { if (it > 0) it else 60 }
             wallpaperRandom = o.optBoolean("wpRandom", false)
@@ -679,6 +688,7 @@ object DuoState {
             o.put("battNum", showBatteryNumber)
             o.put("stTime", showStatusTime)
             o.put("stBadge", showStatusBadge)
+            o.put("stNotifIcons", showStatusNotifIcons)
             o.put("wpRotate", wallpaperRotate)
             o.put("wpInterval", wallpaperIntervalMin)
             o.put("wpRandom", wallpaperRandom)

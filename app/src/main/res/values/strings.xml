@@ -159,6 +159,8 @@
     <string name="status_show_time_desc">关闭后只保留电量与信号徽标</string>
     <string name="status_show_badge">显示三合一状态</string>
     <string name="status_show_badge_desc">电量圆弧 + WiFi / 信号点；关闭后只显示时间</string>
+    <string name="status_notif_icons">顶部显示未读图标</string>
+    <string name="status_notif_icons_desc">有新通知时在时间旁显示对应应用的小图标；显示系统状态栏时自动隐藏</string>
     <string name="status_pos_right">右上（避开左上挖孔）</string>
     <string name="status_pos_left">左上（侧栏同侧时自动下移避让）</string>
     <string name="status_24h">24 小时制</string>

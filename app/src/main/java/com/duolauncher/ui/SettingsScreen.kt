@@ -594,6 +594,9 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                         DuoState.showStatusTime, dark) { DuoState.showStatusTime = it; DuoState.save() }
                     SettingToggle(Lang.s(R.string.status_show_badge), Lang.s(R.string.status_show_badge_desc),
                         DuoState.showStatusBadge, dark) { DuoState.showStatusBadge = it; DuoState.save() }
+                    // 系统状态栏被隐藏后桌面看不到通知，这一项把「有新消息的应用」图标排到时间旁边
+                    SettingToggle(Lang.s(R.string.status_notif_icons), Lang.s(R.string.status_notif_icons_desc),
+                        DuoState.showStatusNotifIcons, dark) { DuoState.showStatusNotifIcons = it; DuoState.save() }
                     SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.statusRight) Lang.s(R.string.status_pos_right) else Lang.s(R.string.status_pos_left), dark,
                         trailing = {
                             Row {
