@@ -597,6 +597,12 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     // 系统状态栏被隐藏后桌面看不到通知，这一项把「有新消息的应用」图标排到时间旁边
                     SettingToggle(Lang.s(R.string.status_notif_icons), Lang.s(R.string.status_notif_icons_desc),
                         DuoState.showStatusNotifIcons, dark) { DuoState.showStatusNotifIcons = it; DuoState.save() }
+                    // 小图标上的未读条数单独一档：与桌面图标角标互不影响。
+                    // 只在上面「顶部显示未读图标」打开时出现，避免留下一个点了没反应的开关。
+                    if (DuoState.showStatusNotifIcons) {
+                        SettingToggle(Lang.s(R.string.status_notif_numbers), Lang.s(R.string.status_notif_numbers_desc),
+                            DuoState.showStatusNotifNumbers, dark) { DuoState.showStatusNotifNumbers = it; DuoState.save() }
+                    }
                     SettingRow(Lang.s(R.string.sidebar_position), if (DuoState.statusRight) Lang.s(R.string.status_pos_right) else Lang.s(R.string.status_pos_left), dark,
                         trailing = {
                             Row {

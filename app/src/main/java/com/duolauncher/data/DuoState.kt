@@ -313,6 +313,15 @@ object DuoState {
     var showStatusNotifIcons by mutableStateOf(true)
 
     /**
+     * 顶部那排小图标右上角是否再显示未读条数。
+     *
+     * 与桌面图标角标（[showBadges]）相互独立：桌面角标可能因为不想显乱而关掉，
+     * 但顶部这排本来就是为了「不错过消息」，有人仍想看到条数，所以单独一档。
+     * 只在 [showStatusNotifIcons] 打开时才有意义。
+     */
+    var showStatusNotifNumbers by mutableStateOf(true)
+
+    /**
      * 时间 + 三合一徽标的实际高度（dp）。**唯一口径**：HomePage 排版、
      * [gridTopGapDp]、胶囊与侧栏避让都读它，避免关掉其中一项后还留着空档。
      */
@@ -492,6 +501,7 @@ object DuoState {
             showStatusTime = o.optBoolean("stTime", true)
             showStatusBadge = o.optBoolean("stBadge", true)
             showStatusNotifIcons = o.optBoolean("stNotifIcons", true)
+            showStatusNotifNumbers = o.optBoolean("stNotifNums", true)
             wallpaperRotate = o.optBoolean("wpRotate", false)
             wallpaperIntervalMin = o.optInt("wpInterval", 60).let { if (it > 0) it else 60 }
             wallpaperRandom = o.optBoolean("wpRandom", false)
@@ -689,6 +699,7 @@ object DuoState {
             o.put("stTime", showStatusTime)
             o.put("stBadge", showStatusBadge)
             o.put("stNotifIcons", showStatusNotifIcons)
+            o.put("stNotifNums", showStatusNotifNumbers)
             o.put("wpRotate", wallpaperRotate)
             o.put("wpInterval", wallpaperIntervalMin)
             o.put("wpRandom", wallpaperRandom)

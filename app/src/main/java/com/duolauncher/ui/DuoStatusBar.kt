@@ -25,13 +25,21 @@ import android.telephony.TelephonyManager
 import android.text.format.DateFormat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -569,6 +577,9 @@ private object StatusBus {
 /** 顶部最多并列显示几个应用图标，超出的合并成「+N」 */
 private const val NOTIF_ICON_MAX = 5
 
+/** 顶部小图标的边长；角标尺寸都按它等比推算 */
+private val NOTIF_ICON_SIZE = 20.dp
+
 /**
  * 顶部「未读通知」的应用图标条。
  *
@@ -582,6 +593,9 @@ private const val NOTIF_ICON_MAX = 5
  *
  * 只在系统状态栏隐藏时出面：系统状态栏本来就在顶部显示同一批通知图标，
  * 两边同时画会重叠且重复。
+ *
+ * 每个图标右上角带未读条数（超过 99 显示 99+），由 [DuoState.showStatusNotifNumbers]
+ * 单独控制（与桌面角标开关互不影响）；关掉后只剩图标。
  */
 @Composable
 fun DuoNotifIcons(modifier: Modifier = Modifier) {
@@ -624,18 +638,22 @@ fun DuoNotifIcons(modifier: Modifier = Modifier) {
     Row(
         modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         shown.forEach { item ->
-            Image(
-                painter = rememberDrawablePainter(item.icon),
-                contentDescription = item.label,
-                modifier = Modifier
-                    .size(20.dp)
-                    .shadow(2.dp, squircle(30))
-                    .clip(squircle(30))
-                    .clickable { AppRepository.launch(ctx, item.id) }
-            )
+            Box(Modifier.size(NOTIF_ICON_SIZE)) {
+                Image(
+                    painter = rememberDrawablePainter(item.icon),
+                    contentDescription = item.label,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .shadow(2.dp, squircle(30))
+                        .clip(squircle(30))
+                        .clickable { AppRepository.launch(ctx, item.id) }
+                )
+                // 未读条数：顶部独立开关（设置 → 状态栏 → 顶部显示未读数字）
+                if (DuoState.showStatusNotifNumbers) NotifCountBadge(item.count)
+            }
         }
         val more = items.size - shown.size
         if (more > 0) {
@@ -650,6 +668,42 @@ fun DuoNotifIcons(modifier: Modifier = Modifier) {
                 )
             )
         }
+    }
+}
+
+/**
+ * 顶部小图标右上角的未读数字。
+ *
+ * 图标本身只有 20dp，这里刻意做小（12dp 高、7.5sp 字），并向外偏 3dp：
+ * 角标一半压在图标上、一半探出边角，既不糊住图标主体，也不会把整排顶宽。
+ * 超过 99 显示 99+，两位数起自动变胶囊宽度（minWidth + 左右 padding）。
+ */
+@Composable
+private fun BoxScope.NotifCountBadge(count: Int) {
+    if (count <= 0) return
+    val h = 12.dp
+    Box(
+        Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 3.dp, y = (-3).dp)
+            .shadow(2.dp, CircleShape)
+            .height(h)
+            .defaultMinSize(minWidth = h)
+            .clip(CircleShape)
+            .background(Color(DuoState.badgeColor))
+            .padding(horizontal = 1.5.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = if (count > 99) "99+" else count.toString(),
+            color = Color.White,
+            fontSize = 7.5.sp,
+            lineHeight = 7.5.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            softWrap = false,
+            style = TextStyle(shadow = Shadow(Color(0x33000000), Offset(0f, 0.5f), 1.5f))
+        )
     }
 }
 

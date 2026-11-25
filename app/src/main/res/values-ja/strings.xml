@@ -161,6 +161,8 @@
     <string name="status_show_badge_desc">バッテリーリング + Wi-Fi/電波ドット。オフにすると時計のみ表示します</string>
     <string name="status_notif_icons">上部に未読アイコンを表示</string>
     <string name="status_notif_icons_desc">未読の通知があると時計の横に対応アプリの小アイコンを表示します（システムのステータスバー表示中は隠れます）</string>
+    <string name="status_notif_numbers">上部に未読数を表示</string>
+    <string name="status_notif_numbers_desc">小アイコンの右上に未読件数を表示します（99 件を超えると 99+）</string>
     <string name="status_pos_right">右上（左上のカメラ穴を回避）</string>
     <string name="status_pos_left">左上（サイドバーが左の場合は自動で下げる）</string>
     <string name="status_24h">24 時間表示</string>
