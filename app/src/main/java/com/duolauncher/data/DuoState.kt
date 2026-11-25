@@ -517,6 +517,40 @@ object DuoState {
             // 升级后继续沿用会把新数据仍写进旧统计。地址只由 InstallStats.DEFAULT_URL 决定。
             statsUrl = InstallStats.DEFAULT_URL
         }
+        // 归一化历史脏数据：同一个应用只留在最先建的那个文件夹里
+        if (normalizeFolders()) save()
+    }
+
+    /**
+     * 同一个应用只保留在一个文件夹里（保留先建的那个），被清空的文件夹直接移除。
+     *
+     * 旧实现建文件夹时没做互斥：把一个应用拖到刚建好的文件夹上，读到的还是文件夹
+     * 之前那一格的应用，于是又建了一个新文件夹，两个文件夹里都含有同一个应用
+     * （2026-11-25 齐老师反馈，存档里确实出现了这种数据）。加载时顺手修一次。
+     *
+     * @return 是否真的改动了数据（调用方据此决定要不要落盘）
+     */
+    private fun normalizeFolders(): Boolean {
+        if (folders.size < 2) return false
+        val seen = HashSet<String>()
+        val kept = ArrayList<FolderItem>(folders.size)
+        var changed = false
+        folders.forEach { f ->
+            val own = f.apps.filter { seen.add(it) }
+            if (own.size != f.apps.size) changed = true
+            // 里面的应用都已经被更早的文件夹收走：这个文件夹没有存在意义了
+            if (own.isEmpty()) { changed = true; return@forEach }
+            kept.add(if (own.size == f.apps.size) f else f.copy(apps = own))
+        }
+        if (!changed) return false
+        val keptIds = kept.map { it.id }.toHashSet()
+        folders.clear(); folders.addAll(kept)
+        // 被移除的文件夹不能留在排版数据里，否则会占着格子却画不出东西
+        homeOrder.removeAll { it.startsWith("folder:") && it.removePrefix("folder:") !in keptIds }
+        homeSlots.keys.toList().forEach { t ->
+            if (t.startsWith("folder:") && t.removePrefix("folder:") !in keptIds) homeSlots.remove(t)
+        }
+        return true
     }
 
     /**
@@ -1438,6 +1472,9 @@ object DuoState {
         // 文件夹尽量落在"被收进去的第一个应用"原来的位置，而不是永远排到最后
         val before = homeTokens().toMutableList()
         val at = before.indexOfFirst { t -> pkgs.any { t == "app:$it" } }
+        // 先把这些应用从别的文件夹里摘掉：一个应用只能待在一个文件夹里，
+        // 否则会出现「两个文件夹里都有微信」（历史脏数据就是这么来的）
+        pkgs.distinct().forEach { detachFromOtherFolders(it) }
         folders.add(FolderItem(id, name.ifBlank { Lang.s(R.string.folder) }, pkgs.distinct()))
         pkgs.forEach { homeApps.remove(it) }
         if (at >= 0) {
@@ -1446,6 +1483,22 @@ object DuoState {
         }
         save()
         return id
+    }
+
+    /**
+     * 把应用从其它文件夹里摘出来。
+     *
+     * 摘空的文件夹直接删掉（里面的应用都已经归到新文件夹，不用回到桌面）。
+     * 调用方负责 `save()`。
+     */
+    private fun detachFromOtherFolders(pkg: String) {
+        var i = 0
+        while (i < folders.size) {
+            val f = folders[i]
+            if (!f.apps.contains(pkg)) { i++; continue }
+            val rest = f.apps - pkg
+            if (rest.isEmpty()) folders.removeAt(i) else { folders[i] = f.copy(apps = rest); i++ }
+        }
     }
 
     fun renameFolder(id: String, name: String) {
@@ -1457,13 +1510,12 @@ object DuoState {
 
     /** 把应用加入文件夹（若已在其它文件夹则移出，并从主屏独立图标移除） */
     fun addAppToFolder(id: String, pkg: String) {
+        if (folderOf(id) == null) return
+        detachFromOtherFolders(pkg)
+        // 摘除过程可能删掉/挪动文件夹，重新按 id 取一次
         val f = folderOf(id) ?: return
-        val idx = folders.indexOf(f)
-        val others = folders.filter { it.id != id }
-        others.forEach { of ->
-            val oi = folders.indexOf(of)
-            if (of.apps.contains(pkg)) folders[oi] = of.copy(apps = of.apps - pkg)
-        }
+        val idx = folders.indexOfFirst { it.id == id }
+        if (idx < 0) return
         folders[idx] = f.copy(apps = (f.apps + pkg).distinct())
         homeApps.remove(pkg)
         save()

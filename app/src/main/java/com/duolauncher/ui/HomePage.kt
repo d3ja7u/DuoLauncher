@@ -613,7 +613,15 @@ fun HomePage(
                 // 跨页已在拖动过程中完成，这里一律落到当前页。
                 cell != null -> {
                     // 落在文件夹上：把应用塞进文件夹（iOS 手感），不要再走「同格交换」
-                    val targetToken = pagePlacements.firstOrNull {
+                    //
+                    // 这里必须**实时**取布局，不能用组合里的 pagePlacements：
+                    // 图标的 pointerInput(token) 只在 token 变化时才重建，长按拖动的事件
+                    // 走的是图标第一次组合时的那份闭包，里面捕获的 pagePlacements 已经过期。
+                    // 后果就是「刚建好文件夹，再拖一个应用上去」时，读到的还是文件夹之前的
+                    // 那个应用，于是又建了一个新文件夹（2026-11-25 齐老师反馈）。
+                    val live = DuoState.placements(homeCols, homeRows)
+                        .filter { it.page == homePageIndex }
+                    val targetToken = live.firstOrNull {
                         it.row == cell.first && it.col == cell.second && it.token != token
                     }?.token
                     val folderToken = targetToken?.takeIf { it.startsWith("folder:") }
