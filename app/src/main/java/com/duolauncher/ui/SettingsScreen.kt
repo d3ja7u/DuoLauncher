@@ -2375,7 +2375,7 @@ private fun CloneSlotDialog(
     DuoDialog(Lang.s(R.string.clone_slot_pick_title, slot.toString()), dark, onDismiss) {
         if (current != null) {
             TextButton(onClick = {
-                ShortcutManager.clearSlot(slot)
+                ShortcutManager.clearSlot(ctx, slot)
                 nav.toast(Lang.s(R.string.clone_slot_cleared, slot.toString()))
                 onPicked()
             }) { Text(Lang.s(R.string.clone_slot_clear), color = Color(0xFFFF6B6B), fontSize = 13.sp) }
@@ -2389,7 +2389,7 @@ private fun CloneSlotDialog(
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                         .clickable {
-                            ShortcutManager.assign(slot, app.id)
+                            ShortcutManager.assign(ctx, slot, app.id)
                             nav.toast(Lang.s(R.string.clone_slot_saved, slot.toString(), app.label))
                             onPicked()
                         }

@@ -83,18 +83,21 @@ object ShortcutManager {
     fun slotOfApp(appId: String): Int? =
         (1..SLOT_COUNT).firstOrNull { appIdOfSlot(it) == appId }
 
-    fun assign(slot: Int, appId: String) {
+    fun assign(ctx: Context, slot: Int, appId: String) {
         // 同一应用换槽时先清掉旧槽，避免两个入口指向同一个分身
         (1..SLOT_COUNT).forEach { n ->
             if (n != slot && appIdOfSlot(n) == appId) DuoState.cloneSlots.remove(n.toString())
         }
         DuoState.cloneSlots[slot.toString()] = appId
         DuoState.save()
+        // 指派完立刻把入口放出来：系统按键随时可能触发它，不能等到下次重启
+        syncToBound(ctx)
     }
 
-    fun clearSlot(slot: Int) {
+    fun clearSlot(ctx: Context, slot: Int) {
         DuoState.cloneSlots.remove(slot.toString())
         DuoState.save()
+        syncToBound(ctx)
     }
 
     // ─────────────────── 入口可见性（不污染启动器） ───────────────────
@@ -123,6 +126,36 @@ object ShortcutManager {
     fun boundSlots(ctx: Context): Set<Int> =
         configured(ctx).mapNotNull { it.third.slotFor(ctx) }.toSet()
 
+    /**
+     * 已经指派了分身应用的槽位。
+     *
+     * 这些入口必须一直保持启用 —— 字母键的绑定根本读不到：本机把「长按 A」这类
+     * 配置存在键盘 App 自己的 SharedPreferences（`com.agui.keyboard/shared_prefs/
+     * agui_keyboard_shortcut.xml` 的 `A-long-app`），属于别人的私有目录，第三方读不了。
+     * 早先只按 [boundSlots] 决定可见性，结果回桌面就把 Slot1 收掉，
+     * 系统按键 startActivity 时组件已禁用 → 长按 A 完全没反应。
+     */
+    /**
+     * 直接从配置文件里读已指派的槽位。
+     *
+     * 进程刚起来时 [DuoState] 可能还没 load 完，读内存会拿到空集合，
+     * 反过来把刚刚放出来的入口又禁掉（长按 A 就彻底没戏）。所以启动兜底走磁盘。
+     */
+    private fun assignedSlotsFromDisk(ctx: Context): Set<Int> = runCatching {
+        val raw = ctx.getSharedPreferences("duo_prefs_v1", Context.MODE_PRIVATE)
+            .getString("state", null) ?: return@runCatching emptySet<Int>()
+        val obj = org.json.JSONObject(raw).optJSONObject("cloneSlots")
+            ?: return@runCatching emptySet<Int>()
+        obj.keys().asSequence().mapNotNull { it.toIntOrNull() }.toSet()
+    }.getOrDefault(emptySet())
+
+    /** 已指派分身应用的槽位（内存 + 磁盘，后者兜住启动阶段的空档） */
+    fun assignedSlots(ctx: Context): Set<Int> =
+        DuoState.cloneSlots.keys.mapNotNull { it.toIntOrNull() }.toSet() + assignedSlotsFromDisk(ctx)
+
+    /** 需要保持可见的槽位：被按键引用的 + 已指派的 */
+    fun keepSlots(ctx: Context): Set<Int> = boundSlots(ctx) + assignedSlots(ctx)
+
     // 进程启动时的 syncToBound 在后台线程跑，UI 侧也可能在进/出系统页时调用，
     // 这里串行化，避免 lastVisible 缓存与实际组件状态对不上。
     @Synchronized
@@ -140,8 +173,8 @@ object ShortcutManager {
         lastVisible = visible
     }
 
-    /** 收缩到「真的被按键引用」的槽位：app 启动时调用 */
-    fun syncToBound(ctx: Context) = applyVisible(ctx, boundSlots(ctx))
+    /** 收缩到「被按键引用 + 已指派应用」的槽位：app 启动、指派变更、回桌面时调用 */
+    fun syncToBound(ctx: Context) = applyVisible(ctx, keepSlots(ctx))
 
     /** 放了全部入口、还没收回（用户正在系统页里配置） */
     @Volatile
