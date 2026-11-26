@@ -120,8 +120,8 @@
     <string name="grp_sidebar_desc">Visibility, position, items, glass and icon size</string>
     <string name="grp_status">Status bar</string>
     <string name="grp_status_desc">Clock, battery and signal badge, position and format</string>
-    <string name="grp_gesture">Gestures &amp; shortcuts</string>
-    <string name="grp_gesture_desc">Double-tap to sleep, swipe panels, system shortcuts and letter keys</string>
+    <string name="grp_gesture">Gestures</string>
+    <string name="grp_gesture_desc">Double-tap to sleep, swipe down for panels, swipe right for search</string>
     <string name="grp_search">Search</string>
     <string name="grp_search_desc">Search engine, recent apps, search bar and page</string>
     <string name="grp_look">Appearance &amp; wallpaper</string>
@@ -520,6 +520,7 @@
     <string name="letter_apps_title">Apps (including clones)</string>
     <string name="sys_letters_title">Configured system letter shortcuts</string>
     <string name="sys_letters_empty">Open the system key settings above to show configured letter shortcuts here</string>
+    <string name="sys_letters_in_grid">Blue outline: set in system settings; corner dot: also set on the desktop</string>
     <string name="sys_letters_open">Open system key settings</string>
     <string name="letter_keys_footer">Cloned apps can be picked directly from the list. Configure function and side keys in System shortcut settings above.</string>
     <string name="letter_key_clear">Clear this binding</string>

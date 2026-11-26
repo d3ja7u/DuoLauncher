@@ -120,8 +120,8 @@
     <string name="grp_sidebar_desc">显示与位置、条目编辑、玻璃浓度与图标大小</string>
     <string name="grp_status">状态栏</string>
     <string name="grp_status_desc">时间、电量与信号徽标、位置与制式</string>
-    <string name="grp_gesture">手势与快捷键</string>
-    <string name="grp_gesture_desc">双击息屏、下滑面板、系统快捷键与字母键</string>
+    <string name="grp_gesture">手势</string>
+    <string name="grp_gesture_desc">双击息屏、下滑面板与右滑搜索</string>
     <string name="grp_search">搜索</string>
     <string name="grp_search_desc">搜索引擎、最近常用、搜索栏与搜索页</string>
     <string name="grp_look">外观与壁纸</string>
@@ -520,6 +520,7 @@
     <string name="letter_apps_title">应用（含分身）</string>
     <string name="sys_letters_title">系统已配置的字母快捷键</string>
     <string name="sys_letters_empty">打开上方系统按键设置后，这里会显示已配置的字母快捷键</string>
+    <string name="sys_letters_in_grid">蓝框为系统设置里配置的字母键；右上角小点表示桌面也设置了</string>
     <string name="sys_letters_open">打开系统按键设置</string>
     <string name="letter_keys_footer">分身应用可直接在列表里选择；系统功能键与侧键请到上方「系统快捷键设置」里配置。</string>
     <string name="letter_key_clear">清除此绑定</string>

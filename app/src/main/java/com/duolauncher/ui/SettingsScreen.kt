@@ -177,6 +177,11 @@ private val SETTINGS_GROUPS = listOf(
         "g_gesture", R.string.grp_gesture, R.string.grp_gesture_desc,
         Icons.Filled.Gesture, Color(0xFFFF9F0A)
     ),
+    // 按键设置单独提到一级菜单：字母键和系统快捷键是高频入口，藏在手势页里要多点一层
+    SettingsGroup(
+        "g_keys", R.string.shortcut_settings, R.string.shortcut_settings_desc,
+        Icons.Filled.Keyboard, Color(0xFFAF52DE)
+    ),
     SettingsGroup(
         "g_search", R.string.grp_search, R.string.grp_search_desc,
         Icons.Filled.Search, Color(0xFF8E8E93)
@@ -205,8 +210,8 @@ private fun SettingsGroupIcon(group: SettingsGroup) {
     }
 }
 
-/** 「用法」一节：手势快捷键与更新关于；其余归「个性化」 */
-private val USAGE_GROUP_IDS = setOf("g_gesture", "g_system")
+/** 「用法」一节：手势、按键与更新关于；其余归「个性化」 */
+private val USAGE_GROUP_IDS = setOf("g_gesture", "g_keys", "g_system")
 
 /** 设置主页头部：应用图标 + 名称 + 副标题，仿参考设置页的头部排布 */
 @Composable
@@ -583,8 +588,12 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, mainListS
                     Spacer(Modifier.height(14.dp))
                     SettingsSearchField(searchText, { searchText = it }, dark)
                     val q = searchText.trim()
-                    val visible = if (q.isEmpty()) SETTINGS_GROUPS
-                    else SETTINGS_GROUPS.filter { g ->
+                    // 按键设置只在真有系统快捷键能力的机型上出现，普通手机不摆空入口
+                    val all = SETTINGS_GROUPS.filter {
+                        it.id != "g_keys" || ShortcutManager.hasSystemSupport(ctx)
+                    }
+                    val visible = if (q.isEmpty()) all
+                    else all.filter { g ->
                         Lang.s(g.titleRes).contains(q, true) || Lang.s(g.descRes).contains(q, true)
                     }
                     if (visible.isEmpty()) {
@@ -616,7 +625,10 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, mainListS
                                 color = glassSubTextColor(dark),
                                 modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 2.dp)
                             )
-                            SettingsGroupCard(usage, dark) { group = it }
+                            // 按键设置没有分类页，直接进独立子页（返回仍回到用法这一屏）
+                            SettingsGroupCard(usage, dark) {
+                                if (it == "g_keys") open("shortcuts") else group = it
+                            }
                         }
                     }
                 }
@@ -1023,24 +1035,7 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, mainListS
                 }
             }
         }
-        // 只有本机真有系统快捷键能力时才显示这一组：普通手机装上也配不了，
-        // 摆个无效入口只会让人以为功能坏了。
-        if (group == "g_gesture" && ShortcutManager.hasSystemSupport(ctx)) {
-            item {
-                SectionTitle(Lang.s(R.string.sec_shortcut), dark)
-                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                    Column(Modifier.padding(vertical = 6.dp)) {
-                        SettingRow(
-                            Lang.s(R.string.shortcut_settings),
-                            Lang.s(R.string.shortcut_settings_desc),
-                            dark,
-                            trailing = { Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark)) },
-                            divider = false
-                        ) { open("shortcuts") }
-                    }
-                }
-            }
-        }
+        // 按键设置已提到一级菜单「用法」里，这里不再保留二级入口
         if (group == "g_home") {
             item {
                 SectionTitle(Lang.s(R.string.app_library), dark)
@@ -2488,11 +2483,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refresh++
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        DuoLockService.beginSystemShortcutCapture()
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            DuoLockService.endSystemShortcutCapture()
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Column(
@@ -2565,42 +2556,27 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 }
                 Spacer(Modifier.height(12.dp))
                 val map = remember(press, refresh) { LetterKeys.mapOf(press).toMap() }
-                LetterKeyGrid(dark = dark, map = map) { editing = it to press }
-
-                // 系统里已经配置的字母快捷键，按当前短按 / 长按分页显示
+                // 系统页里配置的字母键（当前短按 / 长按），直接画进对应的按键格子里。
+                // 直接读 SnapshotStateMap：无障碍从系统页读回新数据后会自动重组。
                 val sysPress = if (press == LetterKeys.Press.SHORT) "short" else "long"
-                val sysItems = remember(DuoState.systemShortcutsUpdated, press) {
-                    DuoState.systemLetterShortcuts.entries
-                        .filter { it.key.endsWith("/$sysPress") }
-                        .map { it.key.substringBefore('/') to it.value }
-                        .sortedBy { it.first }
-                }
-                Spacer(Modifier.height(14.dp))
-                SectionTitle(Lang.s(R.string.sys_letters_title), dark)
-                if (sysItems.isEmpty()) {
+                val sysMap = DuoState.systemLetterShortcuts.entries
+                    .filter { it.key.endsWith("/$sysPress") }
+                    .associate { it.key.substringBefore('/') to it.value }
+                LetterKeyGrid(dark = dark, map = map, sysMap = sysMap) { editing = it to press }
+
+                Spacer(Modifier.height(10.dp))
+                if (sysMap.isEmpty()) {
                     Text(
                         Lang.s(R.string.sys_letters_empty),
                         fontSize = 11.sp, color = glassSubTextColor(dark),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                     )
                 } else {
-                    Column(Modifier.padding(horizontal = 16.dp)) {
-                        sysItems.forEach { (letter, title) ->
-                            Row(
-                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    letter, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                    color = glassBlue, modifier = Modifier.width(28.dp)
-                                )
-                                Text(
-                                    title, fontSize = 12.sp, color = glassTextColor(dark),
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
+                    Text(
+                        Lang.s(R.string.sys_letters_in_grid),
+                        fontSize = 11.sp, color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
                 }
                 TextButton(
                     onClick = {
@@ -2645,11 +2621,20 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
     }
 }
 
-/** A–Z + 0–9 的字母键网格；当前触发方式已绑定的键显示应用图标或动作图标 */
+/**
+ * A–Z + 0–9 的字母键网格。
+ *
+ * 格子里的内容按优先级：
+ *  ① 桌面快捷键（本页设置的应用 / 系统动作）—— 蓝底；
+ *  ② 系统设置里配的字母键 —— 蓝框，显示对应应用图标或名称；
+ *  ③ 都没设 —— 只显示字母。
+ * 两种都设了时，桌面图标为主，右上角一个小蓝点提示系统里也绑了。
+ */
 @Composable
 private fun LetterKeyGrid(
     dark: Boolean,
     map: Map<String, String>,
+    sysMap: Map<String, String>,
     onPick: (Int) -> Unit
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
@@ -2657,38 +2642,80 @@ private fun LetterKeyGrid(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { code ->
                     val target = map[code.toString()]
+                    val label = LetterKeys.label(code)
+                    val sysTitle = sysMap[label]
                     val app = target?.let { t ->
                         ShortcutActions.idOf(t)?.let { null } ?: DuoState.appOf(t)
                     }
                     val action = target?.let { t -> ShortcutActions.idOf(t)?.let { ShortcutActions.find(it) } }
+                    val sysApp = sysTitle?.let { title ->
+                        DuoState.apps.firstOrNull { it.label.equals(title, ignoreCase = true) }
+                    }
+                    val systemOnly = target == null && sysTitle != null
                     Box(
                         Modifier.weight(1f).height(52.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
-                                if (target != null) glassBlue.copy(alpha = 0.20f)
-                                else glassSubTextColor(dark).copy(alpha = 0.10f)
+                                when {
+                                    target != null -> glassBlue.copy(alpha = 0.20f)
+                                    sysTitle != null -> glassBlue.copy(alpha = 0.10f)
+                                    else -> glassSubTextColor(dark).copy(alpha = 0.10f)
+                                }
+                            )
+                            .then(
+                                if (systemOnly)
+                                    Modifier.border(
+                                        1.dp, glassBlue.copy(alpha = 0.45f), RoundedCornerShape(12.dp)
+                                    )
+                                else Modifier
                             )
                             .clickable { onPick(code) },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (app != null) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        when {
+                            app != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Image(
                                     rememberDrawablePainter(rememberAppIcon(app)), null,
                                     Modifier.size(22.dp).clip(squircle(20))
                                 )
-                                Text(LetterKeys.label(code), fontSize = 9.sp, color = glassSubTextColor(dark))
+                                Text(label, fontSize = 9.sp, color = glassSubTextColor(dark))
                             }
-                        } else if (action != null) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                            action != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
                                     Icons.Filled.PowerSettingsNew, null,
                                     tint = glassBlue, modifier = Modifier.size(20.dp)
                                 )
-                                Text(LetterKeys.label(code), fontSize = 9.sp, color = glassSubTextColor(dark))
+                                Text(label, fontSize = 9.sp, color = glassSubTextColor(dark))
                             }
-                        } else {
-                            Text(LetterKeys.label(code), fontSize = 14.sp, color = glassSubTextColor(dark))
+
+                            sysApp != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Image(
+                                    rememberDrawablePainter(rememberAppIcon(sysApp)), null,
+                                    Modifier.size(20.dp).clip(squircle(20))
+                                )
+                                Text(label, fontSize = 9.sp, color = glassBlue)
+                            }
+
+                            sysTitle != null -> Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(horizontal = 2.dp)
+                            ) {
+                                Text(label, fontSize = 11.sp, color = glassBlue)
+                                Text(
+                                    sysTitle, fontSize = 7.sp, color = glassSubTextColor(dark),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            else -> Text(label, fontSize = 14.sp, color = glassSubTextColor(dark))
+                        }
+                        // 系统里也绑了同一个键：角标提示，不抢桌面绑定的位置
+                        if (target != null && sysTitle != null) {
+                            Box(
+                                Modifier.align(Alignment.TopEnd).padding(4.dp).size(4.dp)
+                                    .clip(CircleShape).background(glassBlue)
+                            )
                         }
                     }
                 }

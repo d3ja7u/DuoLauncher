@@ -120,8 +120,8 @@
     <string name="grp_sidebar_desc">表示と位置、項目の編集、ガラス濃度とアイコンサイズ</string>
     <string name="grp_status">ステータスバー</string>
     <string name="grp_status_desc">時計、バッテリーと電波のバッジ、位置と形式</string>
-    <string name="grp_gesture">ジェスチャーとショートカット</string>
-    <string name="grp_gesture_desc">ダブルタップでスリープ、パネル、システムショートカットと英字キー</string>
+    <string name="grp_gesture">ジェスチャー</string>
+    <string name="grp_gesture_desc">ダブルタップでスリープ、下スワイプでパネル、右スワイプで検索</string>
     <string name="grp_search">検索</string>
     <string name="grp_search_desc">検索エンジン、最近使ったアプリ、検索バーとページ</string>
     <string name="grp_look">外観と壁紙</string>
@@ -520,6 +520,7 @@
     <string name="letter_apps_title">アプリ（分身を含む）</string>
     <string name="sys_letters_title">設定済みの英数字キーショートカット</string>
     <string name="sys_letters_empty">上のシステムキー設定を開くと、設定済みのショートカットがここに表示されます</string>
+    <string name="sys_letters_in_grid">青い枠はシステム設定のキー、右上の点はデスクトップにも設定済み</string>
     <string name="sys_letters_open">システムキー設定を開く</string>
     <string name="letter_keys_footer">分身アプリは一覧から直接選択できます。ファンクションキーとサイドキーは上の「システムショートカット設定」で設定してください。</string>
     <string name="letter_key_clear">この割り当てを解除</string>

@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  默认不监听任何 AccessibilityEvent：本服务平时只用两件事——
+  本服务只用三件事：
   ① onKeyEvent 过滤按键（靠 flagRequestFilterKeyEvents + canRequestFilterKeyEvents，与事件类型无关）；
-  ② performGlobalAction 执行息屏 / 下拉面板。
+  ② performGlobalAction 执行息屏 / 下拉面板；
+  ③ 读系统快捷键页上的字母键绑定（只读展示）。
 
-  仅在用户进入「快捷键设置」页时，代码会临时把 eventTypes 切成窗口事件并限定
-  com.agui.shortcutsettings / com.agui.keyboard 两个包，用来读取系统字母快捷键页上的文字；
-  离开页面立即还原。flagRetrieveInteractiveWindows / canRetrieveWindowContent 必须在 XML 里
-  声明才能生效，但事件过滤仍然由代码动态控制，不会常驻唤醒。
+  ③ 需要窗口事件，但监听范围由代码（DuoLockService.applyCaptureConfig）限定成
+  com.agui.shortcutsettings / com.agui.keyboard 两个包的窗口变化 —— 包过滤在系统侧完成，
+  桌面上的其他窗口一概不会叫醒本进程。旧的全局 typeWindowStateChanged 才是耗电源头，
+  不要改回「全量监听」，也不要退回「只在设置页临时开、离开就关」：
+  用户在系统设置里改完字母键不会再回启动器设置页，那样读不到新绑定。
+
+  flagRetrieveInteractiveWindows / canRetrieveWindowContent 必须在 XML 里声明才能生效。
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/duo_lock_desc"
