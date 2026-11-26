@@ -2,6 +2,7 @@ package com.duolauncher.util
 
 import android.content.Context
 import android.os.Build
+import android.view.WindowManager
 import android.util.Log
 import com.duolauncher.data.DuoState
 import kotlinx.coroutines.CoroutineScope
@@ -17,7 +18,8 @@ import java.util.UUID
  *
  * 设计原则：
  * - 只发「随机匿名 ID + 版本 + 界面语言 + Android API + 设备机型名 + 上报类型」，
- *   机型仅取 Build.MODEL 这一通用型号名（如 Titan 2 Elite），同型号设备海量，
+ *   机型取 Build.MODEL 这一通用型号名（如 Titan 2），再附上屏幕像素（如 1080×1200）
+ *   用来区分共用同一型号名的不同版本；
  *   不含序列号 / IMEI / Android ID / 广告 ID 等任何唯一标识，也不含位置、
  *   通讯录、已安装应用列表；服务端也不落盘 IP。
  * - 匿名 ID 单独存一份 SharedPreferences，**不进 DuoState 的备份**，避免导入别人的备份后串号。
@@ -37,6 +39,8 @@ object InstallStats {
     private const val K_VER = "last_version"
     /** 上次成功上报的「版本名#versionCode」，换包但版本名不变时也能识别出变化 */
     private const val K_STAMP = "last_stamp"
+    /** 上次成功上报的机型标签：机型标签变了（新增字段、换机型）当天就补报一次 */
+    private const val K_MODEL = "last_model"
     private const val K_LAST = "last_ping"
     private const val DAY = 24 * 60 * 60 * 1000L
     private const val TAG = "DuoStats"
@@ -74,17 +78,35 @@ object InstallStats {
     }.getOrDefault(Lang.get(ctx)).take(8)
 
     /**
-     * 设备机型名（仅 Build.MODEL，如 "Titan 2 Elite"、"SM-S918B"）。
-     * 只取通用型号名，绝不含序列号 / IMEI / Android ID 等唯一标识。
-     * 机型是聚合维度：同型号有海量设备，不构成对个人设备的唯一识别。
+     * 设备机型名（`Build.MODEL` + 屏幕像素，如 "Titan 2 · 1080×1200"、"SM-S918B · 1080×2340"）。
+     *
+     * 只取通用型号名与整机规格，绝不含序列号 / IMEI / Android ID 等唯一标识。
+     * 追加屏幕像素是因为：同系列的不同版本可能共用同一个 `Build.MODEL`
+     * （Titan 2 与 Titan 2 Elite 都报 "Titan 2"），只在型号名上根本分不开；
+     * 分辨率是整机规格、同型号海量设备一致，不构成对个人设备的唯一识别。
      */
-    private fun deviceModel(): String = runCatching {
-        (Build.MODEL ?: "").trim()
+    private fun deviceModel(ctx: Context): String = runCatching {
+        val base = (Build.MODEL ?: "").trim()
             // 去掉控制字符，压缩空白，避免畸形机型名破坏 JSON / 看板
             .map { if (it.isISOControl() || it.isWhitespace()) ' ' else it }
             .joinToString("")
             .replace(Regex(" +"), " ")
-            .take(48)
+            .take(32)
+        val screen = screenTag(ctx)
+        when {
+            base.isBlank() -> screen
+            screen.isBlank() -> base
+            else -> "$base · $screen"
+        }
+    }.getOrDefault("")
+
+    /** 物理屏幕像素「短边×长边」（横竖屏不影响）；读不到返回空串 */
+    private fun screenTag(ctx: Context): String = runCatching {
+        val wm = ctx.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        val mode = wm?.defaultDisplay?.mode
+        val w = mode?.physicalWidth ?: 0
+        val h = mode?.physicalHeight ?: 0
+        if (w <= 0 || h <= 0) "" else "${minOf(w, h)}×${maxOf(w, h)}"
     }.getOrDefault("")
 
     private fun nextKind(ctx: Context): String {
@@ -113,7 +135,10 @@ object InstallStats {
         // 否则同版本名换包时，机型这类新字段要拖到第二天才补得上。
         val stamp = UpdateChecker.currentVersion(ctx) + "#" + versionCode(ctx)
         val lastStamp = runCatching { p.getString(K_STAMP, "") ?: "" }.getOrDefault("")
-        if (!force && stamp == lastStamp && kind == "heartbeat" &&
+        // 机型标签也参与比较：设备型号标签本身变了（如新增了屏幕像素）当天就补报，
+        // 不必等满 24 小时的心跳
+        val lastModel = runCatching { p.getString(K_MODEL, "") ?: "" }.getOrDefault("")
+        if (!force && stamp == lastStamp && deviceModel(ctx) == lastModel && kind == "heartbeat" &&
             System.currentTimeMillis() - last < DAY
         ) return
         CoroutineScope(Dispatchers.IO).launch {
@@ -132,7 +157,7 @@ object InstallStats {
             .put("code", versionCode(ctx))
             .put("lang", language(ctx))
             .put("api", Build.VERSION.SDK_INT)
-            .put("model", deviceModel())
+            .put("model", deviceModel(ctx))
             .put("kind", kind)
             .toString()
 
@@ -154,6 +179,7 @@ object InstallStats {
                     .putLong(K_LAST, System.currentTimeMillis())
                     .putString(K_VER, ver)
                     .putString(K_STAMP, "$ver#${versionCode(ctx)}")
+                    .putString(K_MODEL, deviceModel(ctx))
                     .apply()
             } else {
                 Log.d(TAG, "report returned HTTP $code")
