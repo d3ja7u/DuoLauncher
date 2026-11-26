@@ -74,7 +74,20 @@ object Lang {
      */
     fun wrap(base: Context): Context {
         val tag = get(base)
-        if (tag == SYSTEM) return base
+        if (tag == SYSTEM) {
+            // 只内置了中 / 英 / 日三套文案，values/ 是中文，所以系统遇到其他语言
+            // 会回退到默认的中文。产品口径是「三语之外回退英文」：跟随系统时
+            // 若系统（或按应用指定的）语言不在这三种里，就包一层英文 Configuration，
+            // 让资源系统去取 values-en/。中文 / 英文 / 日文仍原样交给系统匹配。
+            val sys = base.resources.configuration.locales[0]?.language.orEmpty()
+            if (sys == "zh" || sys == "en" || sys == "ja") return base
+            return runCatching {
+                val cfg = Configuration(base.resources.configuration)
+                cfg.setLocale(Locale.ENGLISH)
+                cfg.setLayoutDirection(Locale.ENGLISH)
+                base.createConfigurationContext(cfg)
+            }.getOrDefault(base)
+        }
         return runCatching {
             val locale = when (tag) {
                 ZH -> Locale.SIMPLIFIED_CHINESE
@@ -96,23 +109,23 @@ object Lang {
             if (chosen != SYSTEM) return chosen
             val sys = ctx?.resources?.configuration?.locales?.get(0)?.language
             return when (sys) {
-                "en" -> EN
+                "zh" -> ZH
                 "ja" -> JA
-                else -> ZH
+                else -> EN
             }
         }
 
     fun locale(): Locale = when (tag) {
-        EN -> Locale.ENGLISH
+        ZH -> Locale.SIMPLIFIED_CHINESE
         JA -> Locale.JAPANESE
-        else -> Locale.SIMPLIFIED_CHINESE
+        else -> Locale.ENGLISH
     }
 
     /** 小组件里的长日期格式，按语言换写法 */
     fun datePattern(): String = when (tag) {
-        EN -> "EEEE, MMM d"
+        ZH -> "M月d日  EEEE"
         JA -> "M月d日 EEEE"
-        else -> "M月d日  EEEE"
+        else -> "EEEE, MMM d"
     }
 
     @SuppressLint("StringFormatInvalid")

@@ -48,12 +48,12 @@ object UpdateChecker {
 
     private const val TAG = "DuoUpdate"
 
-    /** 自动检查的最小间隔（默认 12 小时），设置里可选 12 / 24 / 48 / 72 */
-    const val DEFAULT_INTERVAL_HOURS = 12
+    /** 自动检查的最小间隔（默认 24 小时），设置里可选 12 / 24 / 48 / 72 */
+    const val DEFAULT_INTERVAL_HOURS = 24
     val INTERVAL_CHOICES = listOf(12, 24, 48, 72)
-    const val CHECK_INTERVAL = 12 * 60 * 60 * 1000L
+    const val CHECK_INTERVAL = 24 * 60 * 60 * 1000L
 
-    /** 把「小时」换算成毫秒；传进来的值不在选项里时按默认 12 小时算 */
+    /** 把「小时」换算成毫秒；传进来的值不在选项里时按默认 24 小时算 */
     fun intervalMillis(hours: Int): Long =
         (if (hours in INTERVAL_CHOICES) hours else DEFAULT_INTERVAL_HOURS) * 60L * 60L * 1000L
 
