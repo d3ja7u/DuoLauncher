@@ -1165,23 +1165,6 @@ fun HomePage(
             )
         }
 
-        // ── 顶部未读通知图标：紧挨「时间 + 三合一」横向排开（时间靠边、图标在它内侧），
-        //    只占网格上方那一条空白，不挤压任何一行图标。系统状态栏显示时自动让位，
-        //    避免和系统自己的通知图标重复叠在一起。──
-        if (DuoState.showDuoStatus) {
-            DuoNotifIcons(
-                modifier = Modifier
-                    .align(if (DuoState.statusRight) Alignment.TopEnd else Alignment.TopStart)
-                    .padding(
-                        top = statusDrawTop.dp,
-                        // 多让 5dp：图标右上角的未读数字是向外探出来的，
-                        // 紧贴 lane 会正好压到时间的第一位数字上
-                        start = if (DuoState.statusRight) 0.dp else lane + 5.dp,
-                        end = if (DuoState.statusRight) lane + 5.dp else 0.dp
-                    )
-            )
-        }
-
         // ── 正在播放胶囊：与「时间 + 电量」「侧边栏」共用同一条纵向通道：
         //    同宽度（sidebarWidth）、同边距（sidebarGap）、同左右侧，竖直方向落在状态块正下方，
         //    视觉上形成「状态 → 胶囊 → 侧栏」一列，不再偏到通道左边悬在壁纸上。──

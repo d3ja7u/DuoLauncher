@@ -114,7 +114,7 @@
     <string name="grp_sidebar">Sidebar</string>
     <string name="grp_sidebar_desc">Visibility, position, items, glass and icon size</string>
     <string name="grp_status">Status bar</string>
-    <string name="grp_status_desc">Clock, battery and signal badge, unread icons</string>
+    <string name="grp_status_desc">Clock, battery and signal badge, position and format</string>
     <string name="grp_gesture">Gestures &amp; shortcuts</string>
     <string name="grp_gesture_desc">Double-tap to sleep, swipe panels, system shortcuts and letter keys</string>
     <string name="grp_search">Search</string>
@@ -181,10 +181,6 @@
     <string name="status_show_time_desc">Turn off to keep only the battery and signal badge</string>
     <string name="status_show_badge">Show status badge</string>
     <string name="status_show_badge_desc">Battery ring plus Wi-Fi/signal dots; turn off to show only the clock</string>
-    <string name="status_notif_icons">Show unread icons at the top</string>
-    <string name="status_notif_icons_desc">App icons with unread notifications appear next to the clock; hidden while the system status bar is shown</string>
-    <string name="status_notif_numbers">Show unread counts at the top</string>
-    <string name="status_notif_numbers_desc">Unread counts appear on the top icons; 99+ when above 99</string>
     <string name="status_pos_right">Top right (avoids the top-left cutout)</string>
     <string name="status_pos_left">Top left (shifts down when the sidebar is also on the left)</string>
     <string name="status_24h">24-hour clock</string>

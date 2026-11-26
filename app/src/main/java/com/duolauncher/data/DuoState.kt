@@ -327,24 +327,6 @@ object DuoState {
     /** 右上角是否显示三合一徽标（电量环 + WiFi / 信号点） */
     var showStatusBadge by mutableStateOf(true)
     /**
-     * 顶部是否显示「未读通知」的应用小图标。
-     *
-     * 系统状态栏被隐藏后，通知栏里来了消息桌面完全看不到（时间与三合一徽标不显示通知），
-     * 这里把有新消息的应用图标排在时间旁边，一眼就能看出是哪个应用。
-     * 只在系统状态栏隐藏时生效 —— 系统状态栏本身就在显示同一批图标，同时出现会重复且重叠。
-     */
-    var showStatusNotifIcons by mutableStateOf(true)
-
-    /**
-     * 顶部那排小图标右上角是否再显示未读条数。
-     *
-     * 与桌面图标角标（[showBadges]）相互独立：桌面角标可能因为不想显乱而关掉，
-     * 但顶部这排本来就是为了「不错过消息」，有人仍想看到条数，所以单独一档。
-     * 只在 [showStatusNotifIcons] 打开时才有意义。
-     */
-    var showStatusNotifNumbers by mutableStateOf(true)
-
-    /**
      * 时间 + 三合一徽标的实际高度（dp）。**唯一口径**：HomePage 排版、
      * [gridTopGapDp]、胶囊与侧栏避让都读它，避免关掉其中一项后还留着空档。
      */
@@ -523,8 +505,6 @@ object DuoState {
             showBatteryNumber = o.optBoolean("battNum", true)
             showStatusTime = o.optBoolean("stTime", true)
             showStatusBadge = o.optBoolean("stBadge", true)
-            showStatusNotifIcons = o.optBoolean("stNotifIcons", true)
-            showStatusNotifNumbers = o.optBoolean("stNotifNums", true)
             wallpaperRotate = o.optBoolean("wpRotate", false)
             wallpaperIntervalMin = o.optInt("wpInterval", 60).let { if (it > 0) it else 60 }
             wallpaperRandom = o.optBoolean("wpRandom", false)
@@ -727,8 +707,6 @@ object DuoState {
             o.put("battNum", showBatteryNumber)
             o.put("stTime", showStatusTime)
             o.put("stBadge", showStatusBadge)
-            o.put("stNotifIcons", showStatusNotifIcons)
-            o.put("stNotifNums", showStatusNotifNumbers)
             o.put("wpRotate", wallpaperRotate)
             o.put("wpInterval", wallpaperIntervalMin)
             o.put("wpRandom", wallpaperRandom)
@@ -798,7 +776,9 @@ object DuoState {
         "homeCols", "homeRows", "autoNew", "sbGlass", "sbAlign",
         "npOn", "npPos", "npLyric",
         "duoStatus", "statusRight", "status24h", "statusTop", "statusScale", "net4g",
-        "battNum", "stTime", "stBadge", "stNotifIcons", "stNotifNums",
+        "battNum", "stTime", "stBadge",
+        // 已移除的「顶部未读图标 / 数字」历史键：老存档里可能还有，重置设置时一并清掉
+        "stNotifIcons", "stNotifNums",
         "wpRotate", "wpInterval", "wpRandom", "wpSwipe", "wpSyncLs",
         "badgeOn", "badgeColor", "recentCnt", "searchEng", "searchContacts",
         "showSb", "libOn", "searchOn", "searchBarOn", "iconPack",

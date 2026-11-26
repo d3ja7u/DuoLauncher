@@ -24,23 +24,11 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.text.format.DateFormat
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -52,8 +40,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -75,9 +61,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.duolauncher.data.AppRepository
 import com.duolauncher.data.DuoState
-import com.duolauncher.data.IconPacks
 import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -574,147 +558,6 @@ private object StatusBus {
         }
     }
 }
-
-/** 顶部最多并列显示几个应用图标，超出的合并成「+N」 */
-private const val NOTIF_ICON_MAX = 5
-
-/** 顶部小图标的边长；角标尺寸都按它等比推算 */
-private val NOTIF_ICON_SIZE = 20.dp
-
-/**
- * 顶部「未读通知」的应用图标条。
- *
- * 系统状态栏被隐藏后，通知栏来消息时桌面完全看不到（时间与三合一徽标不显示通知，
- * 通知栏本身又要下滑才出现）。这里把「有新消息的应用」以小图标排在时间旁边，
- * 一眼就能看出是哪个应用，点一下直接进该应用（等同已读，角标随之清掉）。
- *
- * 数据源与图标角标完全同一条：[DuoState.notifCounts]（由 DuoNotificationListener
- * 按包名 / 克隆用户聚合，已排除常驻、媒体控制、系统框架通知），只是显示位置不同，
- * 所以这里既不碰持久化，也不需要额外权限。
- *
- * 只在系统状态栏隐藏时出面：系统状态栏本来就在顶部显示同一批通知图标，
- * 两边同时画会重叠且重复。
- *
- * 每个图标右上角带未读条数（超过 99 显示 99+），由 [DuoState.showStatusNotifNumbers]
- * 单独控制（与桌面角标开关互不影响）；关掉后只剩图标。
- */
-@Composable
-fun DuoNotifIcons(modifier: Modifier = Modifier) {
-    if (!DuoState.showStatusNotifIcons || !DuoState.hideStatusBar) return
-    // 读 SnapshotStateMap —— 只有某个应用的未读数真正变化时才重组这一条
-    val counts = DuoState.notifCounts
-    if (counts.isEmpty()) return
-
-    val ctx = LocalContext.current
-    val pack = DuoState.iconPack
-    // 「哪些应用、各多少条」的指纹。取图标要走 PackageManager / 图标包匹配，
-    // 不能跟着主屏的其他重组（翻页、拖拽、胶囊刷新）一起重跑，所以只在指纹变化时重算。
-    val key = buildString {
-        counts.entries.sortedBy { it.key }.forEach { (id, n) ->
-            append(id).append('=').append(n).append('|')
-            append(DuoState.iconOverride[id] ?: "").append('|')
-        }
-    }
-    val items = remember(key, pack) {
-        counts.entries.mapNotNull { e ->
-            val app = DuoState.appOf(e.key)
-            val icon = if (app != null) {
-                runCatching { IconPacks.resolveIcon(ctx, pack, app) }.getOrNull() ?: app.icon
-            } else {
-                // 有些包没有启动图标（不会进应用列表），但照样会发通知 —— 直接向系统要图标
-                runCatching {
-                    ctx.packageManager.getApplicationIcon(e.key.substringBefore('@'))
-                }.getOrNull() ?: return@mapNotNull null
-            }
-            val label = app?.label ?: runCatching {
-                val pm = ctx.packageManager
-                pm.getApplicationLabel(pm.getApplicationInfo(e.key.substringBefore('@'), 0)).toString()
-            }.getOrDefault(e.key)
-            NotifIcon(e.key, label, icon, e.value)
-        }.sortedWith(compareByDescending<NotifIcon> { it.count }.thenBy { it.label })
-    }
-    if (items.isEmpty()) return
-
-    val shown = items.take(NOTIF_ICON_MAX)
-    Row(
-        modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        shown.forEach { item ->
-            Box(Modifier.size(NOTIF_ICON_SIZE)) {
-                Image(
-                    painter = rememberDrawablePainter(item.icon),
-                    contentDescription = item.label,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .shadow(2.dp, squircle(30))
-                        .clip(squircle(30))
-                        .clickable { AppRepository.launch(ctx, item.id) }
-                )
-                // 未读条数：顶部独立开关（设置 → 状态栏 → 顶部显示未读数字）
-                if (DuoState.showStatusNotifNumbers) NotifCountBadge(item.count)
-            }
-        }
-        val more = items.size - shown.size
-        if (more > 0) {
-            // 一律白字 + 深色阴影：深色 / 浅色壁纸下都看得清，不必再逐个采样底色
-            Text(
-                "+$more",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                style = TextStyle(
-                    shadow = Shadow(Color.Black.copy(alpha = 0.55f), Offset(0f, 1f), 3f)
-                )
-            )
-        }
-    }
-}
-
-/**
- * 顶部小图标右上角的未读数字。
- *
- * 图标本身只有 20dp，这里刻意做小（12dp 高、7.5sp 字），并向外偏 3dp：
- * 角标一半压在图标上、一半探出边角，既不糊住图标主体，也不会把整排顶宽。
- * 超过 99 显示 99+，两位数起自动变胶囊宽度（minWidth + 左右 padding）。
- */
-@Composable
-private fun BoxScope.NotifCountBadge(count: Int) {
-    if (count <= 0) return
-    val h = 12.dp
-    Box(
-        Modifier
-            .align(Alignment.TopEnd)
-            .offset(x = 2.dp, y = (-2).dp)
-            .shadow(2.dp, CircleShape)
-            .height(h)
-            .defaultMinSize(minWidth = h)
-            .clip(CircleShape)
-            .background(Color(DuoState.badgeColor))
-            .padding(horizontal = 1.5.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = if (count > 99) "99+" else count.toString(),
-            color = Color.White,
-            fontSize = 7.5.sp,
-            lineHeight = 7.5.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            softWrap = false,
-            style = TextStyle(shadow = Shadow(Color(0x33000000), Offset(0f, 0.5f), 1.5f))
-        )
-    }
-}
-
-/** 顶部图标条的一项：应用 id（克隆空间带 `@用户序号`）、名称、图标、未读条数 */
-private class NotifIcon(
-    val id: String,
-    val label: String,
-    val icon: android.graphics.drawable.Drawable,
-    val count: Int
-)
 
 /** 所有页面共享同一份状态；广播与轮询只在界面可见时运行（见 StatusBus）。 */
 @Composable
