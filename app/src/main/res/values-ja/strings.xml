@@ -494,7 +494,7 @@
     <string name="shortcut_key_func2">FUNC2 キー</string>
     <string name="shortcut_key_alt_r">右 Alt キー</string>
     <string name="shortcut_native_title">システムのショートカット設定</string>
-    <string name="shortcut_native_desc">ファンクションキー、サイドキー、システム機能はシステム標準ページで管理します。下のボタンでシステム設定と同じ画面を開きます。</string>
+    <string name="shortcut_native_desc">英数字キーの短押し／長押しはシステム標準ページで設定します。開いて戻ると、設定済みのショートカットがここに表示されます。</string>
     <string name="shortcut_native_open">システムのショートカット設定を開く</string>
     <string name="shortcut_native_missing">システムのショートカット設定が見つかりません</string>
     <string name="letter_keys_title">ホーム画面のキーショートカット</string>
@@ -514,14 +514,13 @@
     <string name="act_dial_desc">ダイヤル画面を開きます</string>
     <string name="act_sms">メッセージを送る</string>
     <string name="act_sms_desc">新規メッセージ画面を開きます</string>
-    <string name="act_wlan">WLAN 設定</string>
-    <string name="act_wlan_desc">Wi-Fi 設定画面を開きます</string>
-    <string name="act_battery">バッテリー設定</string>
-    <string name="act_battery_desc">バッテリー使用状況を開きます</string>
     <string name="shortcut_bound_keys">システムで設定済みのキー</string>
     <string name="shortcut_bound_empty">システムのショートカット設定ではまだキーが設定されていません</string>
     <string name="letter_actions_title">システム機能</string>
     <string name="letter_apps_title">アプリ（分身を含む）</string>
+    <string name="sys_letters_title">設定済みの英数字キーショートカット</string>
+    <string name="sys_letters_empty">上のシステムキー設定を開くと、設定済みのショートカットがここに表示されます</string>
+    <string name="sys_letters_open">システムキー設定を開く</string>
     <string name="letter_keys_footer">分身アプリは一覧から直接選択できます。ファンクションキーとサイドキーは上の「システムショートカット設定」で設定してください。</string>
     <string name="letter_key_clear">この割り当てを解除</string>
 </resources>

@@ -1,16 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  不监听任何 AccessibilityEvent：本服务只用两件事——
+  默认不监听任何 AccessibilityEvent：本服务平时只用两件事——
   ① onKeyEvent 过滤按键（靠 flagRequestFilterKeyEvents + canRequestFilterKeyEvents，与事件类型无关）；
   ② performGlobalAction 执行息屏 / 下拉面板。
-  旧的 typeWindowStateChanged + notificationTimeout=100 会让系统每次窗口状态变化
-  （打开应用、弹对话框、切页面）都跨进程唤醒启动器进程，而 onAccessibilityEvent 是空的，
-  纯属白唤醒——桌面常驻时一天下来次数上万，是最典型的启动器耗电源。
+
+  仅在用户进入「快捷键设置」页时，代码会临时把 eventTypes 切成窗口事件并限定
+  com.agui.shortcutsettings / com.agui.keyboard 两个包，用来读取系统字母快捷键页上的文字；
+  离开页面立即还原。flagRetrieveInteractiveWindows / canRetrieveWindowContent 必须在 XML 里
+  声明才能生效，但事件过滤仍然由代码动态控制，不会常驻唤醒。
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/duo_lock_desc"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRequestFilterKeyEvents"
+    android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:notificationTimeout="1000"
     android:canRequestFilterKeyEvents="true"
-    android:canRetrieveWindowContent="false" />
+    android:canRetrieveWindowContent="true" />

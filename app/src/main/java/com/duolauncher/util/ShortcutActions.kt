@@ -3,7 +3,6 @@ package com.duolauncher.util
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import androidx.annotation.StringRes
 import com.duolauncher.R
 
@@ -31,9 +30,7 @@ object ShortcutActions {
         Action("notifications", R.string.act_notifications, R.string.act_notifications_desc),
         Action("quicksettings", R.string.act_quicksettings, R.string.act_quicksettings_desc),
         Action("dial", R.string.act_dial, R.string.act_dial_desc),
-        Action("sms", R.string.act_sms, R.string.act_sms_desc),
-        Action("wlan", R.string.act_wlan, R.string.act_wlan_desc),
-        Action("battery", R.string.act_battery, R.string.act_battery_desc)
+        Action("sms", R.string.act_sms, R.string.act_sms_desc)
     )
 
     fun encode(id: String): String = PREFIX + id
@@ -48,8 +45,6 @@ object ShortcutActions {
         "quicksettings" -> SystemPanel.openQuickSettings(context)
         "dial" -> start(context, Intent(Intent.ACTION_DIAL))
         "sms" -> start(context, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:")))
-        "wlan" -> start(context, Intent(Settings.ACTION_WIFI_SETTINGS))
-        "battery" -> start(context, Intent(Intent.ACTION_POWER_USAGE_SUMMARY))
         else -> false
     }
 

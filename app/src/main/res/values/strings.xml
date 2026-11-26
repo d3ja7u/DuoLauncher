@@ -494,7 +494,7 @@
     <string name="shortcut_key_func2">FUNC2 键</string>
     <string name="shortcut_key_alt_r">右 Alt 键</string>
     <string name="shortcut_native_title">系统快捷键设置</string>
-    <string name="shortcut_native_desc">功能键、侧键与系统功能由系统原生页面管理。点下面的按钮直接打开，界面与系统设置一致。</string>
+    <string name="shortcut_native_desc">字母键的短按 / 长按在系统原生页面配置。打开后返回，这里会自动显示已设置的字母快捷键。</string>
     <string name="shortcut_native_open">打开系统快捷键设置</string>
     <string name="shortcut_native_missing">没有找到系统快捷键设置</string>
     <string name="letter_keys_title">桌面快捷键</string>
@@ -514,14 +514,13 @@
     <string name="act_dial_desc">打开拨号键盘</string>
     <string name="act_sms">发送短信</string>
     <string name="act_sms_desc">打开短信编辑界面</string>
-    <string name="act_wlan">WLAN 设置</string>
-    <string name="act_wlan_desc">打开无线网络设置页</string>
-    <string name="act_battery">电池设置</string>
-    <string name="act_battery_desc">打开电池使用情况页</string>
     <string name="shortcut_bound_keys">系统已设置的按键</string>
     <string name="shortcut_bound_empty">系统快捷键里还没有设置任何按键</string>
     <string name="letter_actions_title">系统功能</string>
     <string name="letter_apps_title">应用（含分身）</string>
+    <string name="sys_letters_title">系统已配置的字母快捷键</string>
+    <string name="sys_letters_empty">打开上方系统按键设置后，这里会显示已配置的字母快捷键</string>
+    <string name="sys_letters_open">打开系统按键设置</string>
     <string name="letter_keys_footer">分身应用可直接在列表里选择；系统功能键与侧键请到上方「系统快捷键设置」里配置。</string>
     <string name="letter_key_clear">清除此绑定</string>
 </resources>

@@ -56,6 +56,7 @@ import com.duolauncher.util.ScreenOff
 import com.duolauncher.util.SearchEngines
 import com.duolauncher.util.ShortcutManager
 import com.duolauncher.util.ShortcutActions
+import com.duolauncher.util.SystemLetterShortcuts
 import com.duolauncher.util.UpdateChecker
 import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.CancellationException
@@ -2466,8 +2467,8 @@ private fun BadgeColorRow(dark: Boolean, current: Int, onPick: (Int) -> Unit) {
  * 键盘快捷键设置。
  *
  * 两块内容：
- *  ① 系统原生快捷键页（功能键 / 侧键 / 系统功能）—— 绑定只能由系统自己写，这里只负责跳过去，
- *     并把系统里已设置的键读出来展示，点条目可回到系统页修改。
+ *  ① 系统原生快捷键页 —— 字母键的短按 / 长按由系统管理，这里负责跳过去，
+ *     返回时把系统页上的字母绑定读回来，按短按 / 长按分别展示。
  *  ② 桌面字母键快捷键 —— 启动器自己拦 KeyEvent，短按 / 长按各绑一个应用或系统动作，
  *     分身应用直接混在应用列表里可选，不需要「分身 N」中转。
  */
@@ -2487,11 +2488,12 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refresh++
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        DuoLockService.beginSystemShortcutCapture()
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            DuoLockService.endSystemShortcutCapture()
+        }
     }
-
-    // 系统里当前已设置的按键绑定（按键 / 短按或长按 / 目标）
-    val boundKeys = remember(refresh) { ShortcutManager.configured(ctx) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -2524,46 +2526,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
             }
         }
 
-        // ② 系统里已经设置的按键：直接读系统绑定，点一下回系统页修改
-        SectionTitle(Lang.s(R.string.shortcut_bound_keys), dark)
-        GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
-            Column(Modifier.padding(vertical = 6.dp)) {
-                if (boundKeys.isEmpty()) {
-                    Text(
-                        Lang.s(R.string.shortcut_bound_empty),
-                        fontSize = 12.sp, color = glassSubTextColor(dark),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
-                    )
-                } else {
-                    boundKeys.forEach { (key, press, binding) ->
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                                .clickable { ShortcutManager.openSystemPage(ctx) }
-                                .padding(horizontal = 16.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Filled.KeyboardArrowRight, null,
-                                tint = glassBlue, modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                Lang.s(key.labelRes) + " · " + Lang.s(press.labelRes),
-                                fontSize = 13.sp, color = glassTextColor(dark), modifier = Modifier.weight(1f)
-                            )
-                            Text(
-                                binding.label(ctx), fontSize = 12.sp,
-                                color = glassSubTextColor(dark), maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // ③ 桌面字母键：短按 / 长按分开设置，目标可以是应用或系统动作
+        // ② 桌面字母键：短按 / 长按分开设置，目标可以是应用或系统动作
         SectionTitle(Lang.s(R.string.letter_keys_title), dark)
         var press by remember { mutableStateOf(LetterKeys.Press.LONG) }
         GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
@@ -2603,6 +2566,51 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 Spacer(Modifier.height(12.dp))
                 val map = remember(press, refresh) { LetterKeys.mapOf(press).toMap() }
                 LetterKeyGrid(dark = dark, map = map) { editing = it to press }
+
+                // 系统里已经配置的字母快捷键，按当前短按 / 长按分页显示
+                val sysPress = if (press == LetterKeys.Press.SHORT) "short" else "long"
+                val sysItems = remember(DuoState.systemShortcutsUpdated, press) {
+                    DuoState.systemLetterShortcuts.entries
+                        .filter { it.key.endsWith("/$sysPress") }
+                        .map { it.key.substringBefore('/') to it.value }
+                        .sortedBy { it.first }
+                }
+                Spacer(Modifier.height(14.dp))
+                SectionTitle(Lang.s(R.string.sys_letters_title), dark)
+                if (sysItems.isEmpty()) {
+                    Text(
+                        Lang.s(R.string.sys_letters_empty),
+                        fontSize = 11.sp, color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
+                } else {
+                    Column(Modifier.padding(horizontal = 16.dp)) {
+                        sysItems.forEach { (letter, title) ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    letter, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    color = glassBlue, modifier = Modifier.width(28.dp)
+                                )
+                                Text(
+                                    title, fontSize = 12.sp, color = glassTextColor(dark),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+                TextButton(
+                    onClick = {
+                        if (!ShortcutManager.openSystemPage(ctx)) {
+                            nav.toast(Lang.s(R.string.shortcut_native_missing))
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 10.dp)
+                ) { Text(Lang.s(R.string.sys_letters_open), fontSize = 12.sp) }
+
                 if (!DuoLockService.isConnected()) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),

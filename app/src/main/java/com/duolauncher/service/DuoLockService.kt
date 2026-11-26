@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -16,6 +18,8 @@ import com.duolauncher.data.AppRepository
 import com.duolauncher.data.DuoState
 import com.duolauncher.util.LetterKeys
 import com.duolauncher.util.ShortcutActions
+import com.duolauncher.util.ShortcutManager
+import com.duolauncher.util.SystemLetterShortcuts
 
 /**
  * 纯「锁屏」用途的无障碍服务。
@@ -32,6 +36,14 @@ class DuoLockService : AccessibilityService() {
     /** 正在按住的可绑定按键；-1 表示没有 */
     private var pressedCode = -1
     private var pressedAt = 0L
+
+    /**
+     * 只有用户停在「快捷键设置」页时才临时打开系统页窗口监听。
+     * 平时仍然不监听任何 AccessibilityEvent，避免启动器常驻时的无谓唤醒。
+     */
+    private var capturing = false
+    private val captureHandler = Handler(Looper.getMainLooper())
+    private var captureRunnable: Runnable? = null
 
     private fun dbg(): Boolean =
         (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -52,6 +64,34 @@ class DuoLockService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        // 覆盖安装后服务会稍晚才连上；如果这期间用户已经进了快捷键页，补上配置
+        if (capturing || captureRequested) {
+            capturing = true
+            applyCaptureConfig()
+        }
+    }
+
+    /**
+     * 动态切换监听范围：平时只留按键过滤；进入快捷键设置页时才临时监听
+     * 两个系统快捷键页面（包过滤），读完立即还原。这样不会为了一个只读展示
+     * 长期开启「读取屏幕内容」。
+     */
+    private fun applyCaptureConfig() {
+        val info = AccessibilityServiceInfo().apply {
+            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            flags = AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS or
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            notificationTimeout = if (capturing) 500L else 1000L
+            if (capturing) {
+                eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                packageNames = arrayOf(ShortcutManager.SYSTEM_PACKAGE, "com.agui.keyboard")
+            } else {
+                eventTypes = 0
+                packageNames = null
+            }
+        }
+        runCatching { serviceInfo = info }
     }
 
     /**
@@ -101,7 +141,22 @@ class DuoLockService : AccessibilityService() {
         return false
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!capturing) return
+        val pkg = event?.packageName?.toString() ?: return
+        if (pkg != ShortcutManager.SYSTEM_PACKAGE && pkg != "com.agui.keyboard") return
+        // 系统页刚打开时键盘图还没铺完，合并短时间内的多次事件，最后一次再读
+        captureRunnable?.let { captureHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            val n = SystemLetterShortcuts.capture(rootInActiveWindow)
+            if (n > 0) {
+                if (dbg()) android.util.Log.d("DuoSysKeys", "captured $n system letter shortcuts")
+                DuoState.systemShortcutsUpdated = SystemClock.uptimeMillis()
+            }
+        }
+        captureRunnable = runnable
+        captureHandler.postDelayed(runnable, 700)
+    }
 
     override fun onInterrupt() = Unit
 
@@ -130,6 +185,10 @@ class DuoLockService : AccessibilityService() {
         @Volatile
         private var instance: DuoLockService? = null
 
+        /** 服务还没连上时就进了快捷键页：等 onServiceConnected 再补配置 */
+        @Volatile
+        private var captureRequested = false
+
         /**
          * 服务进程已连上（可直接调用全局操作）。
          *
@@ -140,6 +199,24 @@ class DuoLockService : AccessibilityService() {
 
         /** 旧名，等价于 [isConnected] */
         fun isRunning(): Boolean = isConnected()
+
+        /** 进入快捷键设置页：临时允许读取系统快捷键页上的字母绑定 */
+        fun beginSystemShortcutCapture() {
+            captureRequested = true
+            val svc = instance ?: return
+            svc.capturing = true
+            svc.applyCaptureConfig()
+        }
+
+        /** 离开快捷键设置页：立即恢复「不监听任何窗口事件」 */
+        fun endSystemShortcutCapture() {
+            captureRequested = false
+            val svc = instance ?: return
+            svc.capturing = false
+            svc.captureRunnable?.let { svc.captureHandler.removeCallbacks(it) }
+            svc.captureRunnable = null
+            svc.applyCaptureConfig()
+        }
 
         /**
          * 用户在系统设置里已开启本服务。

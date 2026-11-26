@@ -254,6 +254,18 @@ object DuoState {
      */
     val keyLetterApps = mutableStateMapOf<String, String>()
 
+    /**
+     * 系统原生「字母键」快捷方式（只读缓存）。
+     *
+     * key 形如 `A/short`、`Q/long`，value 是系统页显示的目标名称。
+     * 系统把这份数据放在签名级权限后面，第三方读不到；只在用户打开系统快捷键页时
+     * 由无障碍抓取键盘图上的文字，回来后展示，避免额外常驻权限与耗电。
+     */
+    val systemLetterShortcuts = mutableStateMapOf<String, String>()
+
+    /** 抓取到新数据后自增，设置页据此刷新，不必轮询 */
+    var systemShortcutsUpdated by mutableStateOf(0L)
+
     /** 桌面是否在前台；无障碍服务只在这时为字母键快捷键拦按键 */
     @Volatile
     var homeForeground = false
@@ -473,6 +485,13 @@ object DuoState {
                     t.optString(k).takeIf { it.isNotBlank() }?.let { keyLetterApps[code.toString()] = it }
                 }
             }
+            // 系统字母快捷键只是页面抓取缓存，读档时也恢复，避免设置页每次都空白
+            systemLetterShortcuts.clear()
+            o.optJSONObject("sysLetters")?.let { t ->
+                t.keys().forEach { k ->
+                    t.optString(k).takeIf { it.isNotBlank() }?.let { systemLetterShortcuts[k] = it }
+                }
+            }
             gesturePanels = o.optBoolean("gsPanels", true)
             gestureSearch = o.optBoolean("gsSearch", true)
             iconScale = o.optDouble("iconScale", 1.0).toFloat()
@@ -684,6 +703,9 @@ object DuoState {
             val kl = JSONObject()
             keyLetterApps.forEach { (k, v) -> kl.put(k, v) }
             o.put("keyLetters", kl)
+            val sysLetters = JSONObject()
+            systemLetterShortcuts.forEach { (k, v) -> sysLetters.put(k, v) }
+            o.put("sysLetters", sysLetters)
             o.put("gsPanels", gesturePanels)
             o.put("gsSearch", gestureSearch)
             o.put("iconScale", iconScale.toDouble())
