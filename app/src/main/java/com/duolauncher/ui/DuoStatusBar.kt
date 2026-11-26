@@ -1347,6 +1347,9 @@ private val inkState = mutableStateOf(true)   // 默认偏暗 → 白图标，�
 private var inkBooted = false
 private val inkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 private var inkJob: Job? = null
+/** 最近一次真正采样的时刻：回桌面 ON_RESUME 兜底至少隔这么久才重算一次 */
+private var inkLastComputeAt = 0L
+private const val INK_MIN_GAP_MS = 20_000L
 /** 最近一次有效的徽标矩形；各主屏页徽标位置相同，取任一即可 */
 @Volatile private var inkBounds: Rect? = null
 /** 已处理过的壁纸版本：同一版本只调度一次，避免多页各触发一遍解码 */
@@ -1358,12 +1361,23 @@ private var inkLifecycle: androidx.lifecycle.Lifecycle? = null
 private var inkObserver: androidx.lifecycle.LifecycleEventObserver? = null
 private var inkListener: WallpaperManager.OnColorsChangedListener? = null
 
-private fun inkSchedule(ctx: Context, bounds: Rect?) {
+/**
+ * [fromResume] = 回桌面的兜底触发。真正换过壁纸（版本变化 / 系统颜色变化）时必须立刻重算，
+ * 不能节流；但 ON_RESUME 是每次按 Home 都来的，没有节流就会反复跨进程读系统壁纸、
+ * 解码两张 256px 位图再逐像素统计——桌面一天进出上百次，全是白做功。
+ * 这里给兜底触发加 20 秒间隔，既能兜住「在别处换了壁纸」，又不会每次回桌面都采样。
+ */
+private fun inkSchedule(ctx: Context, bounds: Rect?, fromResume: Boolean = false) {
+    if (fromResume) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (inkLastComputeAt > 0L && now - inkLastComputeAt < INK_MIN_GAP_MS) return
+    }
     // 一次换壁纸会连发多次事件（wallpaperVersion 变化 / OnColorsChanged / ON_RESUME），
     // 每次都要解码图片并建两张位图。合并成最后一次，降低连续切壁纸时的内存峰值。
     inkJob?.cancel()
     inkJob = inkScope.launch {
         delay(140)
+        inkLastComputeAt = android.os.SystemClock.elapsedRealtime()
         val st = computeRegionStats(ctx, bounds) ?: return@launch
         // 判据刻意偏白：白色配深色阴影在深色、彩色、明暗交错的画面上都清楚，
         // 只有真正大面积浅色底才转黑。结论完全由画面决定、不参考上一次的值，
@@ -1412,7 +1426,7 @@ private fun rememberWallpaperInk(bounds: Rect?): State<Boolean> {
             inkLifecycle = lifecycleOwner.lifecycle
             val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
                 if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && inkBooted) {
-                    inkSchedule(app, inkBounds)
+                    inkSchedule(app, inkBounds, fromResume = true)
                 }
             }
             lifecycleOwner.lifecycle.addObserver(observer)

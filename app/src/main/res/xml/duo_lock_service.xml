@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  不监听任何 AccessibilityEvent：本服务只用两件事——
+  ① onKeyEvent 过滤按键（靠 flagRequestFilterKeyEvents + canRequestFilterKeyEvents，与事件类型无关）；
+  ② performGlobalAction 执行息屏 / 下拉面板。
+  旧的 typeWindowStateChanged + notificationTimeout=100 会让系统每次窗口状态变化
+  （打开应用、弹对话框、切页面）都跨进程唤醒启动器进程，而 onAccessibilityEvent 是空的，
+  纯属白唤醒——桌面常驻时一天下来次数上万，是最典型的启动器耗电源。
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/duo_lock_desc"
-    android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagRequestFilterKeyEvents"
-    android:notificationTimeout="100"
+    android:accessibilityFlags="flagRequestFilterKeyEvents"
+    android:notificationTimeout="1000"
     android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="false" />
