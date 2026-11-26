@@ -199,6 +199,121 @@ private fun SettingsGroupIcon(group: SettingsGroup) {
     }
 }
 
+/** 「用法」一节：手势快捷键与更新关于；其余归「个性化」 */
+private val USAGE_GROUP_IDS = setOf("g_gesture", "g_system")
+
+/** 设置主页头部：应用图标 + 名称 + 副标题，仿参考设置页的头部排布 */
+@Composable
+private fun SettingsHeader(dark: Boolean, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val appIcon = remember { runCatching { ctx.packageManager.getApplicationIcon(ctx.packageName) }.getOrNull() }
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onClose) {
+            Icon(Icons.Filled.ArrowBack, null, tint = glassTextColor(dark))
+        }
+        if (appIcon != null) {
+            Image(
+                rememberDrawablePainter(appIcon), null,
+                Modifier.size(42.dp).clip(RoundedCornerShape(10.dp))
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("DuoLauncher", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = glassTextColor(dark))
+            Text(Lang.s(R.string.settings_header_sub), fontSize = 12.sp, color = glassSubTextColor(dark))
+        }
+    }
+}
+
+/** 设置搜索框：胶囊玻璃底，输入即过滤分组标题与说明 */
+@Composable
+private fun SettingsSearchField(query: String, onQuery: (String) -> Unit, dark: Boolean) {
+    val fg = glassTextColor(dark)
+    val sub = glassSubTextColor(dark)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .clip(RoundedCornerShape(23.dp))
+            .background(fg.copy(alpha = if (dark) 0.08f else 0.06f))
+            .border(
+                0.5.dp,
+                if (dark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.08f),
+                RoundedCornerShape(23.dp)
+            )
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.Filled.Search, null, tint = sub, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (query.isEmpty()) {
+                Text(Lang.s(R.string.settings_search_hint), fontSize = 14.sp, color = sub)
+            }
+            BasicTextField(
+                query, onQuery,
+                singleLine = true,
+                textStyle = TextStyle(fontSize = 14.sp, color = fg),
+                cursorBrush = SolidColor(fg),
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        if (query.isNotEmpty()) {
+            Icon(
+                Icons.Filled.Close, null, tint = sub,
+                modifier = Modifier.size(20.dp).clickable { onQuery("") }
+            )
+        }
+    }
+}
+
+/** 分类入口卡片：接收筛选后的分组，供主页「个性化 / 用法」两节复用 */
+@Composable
+private fun SettingsGroupCard(groups: List<SettingsGroup>, dark: Boolean, onPick: (String) -> Unit) {
+    GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
+        Column(Modifier.padding(vertical = 4.dp)) {
+            groups.forEachIndexed { i, g ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onPick(g.id) }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsGroupIcon(g)
+                    Spacer(Modifier.width(12.dp))
+                    // 参考图是「标题 + 小字说明」左对齐叠放，不再把说明顶到右侧
+                    Column(Modifier.weight(1f)) {
+                        Text(Lang.s(g.titleRes), fontSize = 15.sp, color = glassTextColor(dark))
+                        Text(
+                            Lang.s(g.descRes),
+                            fontSize = 11.sp,
+                            color = glassSubTextColor(dark),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark))
+                }
+                if (i != groups.lastIndex) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 52.dp)
+                            .height(0.5.dp)
+                            .background(
+                                if (dark) Color.White.copy(alpha = 0.075f)
+                                else Color.Black.copy(alpha = 0.08f)
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (String) -> Unit) {
     val ctx = LocalContext.current
@@ -213,6 +328,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
      * 所以状态、弹窗、权限回调全都留在同一作用域里，不存在子页拿不到状态的问题。
      */
     var group by remember { mutableStateOf<String?>(null) }
+    /** 主页搜索词：只过滤分组标题与说明，进入子页后原样保留，返回还能接着点 */
+    var searchText by remember { mutableStateOf("") }
     // 子页里按返回先退回入口页；入口页的返回交给外层的 SettingsScreen（关闭设置）
     BackHandler(enabled = group != null) { group = null }
     /** 「重置所有设置」的二次确认弹窗 */
@@ -452,7 +569,48 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
             Spacer(Modifier.height((DuoState.cutoutPadding.coerceAtLeast(56)).dp))
             val cur = group
             if (cur == null) {
-                GlassTopBar(Lang.s(R.string.settings_title), dark, onClose)
+                Column(Modifier.fillMaxWidth()) {
+                    SettingsHeader(dark, onClose)
+                    Spacer(Modifier.height(14.dp))
+                    SettingsSearchField(searchText, { searchText = it }, dark)
+                    val q = searchText.trim()
+                    val visible = if (q.isEmpty()) SETTINGS_GROUPS
+                    else SETTINGS_GROUPS.filter { g ->
+                        Lang.s(g.titleRes).contains(q, true) || Lang.s(g.descRes).contains(q, true)
+                    }
+                    if (visible.isEmpty()) {
+                        Text(
+                            Lang.s(R.string.settings_search_empty),
+                            fontSize = 13.sp,
+                            color = glassSubTextColor(dark),
+                            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    } else {
+                        val personal = visible.filter { it.id !in USAGE_GROUP_IDS }
+                        val usage = visible.filter { it.id in USAGE_GROUP_IDS }
+                        if (personal.isNotEmpty()) {
+                            Text(
+                                Lang.s(R.string.grp_personal),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = glassSubTextColor(dark),
+                                modifier = Modifier.padding(start = 6.dp, top = 2.dp, bottom = 2.dp)
+                            )
+                            SettingsGroupCard(personal, dark) { group = it }
+                        }
+                        if (usage.isNotEmpty()) {
+                            Text(
+                                Lang.s(R.string.grp_usage),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = glassSubTextColor(dark),
+                                modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 2.dp)
+                            )
+                            SettingsGroupCard(usage, dark) { group = it }
+                        }
+                    }
+                }
             } else {
                 val def = SETTINGS_GROUPS.firstOrNull { it.id == cur }
                 GlassTopBar(
@@ -460,51 +618,6 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, open: (St
                     dark,
                     onBack = { group = null }
                 )
-            }
-        }
-        // 分类入口：每行一组，点进去才是具体设置项。
-        // 仿 iOS 设置：左彩色圆角图标、中间标题、右侧箭头，行间一条内缩细线。
-        if (group == null) {
-            item {
-                GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
-                    Column(Modifier.padding(vertical = 6.dp)) {
-                        SETTINGS_GROUPS.forEachIndexed { i, g ->
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .clickable { group = g.id }
-                                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                SettingsGroupIcon(g)
-                                Spacer(Modifier.width(12.dp))
-                                Text(Lang.s(g.titleRes), fontSize = 15.sp, color = glassTextColor(dark))
-                                Spacer(Modifier.width(10.dp))
-                                // 说明单行靠右、放不下就省略：保住「七组一屏」，也保留每组是干什么的
-                                Text(
-                                    Lang.s(g.descRes),
-                                    fontSize = 11.sp,
-                                    color = glassSubTextColor(dark),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Icon(Icons.Filled.ChevronRight, null, tint = glassSubTextColor(dark))
-                            }
-                            // 最后一行不画线（iOS 的卡片收尾是干净的圆角）
-                            if (i != SETTINGS_GROUPS.lastIndex) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 52.dp)
-                                        .height(0.5.dp)
-                                        .background(if (dark) Color.White.copy(alpha = 0.075f) else Color.Black.copy(alpha = 0.08f))
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
         if (group == "g_sidebar") {

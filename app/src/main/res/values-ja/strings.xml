@@ -108,6 +108,11 @@
     <string name="action_lock">画面ロック</string>
     <string name="action_unknown">不明な操作</string>
     <string name="settings_title">DuoLauncher 設定</string>
+    <string name="settings_header_sub">ホームとカスタマイズ</string>
+    <string name="settings_search_hint">設定を検索</string>
+    <string name="settings_search_empty">一致する設定がありません</string>
+    <string name="grp_personal">パーソナライズ</string>
+    <string name="grp_usage">使い方</string>
     <!-- 設定サブメニュー：大分類 -->
     <string name="grp_home">ホーム画面</string>
     <string name="grp_home_desc">グリッド、一括追加・削除、アプリライブラリとバッジ</string>

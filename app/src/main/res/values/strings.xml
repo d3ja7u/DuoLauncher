@@ -108,6 +108,11 @@
     <string name="action_lock">锁屏</string>
     <string name="action_unknown">未知操作</string>
     <string name="settings_title">DuoLauncher 设置</string>
+    <string name="settings_header_sub">桌面与个性化</string>
+    <string name="settings_search_hint">搜索设置</string>
+    <string name="settings_search_empty">未找到相关设置</string>
+    <string name="grp_personal">个性化</string>
+    <string name="grp_usage">用法</string>
     <!-- 设置二级菜单：一级分类 -->
     <string name="grp_home">主屏幕</string>
     <string name="grp_home_desc">图标行列、批量添加或清除、App 资源库与角标</string>
