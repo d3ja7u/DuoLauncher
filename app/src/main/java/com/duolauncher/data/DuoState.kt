@@ -241,26 +241,31 @@ object DuoState {
     var lockLayout by mutableStateOf(false)
 
     /**
-     * 「分身入口」映射：key = 槽位序号（1..6），value = AppInfo.id（`包名@用户序号`）。
+     * 字母键短按 → 目标（键为 KeyEvent.keyCode 的字符串）。
      *
-     * 系统快捷键页只能用「当前用户」的应用写绑定，分身应用在那里选不到。
-     * 所以 DuoLauncher 声明了 6 个普通桌面入口「分身 1」…「分身 6」：用户在系统页面
-     * 把某个键指向「分身 N」，绑定由系统自己写入（第三方应用没有写这些设置项的权限）；
-     * 按键触发时进入 DuoLauncher 的转发 Activity，再按这张表打开真正的分身应用。
+     * value 两种形式：普通字符串是应用 id（`包名` 或 `包名@用户序号`）；
+     * `act:xxx` 是 [com.duolauncher.util.ShortcutActions] 里的系统动作。
+     * 只在桌面拦按键，且焦点在输入框 / 资源库时不触发，不影响打字。
      */
-    val cloneSlots = mutableStateMapOf<String, String>()
+    val keyLetterShort = mutableStateMapOf<String, String>()
 
     /**
-     * 字母键长按 → 启动应用（键为 KeyEvent.keyCode 的字符串）。
-     *
-     * 没装系统快捷键页的普通全键盘手机靠这张表工作：无障碍服务在桌面拦下按键，
-     * 长按超过阈值时打开对应应用；离开桌面就不拦截，不影响正常打字。
+     * 字母键长按 → 目标，格式同上（旧版存的都是应用 id，读档时原样沿用）。
      */
     val keyLetterApps = mutableStateMapOf<String, String>()
 
-    /** 桌面是否在前台；无障碍服务只在这时为「字母键长按」拦按键 */
+    /** 桌面是否在前台；无障碍服务只在这时为字母键快捷键拦按键 */
     @Volatile
     var homeForeground = false
+
+    /**
+     * 当前是否停在搜索页 / 正在输入框打字。
+     *
+     * 由界面侧写入（搜索页焦点变化时）：短按字母键前先读它，避免把输入到一半的字
+     * 当成快捷键触发。搜索页是桌面的 pager 一页，光靠 homeForeground 挡不住。
+     */
+    @Volatile
+    var textInputActive = false
 
     var gesturePanels by mutableStateOf(true)       // 下滑呼出通知栏 / 控制中心（左半屏=通知，右半屏=控制中心）
     var gestureSearch by mutableStateOf(true)       // 桌面最左页右滑打开搜索
@@ -453,14 +458,12 @@ object DuoState {
             sleepGrantedOnce = o.optBoolean("sleepGranted", false)
             sleepRevokedNotified = o.optBoolean("sleepRevoked", false)
             lockLayout = o.optBoolean("lockLayout", false)
-            cloneSlots.clear()
-            // 只认数字槽位号；旧版本存在这里的「按键+触发方式」键（如 func2_short）直接丢弃，
-            // 那是早期尝试直接写系统设置时留下的，现在的绑定一律由系统自己写。
-            (o.optJSONObject("cloneSlots") ?: o.optJSONObject("shortcutTargets"))?.let { t ->
+            // 短按 / 长按分开读。老存档只有 keyLetters（原本都是长按触发），原样归入长按。
+            keyLetterShort.clear()
+            o.optJSONObject("keyLettersShort")?.let { t ->
                 t.keys().forEach { k ->
-                    val slot = k.toIntOrNull() ?: return@forEach
-                    if (slot !in 1..64) return@forEach
-                    t.optString(k).takeIf { it.isNotBlank() }?.let { cloneSlots[slot.toString()] = it }
+                    val code = k.toIntOrNull() ?: return@forEach
+                    t.optString(k).takeIf { it.isNotBlank() }?.let { keyLetterShort[code.toString()] = it }
                 }
             }
             keyLetterApps.clear()
@@ -675,9 +678,9 @@ object DuoState {
             o.put("sleepGranted", sleepGrantedOnce)
             o.put("sleepRevoked", sleepRevokedNotified)
             o.put("lockLayout", lockLayout)
-            val scSlots = JSONObject()
-            cloneSlots.forEach { (k, v) -> scSlots.put(k, v) }
-            o.put("cloneSlots", scSlots)
+            val klShort = JSONObject()
+            keyLetterShort.forEach { (k, v) -> klShort.put(k, v) }
+            o.put("keyLettersShort", klShort)
             val kl = JSONObject()
             keyLetterApps.forEach { (k, v) -> kl.put(k, v) }
             o.put("keyLetters", kl)

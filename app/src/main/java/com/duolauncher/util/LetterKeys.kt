@@ -4,18 +4,17 @@ import android.view.KeyEvent
 import com.duolauncher.data.DuoState
 
 /**
- * 字母键长按 → 启动应用。
+ * 字母键短按 / 长按 → 启动应用或执行系统动作。
  *
- * 有些全键盘机（不带 Unihertz 那套系统快捷键页的机器）没有可编程按键入口，
- * 但物理键盘的每个字母键都会以 KeyEvent 形式送进系统，无障碍服务可以拦到。
- * 这里把「哪个字母键长按打开哪个应用」存成一张表，实际的拦截在
- * [com.duolauncher.service.DuoLockService.onKeyEvent] 里做：
+ * Titan 2 自带按键设置覆盖功能键 / 侧键；DuoLauncher 这一套把字母键的短按和长按
+ * 分别绑到应用或动作。实际拦截在 [com.duolauncher.service.DuoLockService.onKeyEvent]：
  *
- *  · 只在桌面（[DuoState.homeForeground]）生效，别处的字母照常输入，不干扰打字；
- *  · 按下到松手不足 [HOLD_MS] 视为普通点击，直接放行；
- *  · 长按到阈值松手才启动，拦下该次事件，避免桌面收到无意义的按键。
+ *  · 只在桌面（[DuoState.homeForeground]）且不在输入框（[DuoState.textInputActive]）生效；
+ *  · 按下到松手不足 [HOLD_MS] 走短按，超过走长按；两档独立绑定，互不影响；
+ *  · 松手时才执行并拦下事件，避免打字误触。
  */
 object LetterKeys {
+    enum class Press { SHORT, LONG }
 
     /** 可绑定的键：26 个字母 + 顶部数字行 */
     val CODES: List<Int> =
@@ -37,15 +36,18 @@ object LetterKeys {
         else -> ""
     }
 
-    fun appIdOf(code: Int): String? = DuoState.keyLetterApps[code.toString()]
+    fun mapOf(press: Press) =
+        if (press == Press.SHORT) DuoState.keyLetterShort else DuoState.keyLetterApps
 
-    fun assign(code: Int, appId: String) {
-        DuoState.keyLetterApps[code.toString()] = appId
+    fun targetOf(code: Int, press: Press): String? = mapOf(press)[code.toString()]
+
+    fun assign(code: Int, press: Press, target: String) {
+        mapOf(press)[code.toString()] = target
         DuoState.save()
     }
 
-    fun clear(code: Int) {
-        DuoState.keyLetterApps.remove(code.toString())
+    fun clear(code: Int, press: Press) {
+        mapOf(press).remove(code.toString())
         DuoState.save()
     }
 }

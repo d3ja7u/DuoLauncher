@@ -148,10 +148,8 @@ object AppRepository {
         }
 
         // 按「包名 + 用户」去重：两个微信包名相同但属于不同用户，必须都保留。
-        // 快捷键的「分身 1..6」入口只是给系统快捷键页选用的跳板，不该出现在应用列表里。
         val result = out
             .distinctBy { it.id }
-            .filterNot { it.packageName == ctx.packageName && it.activityClass.contains("ShortcutProxy") }
             .sortedWith(compareBy(collator) { it.label })
         result
     }

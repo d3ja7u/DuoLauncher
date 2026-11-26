@@ -199,8 +199,6 @@ class MainActivity : ComponentActivity() {
         }
         // 无障碍服务只在桌面拦字母键，离开桌面时字母照常输入
         DuoState.homeForeground = true
-        // 从系统快捷键页回到桌面时，把配置用的「分身 N」临时入口收掉（已被按键引用的保留）
-        runCatching { com.duolauncher.util.ShortcutManager.collapseIfPending(this) }
         // 自检「息屏及快捷键服务」：应用被覆盖安装、或被系统强行停止之后，系统会把无障碍
         // 授权收回（设置项里直接消失），此时开关仍是开的、双击却毫无反应。这属于系统侧的
         // 安全行为，App 没有任何权限替用户重新开启，只能主动说清楚，别让人以为功能坏了。
@@ -400,6 +398,9 @@ class MainActivity : ComponentActivity() {
                         kotlin.math.abs(pagerState.currentPageOffsetFraction) < 0.02f
             }
         }
+        // 搜索页拿到输入焦点时，字母键归打字用，快捷键（尤其短按）不能抢。
+        // 无障碍服务在别的进程里读这个标志，所以写普通字段而非 state。
+        LaunchedEffect(searchFocused) { DuoState.textInputActive = searchFocused }
         // 视口中心离搜索页 / 资源库页各有多远（页为单位）：1 = 整页可见，0 = 完全离开。
         // 根层级的虚化壁纸据此随翻页自然淡入淡出；不铺不透明纯色底
         // （173 版曾把系统壁纸盖成纯黑）。

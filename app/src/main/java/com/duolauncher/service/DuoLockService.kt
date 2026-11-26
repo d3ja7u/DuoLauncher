@@ -15,6 +15,7 @@ import android.view.accessibility.AccessibilityManager
 import com.duolauncher.data.AppRepository
 import com.duolauncher.data.DuoState
 import com.duolauncher.util.LetterKeys
+import com.duolauncher.util.ShortcutActions
 
 /**
  * 纯「锁屏」用途的无障碍服务。
@@ -54,21 +55,16 @@ class DuoLockService : AccessibilityService() {
     }
 
     /**
-     * 桌面上的「字母键长按启动应用」。
+     * 桌面上的字母键短按 / 长按 → 应用或系统动作。
      *
-     * 只处理已绑定的键、只在桌面处理：离开桌面时返回 false，字母照常输入。
-     * 按下计时、长按到阈值后松手才启动，并把这次事件拦下来，桌面不会收到多余的按键。
+     * 只处理已绑定的键、只在桌面且不在输入框时处理；短按和长按各有独立目标。
+     * 松手时才执行并拦下事件：按住期间不打断，松手才知道是短按还是长按。
      */
     override fun onKeyEvent(event: KeyEvent?): Boolean {
         val code = event?.keyCode ?: return false
-        if (dbg()) {
-            android.util.Log.d(
-                "DuoKey",
-                "code=$code action=${event.action} fg=${DuoState.homeForeground} n=${DuoState.keyLetterApps.size} bound=${LetterKeys.appIdOf(code)}"
-            )
-        }
-        if (!DuoState.homeForeground || !LetterKeys.isBindable(code)) return false
-        val appId = LetterKeys.appIdOf(code) ?: return false
+        if (!LetterKeys.isBindable(code)) return false
+        // 输入框（搜索页等）打字时完全不接管，避免把输入的字母当快捷键
+        if (!DuoState.homeForeground || DuoState.textInputActive) return false
 
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
@@ -78,15 +74,17 @@ class DuoLockService : AccessibilityService() {
             }
 
             KeyEvent.ACTION_UP -> {
+                if (pressedCode != code) return false
                 val held = SystemClock.uptimeMillis() - pressedAt
-                val triggered = pressedCode == code && held >= LetterKeys.HOLD_MS
                 pressedCode = -1
-                if (dbg()) android.util.Log.d("DuoKey", "held=$held triggered=$triggered")
-                if (!triggered) return false
-                // 松手时再启动：按住期间不做任何打断，松手才知道是长按
-                val ctx = applicationContext
-                val ok = AppRepository.launch(ctx, appId)
-                if (dbg()) android.util.Log.d("DuoKey", "launch $appId -> $ok")
+                val press = if (held >= LetterKeys.HOLD_MS) LetterKeys.Press.LONG
+                else LetterKeys.Press.SHORT
+                val target = LetterKeys.targetOf(code, press) ?: return false
+                if (dbg()) android.util.Log.d("DuoKey", "code=$code held=$held press=$press target=$target")
+                val ok = runCatching {
+                    ShortcutActions.idOf(target)?.let { ShortcutActions.fire(applicationContext, it) }
+                        ?: AppRepository.launch(applicationContext, target)
+                }.getOrDefault(false)
                 if (ok) {
                     runCatching {
                         val v = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator

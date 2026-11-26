@@ -1,17 +1,10 @@
 package com.duolauncher
 
 import android.app.Application
+import android.content.pm.ShortcutManager
 import com.duolauncher.util.Lang
-import com.duolauncher.util.ShortcutManager
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class DuoApp : Application() {
-
-    /** 启动后的小事务线程：别和首帧抢主线程 */
-    private val bootIo = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "duo-boot").apply { isDaemon = true }
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -25,14 +18,12 @@ class DuoApp : Application() {
         //   · Lang.init 用一个本地化后的 Application Context 取文案（Lang.s）；
         //   · MainActivity.attachBaseContext 给界面资源套 Locale。
         Lang.init(this)
-        // 「分身 N」入口平时是收起的，重建进程后要把已被按键引用的槽位重新放出来，
-        // 否则那些快捷键会因为组件被禁用而失效。
-        // 这一步要读 33 个 Settings.System 键 + 6 次组件状态查询，全是跨进程调用；
-        // 放在 Application.onCreate 主线程会直接拖慢冷启动（实测约 +40ms），
-        // 挪到后台线程、错开首帧再做。晚一两秒不影响快捷键（没人会在开机瞬间按键）。
-        bootIo.execute {
-            runCatching { TimeUnit.MILLISECONDS.sleep(1200) }
-            runCatching { ShortcutManager.syncToBound(this) }
+        // 清掉早期测试版注册过、但代码里早已删除的动态快捷方式（系统会把它们一直缓存下来，
+        // 在「系统键盘快捷方式 → 所有快捷方式」里显示为 DuoLauncher 的「小窗测试」）。
+        runCatching {
+            val sm = getSystemService(ShortcutManager::class.java)
+            sm?.dynamicShortcuts?.filter { it.id == "bubble_test_shortcut" }
+                ?.let { if (it.isNotEmpty()) sm.removeDynamicShortcuts(listOf("bubble_test_shortcut")) }
         }
     }
 }
