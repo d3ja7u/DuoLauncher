@@ -138,27 +138,46 @@ class DuoLockService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg != ShortcutManager.SYSTEM_PACKAGE && pkg != "com.agui.keyboard") return
-        // 系统页刚打开时键盘图还没铺完，合并短时间内的多次事件，最后一次再读
+        // 改动可能发生在任意一屏（键盘图页 / 键盘快捷方式列表页），做完往往立刻返回，
+        // 所以不再等 500ms：先立即读一次，再补读几次，覆盖页面异步铺开和返回动画的空档
         captureRunnable?.let { captureHandler.removeCallbacks(it) }
         val runnable = Runnable { captureNow(0) }
         captureRunnable = runnable
-        captureHandler.postDelayed(runnable, 500)
+        captureHandler.post(runnable)
+    }
+
+    /**
+     * 系统快捷键页可能存在的所有窗口根节点。
+     *
+     * 活动窗口优先；用户已经按返回、活动窗口变成启动器时，系统页窗口还在 windows 列表里，
+     * 一并扫掉才能读到刚删掉的绑定。
+     */
+    private fun systemRoots(): List<android.view.accessibility.AccessibilityNodeInfo?> {
+        val roots = ArrayList<android.view.accessibility.AccessibilityNodeInfo?>(2)
+        runCatching { rootInActiveWindow }.getOrNull()?.let { roots += it }
+        runCatching {
+            windows?.forEach { w ->
+                val p = w?.root?.packageName?.toString() ?: return@forEach
+                if (p == ShortcutManager.SYSTEM_PACKAGE || p == "com.agui.keyboard") roots += w.root
+            }
+        }
+        return roots
     }
 
     /**
      * 读一次系统页上的字母键。
      *
-     * 部分机型上键盘图是异步铺开的，第一次读可能只拿到一半，所以读到内容后再补读两次
-     * （每次都会整体覆盖同一批字母，不会重复写），保证新加的绑定一定进来。
+     * 部分机型上键盘图是异步铺开的，第一次读可能只拿到一半，所以补读几次
+     * （每次都会整体覆盖同一批字母，不会重复写；内容没变时不落盘）。
      */
     private fun captureNow(attempt: Int) {
-        val n = SystemLetterShortcuts.capture(rootInActiveWindow)
+        val n = SystemLetterShortcuts.capture(systemRoots())
         if (n > 0) {
             if (dbg()) android.util.Log.d("DuoSysKeys", "captured $n system letter shortcuts")
             DuoState.systemShortcutsUpdated = SystemClock.uptimeMillis()
         }
-        if (attempt < 2) {
-            captureHandler.postDelayed({ captureNow(attempt + 1) }, 700L + attempt * 500L)
+        if (attempt < 3) {
+            captureHandler.postDelayed({ captureNow(attempt + 1) }, 300L + attempt * 500L)
         }
     }
 

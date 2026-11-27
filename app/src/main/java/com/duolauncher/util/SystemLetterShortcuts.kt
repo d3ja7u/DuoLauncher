@@ -59,22 +59,29 @@ object SystemLetterShortcuts {
         return letter to out
     }
 
-    /** 遍历当前窗口，按字母合并缓存；返回识别到的字母数，0 表示这次没读到 */
-    fun capture(root: AccessibilityNodeInfo?): Int {
-        if (root == null) return 0
+    /**
+     * 遍历若干窗口根节点，按字母合并缓存；返回识别到的字母数，0 表示这次没读到。
+     *
+     * 传入多个根节点是必要的：用户删完键往往立刻按返回，等去抖结束活动窗口已经是启动器了，
+     * 但系统页窗口在返回动画期间还在 `windows` 列表里，多扫一遍才不会漏掉这次改动。
+     */
+    fun capture(roots: List<AccessibilityNodeInfo?>): Int {
+        if (roots.isEmpty()) return 0
         val cells = LinkedHashMap<String, List<Item>>()
-        collect(root, cells, 0)
+        roots.forEach { r -> r?.let { collect(it, cells, 0) } }
         if (cells.isEmpty()) return 0
 
         // 逐字母覆盖：页面里出现过的字母以页面为准（未设置就把旧缓存清掉），
         // 这一屏没出现的字母保持原样，避免页面还没铺完时把别的字母弄丢。
+        val before = HashMap(DuoState.systemLetterShortcuts)
         cells.forEach { (letter, items) ->
             DuoState.systemLetterShortcuts.keys
                 .filter { it.substringBefore('/') == letter }
                 .forEach { DuoState.systemLetterShortcuts.remove(it) }
             items.forEach { DuoState.systemLetterShortcuts[key(it.letter, it.press)] = it.title }
         }
-        DuoState.save()
+        // 内容没变就不写盘：一次改动会触发好几轮补读，别每轮都落一次 JSON
+        if (before != HashMap(DuoState.systemLetterShortcuts)) DuoState.save()
         return cells.size
     }
 
