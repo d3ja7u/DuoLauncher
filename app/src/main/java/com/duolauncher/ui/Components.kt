@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -110,6 +112,37 @@ fun NotificationBadge(count: Int, iconSize: Dp, color: Color) {
             )
         )
     }
+}
+
+/**
+ * 本窗口此刻是否真的在「前台可见且可交互」（Activity RESUMED）。
+ *
+ * 为什么需要它：Compose 的动画协程挂在**组合**上，不随 Activity 停止而暂停。
+ * 桌面是常驻进程（按 Home / 熄屏 / 切到别的应用都不销毁），所以任何
+ * `LaunchedEffect { while (true) { ...; delay(...) } }` 都会在后台继续跑。
+ * 每次写状态都会让那块 UI 失效并请求一帧，屏幕黑着也照跑 —— 这是启动器里
+ * 唯一还能长期偷电的形状。要长期跑的动画（播放频谱等）一律拿这个当成闸门。
+ */
+@Composable
+fun rememberWindowResumed(): Boolean {
+    val owner = LocalLifecycleOwner.current
+    var resumed by remember(owner) {
+        mutableStateOf(owner.lifecycle.currentState.isAtLeast(
+            androidx.lifecycle.Lifecycle.State.RESUMED
+        ))
+    }
+    DisposableEffect(owner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> resumed = true
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> resumed = false
+                else -> Unit
+            }
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    return resumed
 }
 
 /**

@@ -120,8 +120,6 @@ fun HomePage(
     /** 编辑态点「-」后待确认移除的应用 */
     var removeTarget by remember { mutableStateOf<AppInfo?>(null) }
 
-    val packPkg = DuoState.iconPack
-
     val iconScale = DuoState.iconScale
     val homeIconSize = (54 * iconScale).dp          // 主屏图标：比侧栏大
     // 侧栏图标自动收敛尺寸：数量多或用户把图标放大时，保证整条侧栏不超 430dp、
@@ -1181,26 +1179,25 @@ fun HomePage(
 
         // ── 正在播放胶囊：与「时间 + 电量」「侧边栏」共用同一条纵向通道：
         //    同宽度（sidebarWidth）、同边距（sidebarGap）、同左右侧，竖直方向落在状态块正下方，
-        //    视觉上形成「状态 → 胶囊 → 侧栏」一列，不再偏到通道左边悬在壁纸上。──
-        if (DuoState.showNowPlaying) {
-            DuoState.nowPlaying?.let { np ->
-                NowPlayingCapsule(
-                    np = np,
-                    dark = dark,
-                    modifier = Modifier
-                        .zIndex(6f)
-                        .align(if (leftSide) Alignment.TopStart else Alignment.TopEnd)
-                        .padding(
-                            start = if (leftSide) sidebarGap else 0.dp,
-                            end = if (leftSide) 0.dp else sidebarGap,
-                            top = (statusDrawTop + statusHeight + 8).dp
-                        )
-                        .width(sidebarWidth),
-                    onPanel = { showPlayerPanel = true },
-                    onPlayPause = { DuoNotificationListener.togglePlayPause() }
+        //    视觉上形成「状态 → 胶囊 → 侧栏」一列，不再偏到通道左边悬在壁纸上。
+        //
+        //   nowPlaying 只在 NowPlayingSlot 内部读：旧写法在主屏顶层读，切歌 / 暂停 / 封面
+        //   晚到都会让整个主屏（几十个图标 + 小组件）重组一遍，音乐播放期间白白耗 CPU。
+        NowPlayingSlot(
+            dark = dark,
+            panelOpen = showPlayerPanel,
+            modifier = Modifier
+                .zIndex(6f)
+                .align(if (leftSide) Alignment.TopStart else Alignment.TopEnd)
+                .padding(
+                    start = if (leftSide) sidebarGap else 0.dp,
+                    end = if (leftSide) 0.dp else sidebarGap,
+                    top = (statusDrawTop + statusHeight + 8).dp
                 )
-            }
-        }
+                .width(sidebarWidth),
+            onPanel = { showPlayerPanel = true },
+            onPlayPause = { DuoNotificationListener.togglePlayPause() }
+        )
 
         // ── 底部：只剩页面指示点 ──
         // 左下角的菜单键和右下角的搜索键已经去掉：菜单项全部并入「长按主屏空白」的菜单，
@@ -1520,6 +1517,33 @@ private fun NewPageTarget(armed: Boolean, modifier: Modifier) {
 private val NpCapsuleHeight = 34.dp
 
 /**
+ * 胶囊的「读取边界」：把 `showNowPlaying` / `nowPlaying` 的读取收进这一层。
+ *
+ * Compose 是按最近的重组作用域失效的：谁读了 state，谁负责重组。这两个值会随播放
+ * 状态频繁变化（切歌、暂停、封面晚到），在 HomePage 顶层读就等于每次播放变化都把
+ * 整页（几十个图标 + 小组件 + 手势检测）重算一遍；收在这里之后只重组这颗胶囊。
+ */
+@Composable
+private fun NowPlayingSlot(
+    dark: Boolean,
+    panelOpen: Boolean,
+    modifier: Modifier,
+    onPanel: () -> Unit,
+    onPlayPause: () -> Unit
+) {
+    if (!DuoState.showNowPlaying) return
+    val np = DuoState.nowPlaying ?: return
+    NowPlayingCapsule(
+        np = np,
+        dark = dark,
+        modifier = modifier,
+        panelOpen = panelOpen,
+        onPanel = onPanel,
+        onPlayPause = onPlayPause
+    )
+}
+
+/**
  * 右上角「正在播放」胶囊（紧凑版，对齐参考图）：
  * 左侧圆形专辑封面 + 右侧 iOS 风格频谱（5 条、中间高两端低、随律动起伏）。
  * 单击展开播放面板；长按暂停 / 继续——胶囊很小，不拆热区，避免点不中或误触。
@@ -1530,6 +1554,8 @@ private fun NowPlayingCapsule(
     np: NowPlaying,
     dark: Boolean,
     modifier: Modifier,
+    /** 播放面板已弹出：身后的桌面整体虚化，胶囊上的频谱不必再动（省一次全屏重录 + 重模糊） */
+    panelOpen: Boolean = false,
     onPanel: () -> Unit,
     onPlayPause: () -> Unit
 ) {
@@ -1567,7 +1593,7 @@ private fun NowPlayingCapsule(
             // iOS 风格频谱：与上面的时间同色（按壁纸明暗自适应黑 / 白），
             // 状态栏整体关闭、还拿不到明暗结论时回退到玻璃文字色
             MusicSpectrum(
-                playing = np.playing,
+                playing = np.playing && !panelOpen,
                 color = rememberStatusInkColor(glassTextColor(dark))
             )
         }
@@ -1593,7 +1619,10 @@ private fun PlayerPanel(
         return
     }
     var tick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
+    // 只在面板真的可见时走 2fps 刷新；熄屏 / 切走时不空转（Dialog 不会随 Activity 暂停而销毁）
+    val panelResumed = rememberWindowResumed()
+    LaunchedEffect(panelResumed) {
+        if (!panelResumed) return@LaunchedEffect
         while (true) {
             tick = System.currentTimeMillis()
             kotlinx.coroutines.delay(500L)
@@ -1851,11 +1880,12 @@ private fun MusicSpectrum(playing: Boolean, color: Color) {
     val maxH = 15.dp
     // 相位时钟：只在绘制阶段被读取，所以更新它只会让这块重绘，不会重组/重排
     val clock = remember { mutableLongStateOf(0L) }
-    LaunchedEffect(playing) {
-        if (!playing) {
-            clock.longValue = 0L
-            return@LaunchedEffect
-        }
+    // 闸门：桌面不在前台（切到别的应用 / 熄屏 / 被全屏页盖住）时一律不挂动画。
+    // 旧实现只看 playing，音乐一开就 15fps 一直跑到进程被回收 —— 屏幕黑着也在算帧。
+    val resumed = rememberWindowResumed()
+    val animate = playing && resumed
+    LaunchedEffect(animate) {
+        if (!animate) return@LaunchedEffect
         // 用 delay 而不是 withFrameNanos：后者会让 Choreographer 每个 vsync（120Hz）
         // 都回调一次主线程，纯属为了等一个 15fps 的节拍。
         while (true) {

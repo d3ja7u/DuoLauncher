@@ -451,16 +451,40 @@ class DuoLockService : AccessibilityService() {
         else kbPolling = false
     }
 
-    override fun onInterrupt() = Unit
+    override fun onInterrupt() {
+        // 被系统打断（例如另一个服务申请了按键过滤）：排队中的活一起停掉
+        cancelChains()
+    }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         if (instance === this) instance = null
+        cancelChains()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         if (instance === this) instance = null
+        cancelChains()
         super.onDestroy()
+    }
+
+    /**
+     * 收掉排队中的抓取 / 滚动 / 轮询链。
+     *
+     * 这些链是「窗口事件 → 延时几步」自己接下去的：用户在系统页里关掉无障碍授权、
+     * 或者系统把服务解绑时，链还可能在延时里等着，之后每一次都会重新读窗口内容。
+     * 服务已经没了就没有读的意义，统一清掉，别让它变成无人回收的后台空转。
+     */
+    private fun cancelChains() {
+        captureRunnable?.let { captureHandler.removeCallbacks(it) }
+        revealRunnable?.let { captureHandler.removeCallbacks(it) }
+        shortcutRunnable?.let { captureHandler.removeCallbacks(it) }
+        captureRunnable = null
+        revealRunnable = null
+        shortcutRunnable = null
+        captureHandler.removeCallbacksAndMessages(null)
+        kbPolling = false
+        pressedCode = -1
     }
 
     /**
