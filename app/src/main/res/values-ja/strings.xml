@@ -526,6 +526,8 @@
     <string name="sys_letters_in_grid">赤枠はシステム設定済み（タップでシステム設定へ）。青枠はランチャーの設定で、長押しで長押しアクションを設定できます。システムで設定済みのキーはランチャー側では設定できません</string>
     <string name="sys_letters_open">システムキー設定を開く</string>
     <string name="letter_keys_footer">分身アプリは一覧から直接選択できます。ファンクションキーとサイドキーは上の「システムショートカット設定」で設定してください。</string>
+    <string name="letter_keys_footer_nosys">分身アプリは一覧から直接選択できます。アルファベットショートカットはホーム画面でのみ有効で、他のアプリの文字入力には影響しません。</string>
+    <string name="sys_letters_nosys">青枠はランチャー側の設定です（タップで変更）。この端末にはシステムショートカット設定ページがないため、アルファベットショートカットはすべてランチャーが処理します。</string>
     <string name="letter_key_clear">この割り当てを解除</string>
     <string name="letter_key_sys_item">%1$s：%2$s</string>
     <string name="letter_key_sys_block">このキーはシステムのショートカット設定でも使用中です（%1$s）。キーはランチャーに届く前にシステムが取得するため、ここの設定は反映されません。</string>

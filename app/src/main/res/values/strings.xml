@@ -526,6 +526,8 @@
     <string name="sys_letters_in_grid">红框是系统里已配置的，点一下去系统页修改；蓝框是启动器里的设置，长按格子可设长按档。同一个键在系统里设置后，启动器里不能再设置</string>
     <string name="sys_letters_open">打开系统按键设置</string>
     <string name="letter_keys_footer">分身应用可直接在列表里选择；系统功能键与侧键请到上方「系统快捷键设置」里配置。</string>
+    <string name="letter_keys_footer_nosys">分身应用可直接在列表里选择；字母快捷键只在桌面生效，不影响其他应用打字。</string>
+    <string name="sys_letters_nosys">蓝框是启动器里已设置的，点一下可改绑。本机没有系统快捷键设置页，字母快捷键全部由启动器接管。</string>
     <string name="letter_key_clear">清除此绑定</string>
     <string name="letter_key_sys_item">%1$s：%2$s</string>
     <string name="letter_key_sys_block">这个键在系统按键设置里也占了（%1$s）。系统会先把按键吞掉，这里的设置不会生效。</string>

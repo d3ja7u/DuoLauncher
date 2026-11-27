@@ -3,6 +3,7 @@ package com.duolauncher.util
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.provider.Settings
 import com.duolauncher.R
 import com.duolauncher.data.DuoState
@@ -54,6 +55,19 @@ object ShortcutManager {
     fun hasSystemSupport(ctx: Context): Boolean = runCatching {
         ctx.packageManager.getPackageInfo(SYSTEM_PACKAGE, 0)
         true
+    }.getOrDefault(false)
+
+    /**
+     * 本机是否接着实体键盘（自带全键盘或已接入外接键盘）。
+     *
+     * 只用来决定「按键设置」这个入口要不要出现：Zinwa Q25、雷火 M1 这类复刻全键盘机
+     * 没有 Agui 那套系统快捷键 App，但键盘照样发普通字母 KeyEvent，启动器自己的
+     * 桌面快捷键完全能用，入口不该跟着系统页一起消失。
+     */
+    fun hasHardKeyboard(ctx: Context): Boolean = runCatching {
+        val c = ctx.resources.configuration
+        c.keyboard != Configuration.KEYBOARD_NOKEYS &&
+            c.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO
     }.getOrDefault(false)
 
     // ─────────────────── 「键盘快捷方式」列表页 ───────────────────

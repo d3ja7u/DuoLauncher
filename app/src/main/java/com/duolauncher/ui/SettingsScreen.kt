@@ -591,9 +591,10 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, mainListS
                     Spacer(Modifier.height(14.dp))
                     SettingsSearchField(searchText, { searchText = it }, dark)
                     val q = searchText.trim()
-                    // 按键设置只在真有系统快捷键能力的机型上出现，普通手机不摆空入口
+                    // 按键设置：有 Agui 系统快捷键的机型，或有实体键盘的机型（Q25 / 雷火 M1 这类）
                     val all = SETTINGS_GROUPS.filter {
-                        it.id != "g_keys" || ShortcutManager.hasSystemSupport(ctx)
+                        it.id != "g_keys" ||
+                            ShortcutManager.hasSystemSupport(ctx) || ShortcutManager.hasHardKeyboard(ctx)
                     }
                     val visible = if (q.isEmpty()) all
                     else all.filter { g ->
@@ -2492,6 +2493,10 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
     val ctx = LocalContext.current
     DuoState.init(ctx)
 
+    // 本机有没有 Agui 那套系统快捷键页（Titan 系列有，Q25 / 雷火 M1 这类复刻机没有）。
+    // 没有就只显示启动器自己的能力，别摆一个点了没反应的入口。
+    val hasSysShortcuts = remember { ShortcutManager.hasSystemSupport(ctx) }
+
     var refresh by remember { mutableStateOf(0) }
     /** 正在指派目标的字母键 + 触发方式；null 表示没开弹窗 */
     var editing by remember { mutableStateOf<Pair<Int, LetterKeys.Press>?>(null) }
@@ -2522,28 +2527,30 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
     ) {
         GlassTopBar(Lang.s(R.string.shortcut_settings), dark, onBack)
 
-        // ① 系统原生设置
-        Spacer(Modifier.height(6.dp))
-        GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
-            Column(Modifier.padding(16.dp)) {
-                Text(
-                    Lang.s(R.string.shortcut_native_title),
-                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark)
-                )
-                Text(
-                    Lang.s(R.string.shortcut_native_desc),
-                    fontSize = 12.sp, color = glassSubTextColor(dark),
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = {
-                        if (!ShortcutManager.openSystemPage(ctx, scrollToKeyboard = true)) {
-                            nav.toast(Lang.s(R.string.shortcut_native_missing))
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text(Lang.s(R.string.shortcut_native_open), fontSize = 14.sp) }
+        // ① 系统原生设置（只有带 Agui 系统快捷键的机型才有这一页）
+        if (hasSysShortcuts) {
+            Spacer(Modifier.height(6.dp))
+            GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 22.dp, level = 0.9f, dark = dark) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        Lang.s(R.string.shortcut_native_title),
+                        fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = glassTextColor(dark)
+                    )
+                    Text(
+                        Lang.s(R.string.shortcut_native_desc),
+                        fontSize = 12.sp, color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Button(
+                        onClick = {
+                            if (!ShortcutManager.openSystemPage(ctx, scrollToKeyboard = true)) {
+                                nav.toast(Lang.s(R.string.shortcut_native_missing))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(Lang.s(R.string.shortcut_native_open), fontSize = 14.sp) }
+                }
             }
         }
 
@@ -2589,9 +2596,11 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 // 系统页里配置的字母键（当前短按 / 长按），直接画进对应的按键格子里。
                 // 直接读 SnapshotStateMap：无障碍从系统页读回新数据后会自动重组。
                 val sysPress = if (press == LetterKeys.Press.SHORT) "short" else "long"
-                val sysMap = DuoState.systemLetterShortcuts.entries
-                    .filter { it.key.endsWith("/$sysPress") }
-                    .associate { it.key.substringBefore('/') to it.value }
+                // 没有系统快捷键页的机型不做红框标记，格子只反映启动器自己的绑定
+                val sysMap = if (!hasSysShortcuts) emptyMap() else
+                    DuoState.systemLetterShortcuts.entries
+                        .filter { it.key.endsWith("/$sysPress") }
+                        .associate { it.key.substringBefore('/') to it.value }
                 // 系统里「这个字母键」有没有占用（不分短按长按）：
                 // WindowManager 只要在该键上配了任意一档，就会在 interceptKeyBeforeQueueing
                 // 把整个按键吞掉，启动器的无障碍按键过滤器根本收不到，两档都无效。
@@ -2600,14 +2609,20 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 ) { editing = it to press }
 
                 Spacer(Modifier.height(10.dp))
-                if (sysMap.isEmpty()) {
-                    Text(
+                when {
+                    !hasSysShortcuts -> Text(
+                        Lang.s(R.string.sys_letters_nosys),
+                        fontSize = 11.sp, color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
+
+                    sysMap.isEmpty() -> Text(
                         Lang.s(R.string.sys_letters_empty),
                         fontSize = 11.sp, color = glassSubTextColor(dark),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                     )
-                } else {
-                    Text(
+
+                    else -> Text(
                         Lang.s(R.string.sys_letters_in_grid),
                         fontSize = 11.sp, color = glassSubTextColor(dark),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
@@ -2624,14 +2639,16 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                     )
                 }
-                TextButton(
-                    onClick = {
-                        if (!ShortcutManager.openSystemPage(ctx, scrollToKeyboard = true)) {
-                            nav.toast(Lang.s(R.string.shortcut_native_missing))
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 10.dp)
-                ) { Text(Lang.s(R.string.sys_letters_open), fontSize = 12.sp) }
+                if (hasSysShortcuts) {
+                    TextButton(
+                        onClick = {
+                            if (!ShortcutManager.openSystemPage(ctx, scrollToKeyboard = true)) {
+                                nav.toast(Lang.s(R.string.shortcut_native_missing))
+                            }
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp)
+                    ) { Text(Lang.s(R.string.sys_letters_open), fontSize = 12.sp) }
+                }
 
                 if (!DuoLockService.isConnected()) {
                     Row(
@@ -2652,7 +2669,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
 
         Spacer(Modifier.height(14.dp))
         Text(
-            Lang.s(R.string.letter_keys_footer),
+            Lang.s(if (hasSysShortcuts) R.string.letter_keys_footer else R.string.letter_keys_footer_nosys),
             fontSize = 11.sp, color = glassSubTextColor(dark),
             modifier = Modifier.padding(horizontal = 6.dp)
         )
