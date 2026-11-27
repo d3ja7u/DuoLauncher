@@ -2496,6 +2496,16 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
     /** 正在指派目标的字母键 + 触发方式；null 表示没开弹窗 */
     var editing by remember { mutableStateOf<Pair<Int, LetterKeys.Press>?>(null) }
 
+    /**
+     * 系统里「这个字母键」有没有占用，不分短按长按：字母 → (档位 → 目标名)。
+     *
+     * WindowManager 只要在某个字母键上配了任意一档，就会在 interceptKeyBeforeQueueing
+     * 把这个键整个吞掉（日志 `ShortcutFuncCtrl ... consumed`），启动器的无障碍按键过滤器
+     * 根本收不到，短按长按都不生效。所以判断「会不会被系统吃掉」必须看两档的合集。
+     */
+    val sysAll = DuoState.systemLetterShortcuts.entries
+        .groupBy({ it.key.substringBefore('/') }, { it.key.substringAfter('/') to it.value })
+
     // 从系统快捷键页返回时刷新（用户可能刚在里面改了绑定）
     val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -2582,7 +2592,12 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 val sysMap = DuoState.systemLetterShortcuts.entries
                     .filter { it.key.endsWith("/$sysPress") }
                     .associate { it.key.substringBefore('/') to it.value }
-                LetterKeyGrid(dark = dark, nav = nav, map = map, sysMap = sysMap, press = press) { editing = it to press }
+                // 系统里「这个字母键」有没有占用（不分短按长按）：
+                // WindowManager 只要在该键上配了任意一档，就会在 interceptKeyBeforeQueueing
+                // 把整个按键吞掉，启动器的无障碍按键过滤器根本收不到，两档都无效。
+                LetterKeyGrid(
+                    dark = dark, nav = nav, map = map, sysMap = sysMap, sysAll = sysAll, press = press
+                ) { editing = it to press }
 
                 Spacer(Modifier.height(10.dp))
                 if (sysMap.isEmpty()) {
@@ -2595,6 +2610,17 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                     Text(
                         Lang.s(R.string.sys_letters_in_grid),
                         fontSize = 11.sp, color = glassSubTextColor(dark),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
+                }
+                // 只在真有「桌面绑了、系统也占了」的键时才多这一行，平时不啰嗦
+                if (LetterKeys.CODES.any { code ->
+                        map[code.toString()] != null && sysAll[LetterKeys.label(code)] != null
+                    }
+                ) {
+                    Text(
+                        Lang.s(R.string.letter_keys_sys_shadowed),
+                        fontSize = 11.sp, color = Color(0xFFFFB454),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                     )
                 }
@@ -2635,6 +2661,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
     editing?.let { (code, p) ->
         LetterKeyDialog(
             nav = nav, dark = dark, code = code, press = p, apps = DuoState.apps,
+            sysBindings = sysAll[LetterKeys.label(code)].orEmpty().toMap(),
             onDismiss = { editing = null },
             onPicked = { refresh++; editing = null }
         )
@@ -2649,7 +2676,11 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
  *  ② 只在系统按键设置里配的 —— **红框**，点一下直接跳到系统按键页去改，
  *     长按仍可给这个键补一个启动器快捷键；
  *  ③ 都没设 —— 只显示字母。
- * 两种都设了时，桌面绑定为主，右上角一个红点提示系统里也绑了。
+ *
+ * 系统里只要在这个键上配了任意一档（短按或长按），WindowManager 就会在
+ * interceptKeyBeforeQueueing 把整个按键吞掉——启动器的无障碍按键过滤器收不到，
+ * 两档都不会触发。这种「桌面也绑了、但被系统吃掉」的格子用**橙框 + 橙点**标出来，
+ * 别让人以为设置坏了（2026-11-27 齐老师反馈短按 F 无效，就是这个原因）。
  */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -2658,11 +2689,13 @@ private fun LetterKeyGrid(
     nav: Nav,
     map: Map<String, String>,
     sysMap: Map<String, String>,
+    sysAll: Map<String, List<Pair<String, String>>>,
     press: LetterKeys.Press,
     onPick: (Int) -> Unit
 ) {
     val ctx = LocalContext.current
     val sysRed = Color(0xFFFF3B30)
+    val sysOrange = Color(0xFFFFB454)
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         LetterKeys.CODES.chunked(7).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2670,6 +2703,8 @@ private fun LetterKeyGrid(
                     val target = map[code.toString()]
                     val label = LetterKeys.label(code)
                     val sysTitle = sysMap[label]
+                    val sysOther = sysAll[label]
+                    val shadowed = target != null && sysOther != null
                     val app = target?.let { t ->
                         ShortcutActions.idOf(t)?.let { null } ?: DuoState.appOf(t)
                     }
@@ -2679,6 +2714,7 @@ private fun LetterKeyGrid(
                     }
                     val systemOnly = target == null && sysTitle != null
                     val boxBorder = when {
+                        shadowed -> 1.5.dp to sysOrange.copy(alpha = 0.85f)
                         target != null -> 1.dp to glassBlue.copy(alpha = 0.70f)
                         sysTitle != null -> 1.5.dp to sysRed.copy(alpha = 0.75f)
                         else -> 1.dp to Color.Transparent
@@ -2688,6 +2724,7 @@ private fun LetterKeyGrid(
                             .clip(RoundedCornerShape(12.dp))
                             .background(
                                 when {
+                                    shadowed -> sysOrange.copy(alpha = 0.14f)
                                     target != null -> glassBlue.copy(alpha = 0.20f)
                                     sysTitle != null -> sysRed.copy(alpha = 0.12f)
                                     else -> glassSubTextColor(dark).copy(alpha = 0.10f)
@@ -2715,15 +2752,22 @@ private fun LetterKeyGrid(
                                     rememberDrawablePainter(rememberAppIcon(app)), null,
                                     Modifier.size(22.dp).clip(squircle(20))
                                 )
-                                Text(label, fontSize = 9.sp, color = glassSubTextColor(dark))
+                                Text(
+                                    label, fontSize = 9.sp,
+                                    color = if (shadowed) sysOrange else glassSubTextColor(dark)
+                                )
                             }
 
                             action != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
                                     Icons.Filled.PowerSettingsNew, null,
-                                    tint = glassBlue, modifier = Modifier.size(20.dp)
+                                    tint = if (shadowed) sysOrange else glassBlue,
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                Text(label, fontSize = 9.sp, color = glassSubTextColor(dark))
+                                Text(
+                                    label, fontSize = 9.sp,
+                                    color = if (shadowed) sysOrange else glassSubTextColor(dark)
+                                )
                             }
 
                             sysApp != null -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2747,8 +2791,13 @@ private fun LetterKeyGrid(
 
                             else -> Text(label, fontSize = 14.sp, color = glassSubTextColor(dark))
                         }
-                        // 系统里也绑了同一个键：红点提示（桌面这条优先执行，蓝框仍是桌面绑定）
-                        if (target != null && sysTitle != null) {
+                        // 橙点 = 桌面这条被系统吃掉了（不生效）；红点 = 系统里也配了同一档，桌面仍然生效
+                        if (shadowed) {
+                            Box(
+                                Modifier.align(Alignment.TopEnd).padding(4.dp).size(5.dp)
+                                    .clip(CircleShape).background(sysOrange)
+                            )
+                        } else if (target != null && sysTitle != null) {
                             Box(
                                 Modifier.align(Alignment.TopEnd).padding(4.dp).size(4.dp)
                                     .clip(CircleShape).background(sysRed)
@@ -2771,9 +2820,12 @@ private fun LetterKeyDialog(
     code: Int,
     press: LetterKeys.Press,
     apps: List<AppInfo>,
+    /** 这个字母键在系统按键设置里的占用情况（档位 → 目标名）；空 = 系统没占 */
+    sysBindings: Map<String, String> = emptyMap(),
     onDismiss: () -> Unit,
     onPicked: () -> Unit
 ) {
+    val ctx = LocalContext.current
     val label = LetterKeys.label(code)
     val current = LetterKeys.targetOf(code, press)
     val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp
@@ -2781,6 +2833,44 @@ private fun LetterKeyDialog(
         R.string.shortcut_short_press else R.string.shortcut_long_press)
 
     DuoDialog(Lang.s(R.string.letter_keys_pick_title, label, pressLabel), dark, onDismiss) {
+        // 系统里占了这个键：先说清楚，否则选完发现没反应，只会以为功能坏了
+        if (sysBindings.isNotEmpty()) {
+            val sysDesc = listOf("short", "long", "double").mapNotNull { k ->
+                sysBindings[k]?.let { title ->
+                    Lang.s(
+                        R.string.letter_key_sys_item,
+                        Lang.s(
+                            when (k) {
+                                "short" -> R.string.shortcut_short_press
+                                "long" -> R.string.shortcut_long_press
+                                else -> R.string.shortcut_double_press
+                            }
+                        ),
+                        title
+                    )
+                }
+            }.joinToString("、")
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFFFB454).copy(alpha = 0.14f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    Lang.s(R.string.letter_key_sys_block, sysDesc),
+                    fontSize = 12.sp, color = Color(0xFFFFB454)
+                )
+                TextButton(
+                    onClick = {
+                        val ok = ShortcutManager.openKeyboardShortcuts(
+                            ctx, label.firstOrNull(), sysBindings.containsKey("long")
+                        )
+                        if (!ok) nav.toast(Lang.s(R.string.shortcut_native_missing))
+                    },
+                    modifier = Modifier.padding(top = 2.dp)
+                ) { Text(Lang.s(R.string.letter_key_sys_clear), fontSize = 12.sp) }
+            }
+        }
         if (current != null) {
             TextButton(onClick = {
                 LetterKeys.clear(code, press)

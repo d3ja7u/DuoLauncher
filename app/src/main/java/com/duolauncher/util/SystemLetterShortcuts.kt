@@ -90,18 +90,24 @@ object SystemLetterShortcuts {
      */
     fun capture(roots: List<AccessibilityNodeInfo?>, listPress: String? = null): Int {
         if (roots.isEmpty()) return 0
-        val cells = LinkedHashMap<String, List<Item>>()
+        // 值里带上"这批数据的来源档位"：null = 键盘图（一格同时代表短按/长按两档，可整体覆盖）；
+        // "short"/"long" = 列表页（只代表当前 tab 这一档，绝不能拿它去清另一档）。
+        val cells = LinkedHashMap<String, Pair<List<Item>, String?>>()
         roots.forEach { r -> r?.let { collect(it, cells, 0, listPress) } }
         if (cells.isEmpty()) return 0
 
-        // 逐字母覆盖：页面里出现过的字母以页面为准（未设置就把旧缓存清掉），
-        // 这一屏没出现的字母保持原样，避免页面还没铺完时把别的字母弄丢。
         val before = HashMap(DuoState.systemLetterShortcuts)
-        cells.forEach { (letter, items) ->
-            DuoState.systemLetterShortcuts.keys
-                .filter { it.substringBefore('/') == letter }
-                .forEach { DuoState.systemLetterShortcuts.remove(it) }
-            items.forEach { DuoState.systemLetterShortcuts[key(it.letter, it.press)] = it.title }
+        val map = DuoState.systemLetterShortcuts
+        cells.forEach { (letter, hit) ->
+            val (items, press) = hit
+            if (press == null) {
+                // 键盘图：页面上这一格就是该字母的完整状态，未设置时连旧条目一起清掉
+                map.keys.filter { it.substringBefore('/') == letter }.forEach { map.remove(it) }
+            } else {
+                // 列表页：只覆盖这一档，另一档原样保留
+                map.remove(key(letter, press))
+            }
+            items.forEach { map[key(it.letter, it.press)] = it.title }
         }
         // 内容没变就不写盘：一次改动会触发好几轮补读，别每轮都落一次 JSON
         if (before != HashMap(DuoState.systemLetterShortcuts)) DuoState.save()
@@ -110,7 +116,7 @@ object SystemLetterShortcuts {
 
     private fun collect(
         node: AccessibilityNodeInfo?,
-        out: MutableMap<String, List<Item>>,
+        out: MutableMap<String, Pair<List<Item>, String?>>,
         depth: Int,
         listPress: String?
     ) {
@@ -118,11 +124,19 @@ object SystemLetterShortcuts {
         val text = node.contentDescription?.toString()?.takeIf { it.isNotBlank() }
             ?: node.text?.toString()?.takeIf { it.isNotBlank() }
         if (text != null) {
-            val parsed = cell(text) ?: listPress?.let { listCell(text, it) }
-            parsed?.let { (letter, items) ->
-                // 同一字母出现两次时，取有条目的那次，别用空列表把结果盖掉
+            // 键盘图的格子优先（带明确档位），列表页只作为兜底
+            val grid = cell(text)
+            val parsed: Pair<String, List<Item>>? =
+                grid ?: listPress?.let { listCell(text, it) }
+            if (parsed != null) {
+                val press = if (grid != null) null else listPress
+                val (letter, items) = parsed
                 val old = out[letter]
-                if (old.isNullOrEmpty()) out[letter] = items
+                // 键盘图的结果压过列表页；同一来源时，有内容的那次压过空的那次
+                val better = old == null ||
+                    (old.second != null && press == null) ||
+                    (old.first.isEmpty() && items.isNotEmpty())
+                if (better) out[letter] = items to press
             }
         }
         for (i in 0 until node.childCount) collect(node.getChild(i), out, depth + 1, listPress)

@@ -527,4 +527,8 @@
     <string name="sys_letters_open">システムキー設定を開く</string>
     <string name="letter_keys_footer">分身アプリは一覧から直接選択できます。ファンクションキーとサイドキーは上の「システムショートカット設定」で設定してください。</string>
     <string name="letter_key_clear">この割り当てを解除</string>
+    <string name="letter_key_sys_item">%1$s：%2$s</string>
+    <string name="letter_key_sys_block">このキーはシステムのショートカット設定でも使用中です（%1$s）。キーはランチャーに届く前にシステムが取得するため、ここの設定は反映されません。</string>
+    <string name="letter_key_sys_clear">システム設定で解除</string>
+    <string name="letter_keys_sys_shadowed">オレンジ印のキーはシステム側でも同じキーに割り当てがあるため、ランチャーの設定は反映されません</string>
 </resources>

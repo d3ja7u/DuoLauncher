@@ -56,6 +56,8 @@ class DuoLockService : AccessibilityService() {
 
     /** 列表页当前停在哪个 tab（"short"/"long"）：该页读不到选中态，只能记住我们点过哪个 */
     private var shortcutTabPress: String? = null
+    /** 上次确认 tab 的时刻：只在这之后一小段时间内认它，避免上一轮跳转的档位残留到下一轮 */
+    private var shortcutTabPressAt = 0L
 
     /** 列表页兜底轮询是否在跑（避免每次事件都叠一条链） */
     private var kbPolling = false
@@ -105,7 +107,13 @@ class DuoLockService : AccessibilityService() {
      * 桌面上的字母键短按 / 长按 → 应用或系统动作。
      *
      * 只处理已绑定的键、只在桌面且不在输入框时处理；短按和长按各有独立目标。
-     * 松手时才执行并拦下事件：按住期间不打断，松手才知道是短按还是长按。
+     * 按下就拦（吞掉 DOWN），松手才执行动作。
+     *
+     * **DOWN 必须一起吞掉**：只吞 UP 的话，InputDispatcher 收不到这个键的抬起，
+     * 内部按键状态一直停在「按下」，于是继续按 repeat 间隔往**当前焦点窗口**发重复的
+     * DOWN——快捷键一启动应用，焦点换了，重复的字母就全打进新开的 App 里。
+     * 2026-11-27 用户反馈「用快捷键打开会自动一直输入」（微信里刷出一串 e / 呃）就是这个。
+     * 没绑定的键照常放行，不影响打字。
      */
     override fun onKeyEvent(event: KeyEvent?): Boolean {
         val code = event?.keyCode ?: return false
@@ -115,9 +123,17 @@ class DuoLockService : AccessibilityService() {
 
         when (event.action) {
             KeyEvent.ACTION_DOWN -> {
+                // 按住不放时系统会补发 repeatCount > 0 的 DOWN：只吞掉、不重新计时，
+                // 否则按住时间会被不断刷新，长按永远判成短按
+                if (event.repeatCount > 0) return pressedCode == code
+                if (LetterKeys.targetOf(code, LetterKeys.Press.SHORT) == null &&
+                    LetterKeys.targetOf(code, LetterKeys.Press.LONG) == null
+                ) {
+                    return false   // 两档都没绑，正常输入
+                }
                 pressedCode = code
                 pressedAt = SystemClock.uptimeMillis()
-                return false
+                return true
             }
 
             KeyEvent.ACTION_UP -> {
@@ -126,7 +142,7 @@ class DuoLockService : AccessibilityService() {
                 pressedCode = -1
                 val press = if (held >= LetterKeys.HOLD_MS) LetterKeys.Press.LONG
                 else LetterKeys.Press.SHORT
-                val target = LetterKeys.targetOf(code, press) ?: return false
+                val target = LetterKeys.targetOf(code, press) ?: return true
                 if (dbg()) android.util.Log.d("DuoKey", "code=$code held=$held press=$press target=$target")
                 val ok = runCatching {
                     ShortcutActions.idOf(target)?.let { ShortcutActions.fire(applicationContext, it) }
@@ -166,6 +182,7 @@ class DuoLockService : AccessibilityService() {
         }
         // 跳到 com.agui.keyboard 的「键盘快捷方式」列表页：先对齐短按/长按 tab，再滚到该字母
         if (pkg == ShortcutManager.KEYBOARD_PACKAGE) {
+            trackShortcutTab(event)
             if (ShortcutManager.hasPendingShortcut()) {
                 shortcutRunnable?.let { captureHandler.removeCallbacks(it) }
                 val r = Runnable { revealShortcutList(0) }
@@ -176,6 +193,40 @@ class DuoLockService : AccessibilityService() {
             if (kbHint() != null && !kbPolling) {
                 kbPolling = true
                 pollKeyboardPage(18)
+            }
+        }
+    }
+
+    /**
+     * 跟住「键盘快捷方式」列表页停在哪个 tab。
+     *
+     * 这一页的短按 / 长按 tab 是自绘的，无障碍读不到 selected，只能靠"用户点了哪个"：
+     *  · 用户点 tab → 立刻记下（用户自己切档也必须认，否则整页条目会被归错）；
+     *  · 重新进入这一页（窗口状态变化）且距上次确认已过 10 秒 → 视为新一轮，
+     *    把上一轮的档位清掉，宁可不读也不写错。10 秒内不清是为了让"点条目选应用"
+     *    跳出去再回来这段往返仍然算同一次操作。
+     */
+    private fun trackShortcutTab(event: AccessibilityEvent) {
+        val now = SystemClock.uptimeMillis()
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                val text = buildString {
+                    event.text.forEach { append(it).append(' ') }
+                    event.contentDescription?.let { append(it) }
+                }
+                when {
+                    text.contains("短按") || text.contains("Short", true) -> {
+                        shortcutTabPress = "short"; shortcutTabPressAt = now
+                    }
+
+                    text.contains("长按") || text.contains("Long", true) -> {
+                        shortcutTabPress = "long"; shortcutTabPressAt = now
+                    }
+                }
+            }
+
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                if (now - shortcutTabPressAt > 10_000L) shortcutTabPress = null
             }
         }
     }
@@ -209,6 +260,7 @@ class DuoLockService : AccessibilityService() {
                 return
             }
             shortcutTabPress = if (wantLong) "long" else "short"
+            shortcutTabPressAt = SystemClock.uptimeMillis()
             tab.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             captureHandler.postDelayed({ revealShortcutList(attempt + 1) }, 450)
             return
@@ -421,18 +473,13 @@ class DuoLockService : AccessibilityService() {
     }
 
     /**
-     * 列表页的短按/长按提示：该页读不到选中态，只能用"刚才点过哪个 tab"。
+     * 列表页的短按/长按提示：该页读不到选中态，只能用"确实点过哪个 tab"。
      *
-     * 生效窗口是「本次跳转 5 分钟内」——点条目选应用、删绑定时活动窗口会短暂离开这个包，
-     * 不能一离开就清掉，否则回来只剩旧值。
+     * 只认 [shortcutTabPress]（由 tab 点击 / 跳转对齐时写入），**不再用 pending 去猜**：
+     * 2026-11-27 实测过猜错的后果——系统里全是长按绑定，缓存却整批记成短按，
+     * 设置页的「已配置」全错位。宁可这一轮不更新，也不能写错。
      */
-    private fun kbHint(): String? {
-        if (!ShortcutManager.hasPendingShortcut() &&
-            SystemClock.uptimeMillis() - ShortcutManager.pendingShortcutAt > 5 * 60_000L
-        ) return null
-        return shortcutTabPress
-            ?: ShortcutManager.pendingShortcutLong?.let { if (it) "long" else "short" }
-    }
+    private fun kbHint(): String? = shortcutTabPress
 
     /**
      * 「键盘快捷方式」列表页的兜底轮询。

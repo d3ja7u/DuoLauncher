@@ -527,4 +527,8 @@
     <string name="sys_letters_open">Open system key settings</string>
     <string name="letter_keys_footer">Cloned apps can be picked directly from the list. Configure function and side keys in System shortcut settings above.</string>
     <string name="letter_key_clear">Clear this binding</string>
+    <string name="letter_key_sys_item">%1$s: %2$s</string>
+    <string name="letter_key_sys_block">This key is also assigned in the system shortcut settings (%1$s). The system intercepts the key before it reaches the launcher, so the setting here has no effect.</string>
+    <string name="letter_key_sys_clear">Clear in system settings</string>
+    <string name="letter_keys_sys_shadowed">Keys marked in orange are also bound in the system settings, so the launcher binding does not take effect</string>
 </resources>

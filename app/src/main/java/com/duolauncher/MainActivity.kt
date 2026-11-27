@@ -49,8 +49,10 @@ import com.duolauncher.util.NetworkLabelResolver
 import com.duolauncher.util.UpdateChecker
 import com.duolauncher.util.WallpaperRotator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 /** pager 页语义标记：与主屏真实页序号（0..N-1）不冲突的负数 */
 private const val PAGER_SEARCH = -1
@@ -359,6 +361,36 @@ class MainActivity : ComponentActivity() {
             return if (at >= 0) at else 0
         }
         val pagerState = rememberPagerState(initialPage = toPagerPage(0)) { totalPages }
+
+        /**
+         * 触摸板 / 滚轮翻页后的吸附。
+         *
+         * 手指拖动有 fling + spring，Pager 自己会吸到整页；滚轮和笔记本式触摸板只按增量
+         * 平移、没有速度，Pager 不会吸附，于是停在两页中间——Q25 用户用触摸板左右滑，
+         * 屏幕上只出来半页（2026-11-27 反馈，触屏正常）。
+         *
+         * 这里在滚轮停手后补一次吸附：`currentPageOffsetFraction` 的正负就是滚动的方向
+         * （正向滚动时当前页被推向左，fraction 为正），按方向翻到相邻整页。
+         * 手指拖动期间 `isScrollInProgress` 为真，不插手。
+         */
+        LaunchedEffect(pagerState, totalPages) {
+            snapshotFlow {
+                Triple(
+                    pagerState.currentPage,
+                    pagerState.currentPageOffsetFraction,
+                    pagerState.isScrollInProgress
+                )
+            }.collectLatest { (_, frac, scrolling) ->
+                if (scrolling || abs(frac) < 0.02f || totalPages <= 1) return@collectLatest
+                delay(140)   // 连续滚轮事件之间不抢，停手后再吸
+                if (pagerState.isScrollInProgress) return@collectLatest
+                val f = pagerState.currentPageOffsetFraction
+                if (abs(f) < 0.02f) return@collectLatest
+                val target = (if (f > 0) pagerState.currentPage + 1 else pagerState.currentPage - 1)
+                    .coerceIn(0, totalPages - 1)
+                runCatching { pagerState.animateScrollToPage(target) }
+            }
+        }
 
         /**
          * 刚加到主屏的小组件：数据上它排在第一页第一个，但用户添加时往往停在别的页

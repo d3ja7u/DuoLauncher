@@ -527,4 +527,8 @@
     <string name="sys_letters_open">打开系统按键设置</string>
     <string name="letter_keys_footer">分身应用可直接在列表里选择；系统功能键与侧键请到上方「系统快捷键设置」里配置。</string>
     <string name="letter_key_clear">清除此绑定</string>
+    <string name="letter_key_sys_item">%1$s：%2$s</string>
+    <string name="letter_key_sys_block">这个键在系统按键设置里也占了（%1$s）。系统会先把按键吞掉，这里的设置不会生效。</string>
+    <string name="letter_key_sys_clear">去系统里清除</string>
+    <string name="letter_keys_sys_shadowed">带橙色标记的键，系统里也绑了同一个键，桌面这条暂时不生效</string>
 </resources>

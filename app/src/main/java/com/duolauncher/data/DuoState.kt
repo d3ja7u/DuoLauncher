@@ -485,11 +485,17 @@ object DuoState {
                     t.optString(k).takeIf { it.isNotBlank() }?.let { keyLetterApps[code.toString()] = it }
                 }
             }
-            // 系统字母快捷键只是页面抓取缓存，读档时也恢复，避免设置页每次都空白
+            // 系统字母快捷键只是页面抓取缓存，读档时也恢复，避免设置页每次都空白。
+            // ver < 2 的缓存不可信：老抓取逻辑在列表页拿不到 tab 档位，会把长按整批记成短按
+            // （2026-11-27 实测：系统里 20 个字母全是长按，缓存里全是 /short）。直接丢一次，
+            // 用户下次打开系统快捷键页就会按新逻辑重抓。
             systemLetterShortcuts.clear()
-            o.optJSONObject("sysLetters")?.let { t ->
-                t.keys().forEach { k ->
-                    t.optString(k).takeIf { it.isNotBlank() }?.let { systemLetterShortcuts[k] = it }
+            val sysVer = o.optInt("sysLettersVer", 0)
+            if (sysVer >= 2) {
+                o.optJSONObject("sysLetters")?.let { t ->
+                    t.keys().forEach { k ->
+                        t.optString(k).takeIf { it.isNotBlank() }?.let { systemLetterShortcuts[k] = it }
+                    }
                 }
             }
             gesturePanels = o.optBoolean("gsPanels", true)
@@ -706,6 +712,7 @@ object DuoState {
             val sysLetters = JSONObject()
             systemLetterShortcuts.forEach { (k, v) -> sysLetters.put(k, v) }
             o.put("sysLetters", sysLetters)
+            o.put("sysLettersVer", 2)
             o.put("gsPanels", gesturePanels)
             o.put("gsSearch", gestureSearch)
             o.put("iconScale", iconScale.toDouble())
