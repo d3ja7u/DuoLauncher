@@ -31,16 +31,38 @@ object ShortcutManager {
      * 超过 [REVEAL_TTL_MS] 自动作废，避免下次从别处打开系统页时莫名滚动。
      */
     @Volatile var pendingRevealLetter: Char? = null
+
+    /**
+     * 没有指定字母、但希望打开后直接落到字母键盘那一屏。
+     *
+     * 系统页顶部是标题 + 一块「已配置 N 颗按键」的设备示意图，键盘图在它下面。
+     * 从「打开系统快捷键设置」这类没有具体字母的入口进来时，把键盘图顶上去，
+     * 下面直接露出「按键设置」列表，省得每次都要手动滑一下。
+     */
+    @Volatile var pendingScrollKeyboard = false
+
     @Volatile var pendingRevealAt: Long = 0L
     const val REVEAL_TTL_MS = 8_000L
+
+    fun hasPendingReveal(): Boolean = pendingRevealLetter != null || pendingScrollKeyboard
+
+    fun clearPendingReveal() {
+        pendingRevealLetter = null
+        pendingScrollKeyboard = false
+    }
 
     fun hasSystemSupport(ctx: Context): Boolean = runCatching {
         ctx.packageManager.getPackageInfo(SYSTEM_PACKAGE, 0)
         true
     }.getOrDefault(false)
 
-    fun openSystemPage(ctx: Context, letter: Char? = null): Boolean {
+    fun openSystemPage(
+        ctx: Context,
+        letter: Char? = null,
+        scrollToKeyboard: Boolean = false
+    ): Boolean {
         pendingRevealLetter = letter
+        pendingScrollKeyboard = scrollToKeyboard || letter != null
         pendingRevealAt = android.os.SystemClock.uptimeMillis()
         val direct = runCatching {
             ctx.startActivity(

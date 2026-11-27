@@ -2509,7 +2509,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = {
-                        if (!ShortcutManager.openSystemPage(ctx)) {
+                        if (!ShortcutManager.openSystemPage(ctx, scrollToKeyboard = true)) {
                             nav.toast(Lang.s(R.string.shortcut_native_missing))
                         }
                     },
@@ -2581,7 +2581,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 }
                 TextButton(
                     onClick = {
-                        if (!ShortcutManager.openSystemPage(ctx)) {
+                        if (!ShortcutManager.openSystemPage(ctx, scrollToKeyboard = true)) {
                             nav.toast(Lang.s(R.string.shortcut_native_missing))
                         }
                     },

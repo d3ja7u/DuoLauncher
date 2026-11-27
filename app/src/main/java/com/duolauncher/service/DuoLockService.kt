@@ -151,7 +151,7 @@ class DuoLockService : AccessibilityService() {
         captureRunnable = runnable
         captureHandler.post(runnable)
         // 从启动器的红框格跳过来时，把页面滚到刚点的那个字母（多次事件只排一次）
-        if (pkg == ShortcutManager.SYSTEM_PACKAGE && ShortcutManager.pendingRevealLetter != null) {
+        if (pkg == ShortcutManager.SYSTEM_PACKAGE && ShortcutManager.hasPendingReveal()) {
             revealRunnable?.let { captureHandler.removeCallbacks(it) }
             val r = Runnable { revealPendingLetter(0) }
             revealRunnable = r
@@ -166,9 +166,9 @@ class DuoLockService : AccessibilityService() {
      * 先找节点，找不到就往上翻一屏再找；找到后若不在屏幕中部，用手势把它滑到中部。
      */
     private fun revealPendingLetter(attempt: Int) {
-        val letter = ShortcutManager.pendingRevealLetter ?: return
+        if (!ShortcutManager.hasPendingReveal()) return
         if (SystemClock.uptimeMillis() - ShortcutManager.pendingRevealAt > ShortcutManager.REVEAL_TTL_MS) {
-            ShortcutManager.pendingRevealLetter = null
+            ShortcutManager.clearPendingReveal()
             return
         }
         val root = runCatching { rootInActiveWindow }.getOrNull()
@@ -178,13 +178,16 @@ class DuoLockService : AccessibilityService() {
             return
         }
 
-        val node = findLetterCell(root, letter, 0)
+        val letter = ShortcutManager.pendingRevealLetter
+        // 没指定字母（从「打开系统快捷键设置」进来）就取键盘图上第一个字母格当锚点，
+        // 效果是把上面那块设备示意图顶出屏幕、键盘图落到上部
+        val node = if (letter != null) findLetterCell(root, letter, 0) else findFirstLetterCell(root, 0)
         if (node == null) {
             // 该字母所在的那一行还没铺出来，说明页面停在下半部分：往上翻一屏再试
             if (attempt < 3 && scrollBack(root)) {
                 captureHandler.postDelayed({ revealPendingLetter(attempt + 1) }, 320)
             } else if (attempt >= 3) {
-                ShortcutManager.pendingRevealLetter = null
+                ShortcutManager.clearPendingReveal()
             }
             return
         }
@@ -192,15 +195,28 @@ class DuoLockService : AccessibilityService() {
         val r = Rect().also { node.getBoundsInScreen(it) }
         val dm = resources.displayMetrics
         val mid = dm.heightPixels / 2f
-        // 目标：该字母落在屏幕上部三分之一，上面那块设备示意图让出去，下面露出按键设置
-        val aim = dm.heightPixels * 0.36f
+        // 目标：锚点字母落在屏幕上部三分之一，上面那块设备示意图让出去，下面露出按键设置
+        val aim = dm.heightPixels * if (letter != null) 0.36f else 0.30f
         val dy = r.centerY() - aim
-        ShortcutManager.pendingRevealLetter = null
-        if (kotlin.math.abs(dy) < dm.heightPixels * 0.10f) return // 已经在那儿了，不用动
+        ShortcutManager.clearPendingReveal()
+        if (letter != null && kotlin.math.abs(dy) < dm.heightPixels * 0.10f) return // 已经在那儿了
         val x = dm.widthPixels / 2f
         val target = (mid - dy).coerceIn(dm.heightPixels * 0.22f, dm.heightPixels * 0.78f)
         if (dbg()) android.util.Log.d("DuoReveal", "letter=$letter dy=$dy -> swipe $mid->$target")
         swipe(x, mid, target)
+    }
+
+    /** 键盘图上任意一个字母格（`Q，长按 xxx` / `A，未设置`），用来把键盘图整体带上来 */
+    private fun findFirstLetterCell(node: AccessibilityNodeInfo?, depth: Int): AccessibilityNodeInfo? {
+        if (node == null || depth > 20) return null
+        val desc = node.contentDescription?.toString()?.trim()
+        if (desc != null && desc.length >= 2 && (desc[1] == '，' || desc[1] == ',') &&
+            desc[0] in 'A'..'Z'
+        ) return node
+        for (i in 0 until node.childCount) {
+            findFirstLetterCell(node.getChild(i), depth + 1)?.let { return it }
+        }
+        return null
     }
 
     /** 在系统页窗口里找 `K，长按 xxx` 这类字母格 */
