@@ -101,8 +101,33 @@ object ShortcutManager {
         pendingShortcutLong = null
     }
 
-    fun openKeyboardShortcuts(ctx: Context, letter: Char?, long: Boolean): Boolean {
-        pendingShortcutLetter = letter
+    /**
+     * 打开真正能改「字母键」的那一页。
+     *
+     * `com.agui.shortcutsettings` 的入口页只有 Func1 / Func2 / Sym / Fn 这些物理功能键，
+     * 字母键全部在 `com.agui.keyboard` 的「键盘快捷方式」列表页里。设置页上那个
+     * 「打开系统快捷键设置」按钮原先跳的是前者，用户进去找不到字母键（2026-11-28 反馈）。
+     * 有这一页就优先去这一页，没有（Q25 / 雷火 M1 之类）再退回系统快捷键页。
+     */
+    fun openLetterShortcutPage(ctx: Context): Boolean {
+        val hasKeyboardPage = runCatching {
+            ctx.packageManager.getPackageInfo(KEYBOARD_PACKAGE, 0)
+        }.isSuccess
+        if (hasKeyboardPage) {
+            val ok = runCatching {
+                ctx.startActivity(
+                    Intent(Intent.ACTION_MAIN)
+                        .setComponent(ComponentName(KEYBOARD_PACKAGE, KEYBOARD_ENTRY))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                true
+            }.getOrDefault(false)
+            if (ok) return true
+        }
+        return openSystemPage(ctx, scrollToKeyboard = true)
+    }
+
+    fun openKeyboardShortcuts(ctx: Context, letter: Char?, long: Boolean): Boolean {        pendingShortcutLetter = letter
         pendingShortcutLong = long
         pendingShortcutAt = android.os.SystemClock.uptimeMillis()
         val ok = runCatching {

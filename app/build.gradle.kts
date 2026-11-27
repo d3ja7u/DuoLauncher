@@ -16,7 +16,7 @@ android {
         applicationId = "com.duolauncher"
         minSdk = 28
         targetSdk = 34
-        versionCode = 229
+        versionCode = 236
         versionName = "1.7.2"
     }
 

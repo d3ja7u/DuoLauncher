@@ -502,7 +502,8 @@ object DuoState {
             // 用户下次打开系统快捷键页就会按新逻辑重抓。
             systemLetterShortcuts.clear()
             val sysVer = o.optInt("sysLettersVer", 0)
-            if (sysVer >= 2) {
+            // v3：列表页改为「档位推断」后，旧缓存里可能把短按记成了长按（两档同值），整批丢掉重抓
+            if (sysVer >= 3) {
                 o.optJSONObject("sysLetters")?.let { t ->
                     t.keys().forEach { k ->
                         t.optString(k).takeIf { it.isNotBlank() }?.let { systemLetterShortcuts[k] = it }
@@ -725,7 +726,7 @@ object DuoState {
             val sysLetters = JSONObject()
             systemLetterShortcuts.forEach { (k, v) -> sysLetters.put(k, v) }
             o.put("sysLetters", sysLetters)
-            o.put("sysLettersVer", 2)
+            o.put("sysLettersVer", 3)
             o.put("gsPanels", gesturePanels)
             o.put("gsSearch", gestureSearch)
             o.put("iconScale", iconScale.toDouble())
