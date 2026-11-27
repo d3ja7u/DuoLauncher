@@ -21,7 +21,7 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
   <img src="screenshots/08-shortcut-keys.jpg" width="23%">
 </p>
 
-> All screenshots were taken on a Unihertz Titan 2 Elite (v1.6.1) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
+> All screenshots were taken on a Unihertz Titan 2 Elite (v1.7.0) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
 
 ---
 
@@ -242,6 +242,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.7.0 | Desktop letter shortcuts: assign an app or action to a letter key, with separate short-press and long-press bindings; letter shortcuts already configured in the system appear automatically and open the system settings. New "Lock layout". Update checks can use Gitee or GitHub with a configurable interval, and a new version shows a banner at the bottom of the home screen that opens the notes and download. Settings regrouped by category with better large-screen layouts. Smoother icon and widget moving, faster icon loading and page switching, lower power use. Android 17 support |
 | 1.6.1 | Tapping the music capsule opens a playback panel with progress dragging, favourite, previous / next and a lyrics entry, while a long press pauses or resumes; the panel can sit at the top, centre or bottom; the status bar clock and tri-status badge can be hidden independently; the search bar or the whole search page can be turned off, and the recent-apps count accepts 0 to hide the section; improved the capsule spectrum and album art loading and switching |
 | 1.6.0 | Long-press an empty area of the home screen to add apps or system widgets; icons and widgets can be placed freely, dragged into folders, or dragged to the screen edge to move to an adjacent screen; Manage Categories supports creating, renaming and deleting categories with restore; the App Library can be hidden in Settings; improved display on tablets and other large-screen devices |
 | 1.5.16 | Added a "backup sleep method" for double-tap-to-sleep with accessibility or device-admin schemes; improved how the desktop clock and tri-status badge choose black or white icons on dark wallpapers; fixed the backup method failing to enable and the accessibility prompt still appearing when it is enabled |
@@ -283,7 +284,7 @@ Version matrix:
 Release flow: bump `versionName` / `versionCode` in `app/build.gradle.kts` → commit → tag `v*` → **push source and tags to both GitHub and Gitee**, then create a Release and upload the same APK on each platform. Version numbers, release notes and assets stay identical on both.
 
 ```bash
-git tag v1.6.1
+git tag v1.7.0
 git push origin main --tags      # GitHub
 git push gitee main --tags       # Gitee
 ```
@@ -296,11 +297,11 @@ Long-press an empty home area → **Launcher Settings** → the **Updates** sect
 
 | Item | Details |
 |---|---|
-| Check for updates | Queries the update source immediately; shows current vs latest version, publish date and release notes. For a new release you can **download and install in place**, or open the download page / copy the APK link |
-| Auto-check for updates | Silently checks when Settings opens, throttled to once per 12 hours; no dialog, just a "new version available" hint on the settings row |
-| Update source | Editable; defaults to `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest` |
+| Check for updates | Queries the update source immediately; shows current vs latest version, publish date and release notes, with a single **Download and install** button |
+| Auto-check for updates | Silently checks when you return to the home screen, throttled to the configured interval (12 / 24 / 48 / 72 hours, 24 by default). When a new version is found, a persistent banner appears at the bottom of the home screen — tap it to read the notes and download; the "×" only dismisses it for this run |
+| Update source | Gitee or GitHub server, or a custom URL; defaults to `https://api.github.com/repos/d3ja7u/DuoLauncher/releases/latest` |
 
-**In-place update**: tapping *Download and install* fetches the APK into the app's private cache (`cache/updates/`), shows progress and lets you cancel. The package name is verified before the system installer is opened, where you confirm the install. On first use you must grant the *Install unknown apps* permission — the app opens the system settings page and resumes automatically when you return. Any download or install failure is reported with a reason, and *Open download page* remains a fallback. The APK never goes to shared storage, needs no storage permission, and is shared with the installer only through a temporary FileProvider grant. The system installer still verifies signing certificates, so a differently signed APK cannot replace the app. Nothing is downloaded or installed silently in the background; every step starts with a tap.
+**In-place update**: tapping *Download and install* fetches the APK into the app's private cache (`cache/updates/`), shows progress and lets you cancel. The package name is verified before the system installer is opened, where you confirm the install. On first use you must grant the *Install unknown apps* permission — the app opens the system settings page and resumes automatically when you return. Any download or install failure is reported with a reason and can be retried. The APK never goes to shared storage, needs no storage permission, and is shared with the installer only through a temporary FileProvider grant. The system installer still verifies signing certificates, so a differently signed APK cannot replace the app. Nothing is downloaded or installed silently in the background; every step starts with a tap.
 
 Accepted sources: a GitHub repo URL or `/releases` page (converted to the API automatically), an `api.github.com` Releases endpoint (single object or array), or a self-hosted mirror returning the same JSON (`tag_name` / `name` / `body` / `html_url` / `published_at` / `assets`).
 
