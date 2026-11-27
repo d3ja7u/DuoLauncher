@@ -1,7 +1,7 @@
 # v1.7.0 更新说明（齐老师定稿）
 
 > 发布时把下面两段原样作为 GitHub / Gitee Release 正文（中文在前，英文在后）。
-> 版本：`versionCode 220` / `versionName 1.7.0`。
+> 版本：`versionCode 221` / `versionName 1.7.0`（220 为首次发布，221 为设置分组修复后的替换包）。
 
 ## 更新说明
 
