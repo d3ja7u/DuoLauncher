@@ -729,6 +729,21 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, mainListS
                                 dark = dark
                             ) { DuoState.homeRows = it.toInt(); DuoState.save() }
                         }
+                        // 主屏自身的显示与操作：从「手势」分组搬过来的，它们作用于桌面本身，
+                        // 与图标行列同属一类；「手势」只留真正的全局手势。
+                        SettingToggle(
+                            Lang.s(R.string.show_sys_status),
+                            Lang.s(R.string.show_sys_status_desc),
+                            !DuoState.hideStatusBar, dark
+                        ) {
+                            DuoState.hideStatusBar = !it; DuoState.save()
+                            nav.toast(Lang.s(R.string.toast_restart_launcher))
+                        }
+                        SettingToggle(Lang.s(R.string.show_page_dots), null, DuoState.showPageDots, dark) { DuoState.showPageDots = it; DuoState.save() }
+                        SettingToggle(Lang.s(R.string.reverse_pages), Lang.s(R.string.reverse_pages_desc),
+                            DuoState.reversePages, dark) { DuoState.reversePages = it; DuoState.save() }
+                        SettingToggle(Lang.s(R.string.lock_layout), Lang.s(R.string.lock_layout_desc),
+                            DuoState.lockLayout, dark) { DuoState.lockLayout = it; DuoState.save() }
                         SettingRow(
                             Lang.s(R.string.batch_add_apps),
                             Lang.s(R.string.batch_add_apps_desc),
@@ -987,18 +1002,9 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, mainListS
         }
         if (group == "g_gesture") {
             item {
-                SectionTitle(Lang.s(R.string.sec_home_gesture), dark)
+                SectionTitle(Lang.s(R.string.sec_gesture), dark)
                 GlassCard(Modifier.fillMaxWidth().wrapContentHeight(), radius = 24.dp, level = 0.9f, dark = dark) {
                     Column(Modifier.padding(vertical = 6.dp)) {
-                        SettingToggle(Lang.s(R.string.show_sys_status), Lang.s(R.string.show_sys_status_desc),
-                            !DuoState.hideStatusBar, dark) {
-                            DuoState.hideStatusBar = !it; DuoState.save(); nav.toast(Lang.s(R.string.toast_restart_launcher))
-                        }
-                        SettingToggle(Lang.s(R.string.show_page_dots), null, DuoState.showPageDots, dark) { DuoState.showPageDots = it; DuoState.save() }
-                        SettingToggle(Lang.s(R.string.reverse_pages), Lang.s(R.string.reverse_pages_desc),
-                            DuoState.reversePages, dark) { DuoState.reversePages = it; DuoState.save() }
-                        SettingToggle(Lang.s(R.string.lock_layout), Lang.s(R.string.lock_layout_desc),
-                            DuoState.lockLayout, dark) { DuoState.lockLayout = it; DuoState.save() }
                         SettingToggle(
                             Lang.s(R.string.double_tap_lock),
                             when {

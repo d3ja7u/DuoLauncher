@@ -115,7 +115,7 @@
     <string name="grp_usage">使い方</string>
     <!-- 設定サブメニュー：大分類 -->
     <string name="grp_home">ホーム画面</string>
-    <string name="grp_home_desc">グリッド、一括追加・削除、アプリライブラリとバッジ</string>
+    <string name="grp_home_desc">グリッド、ステータスバーとページドット、スワイプ方向とレイアウト固定、一括追加・削除、アプリライブラリとバッジ</string>
     <string name="grp_sidebar">サイドバー</string>
     <string name="grp_sidebar_desc">表示と位置、項目の編集、ガラス濃度とアイコンサイズ</string>
     <string name="grp_status">ステータスバー</string>
@@ -194,7 +194,7 @@
     <string name="status_scale">ステータスバーのサイズ</string>
     <string name="live_status">現在の状態</string>
     <string name="status_no_network">ネットワークなし</string>
-    <string name="sec_home_gesture">ホーム画面とジェスチャー</string>
+    <string name="sec_gesture">ジェスチャー</string>
     <string name="show_sys_status">Android のステータスバーを表示</string>
     <string name="show_sys_status_desc">既定はオフ。オンにするとカスタムバーと重なります</string>
     <string name="toast_restart_launcher">ランチャー再起動後に完全に反映されます</string>

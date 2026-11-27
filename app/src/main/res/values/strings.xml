@@ -115,7 +115,7 @@
     <string name="grp_usage">用法</string>
     <!-- 设置二级菜单：一级分类 -->
     <string name="grp_home">主屏幕</string>
-    <string name="grp_home_desc">图标行列、批量添加或清除、App 资源库与角标</string>
+    <string name="grp_home_desc">图标行列、状态栏与页面点、滑页方向与布局锁定、批量添加或清除、App 资源库与角标</string>
     <string name="grp_sidebar">侧边栏</string>
     <string name="grp_sidebar_desc">显示与位置、条目编辑、玻璃浓度与图标大小</string>
     <string name="grp_status">状态栏</string>
@@ -194,7 +194,7 @@
     <string name="status_scale">状态栏大小</string>
     <string name="live_status">实时状态</string>
     <string name="status_no_network">无网络</string>
-    <string name="sec_home_gesture">主屏幕与手势</string>
+    <string name="sec_gesture">手势</string>
     <string name="show_sys_status">显示安卓原生状态栏</string>
     <string name="show_sys_status_desc">默认关闭；开启会与自定义状态栏叠加</string>
     <string name="toast_restart_launcher">重启启动器后完全生效</string>

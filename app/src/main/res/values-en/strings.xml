@@ -115,7 +115,7 @@
     <string name="grp_usage">Usage</string>
     <!-- Settings submenu: top-level groups -->
     <string name="grp_home">Home screen</string>
-    <string name="grp_home_desc">Grid, batch add or remove, app library and badges</string>
+    <string name="grp_home_desc">Grid, status bar and page dots, swipe direction and layout lock, batch add or remove, app library and badges</string>
     <string name="grp_sidebar">Sidebar</string>
     <string name="grp_sidebar_desc">Visibility, position, items, glass and icon size</string>
     <string name="grp_status">Status bar</string>
@@ -194,7 +194,7 @@
     <string name="status_scale">Status bar size</string>
     <string name="live_status">Live status</string>
     <string name="status_no_network">No network</string>
-    <string name="sec_home_gesture">Home Screen &amp; Gestures</string>
+    <string name="sec_gesture">Gestures</string>
     <string name="show_sys_status">Show Android status bar</string>
     <string name="show_sys_status_desc">Off by default; enabling it overlays the custom bar</string>
     <string name="toast_restart_launcher">Takes full effect after restarting the launcher</string>
