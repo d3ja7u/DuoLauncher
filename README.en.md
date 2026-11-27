@@ -21,7 +21,7 @@ This is not a theme or an icon pack — it is a complete launcher (`android.inte
   <img src="screenshots/08-shortcut-keys.jpg" width="23%">
 </p>
 
-> All screenshots were taken on a Unihertz Titan 2 Elite (v1.7.0) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
+> All screenshots were taken on a Unihertz Titan 2 Elite (v1.7.1) and show the Chinese UI. The interface language follows the device or can be changed in Settings → System → Language.
 
 ---
 
