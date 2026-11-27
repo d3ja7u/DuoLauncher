@@ -14,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -2562,7 +2563,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 val sysMap = DuoState.systemLetterShortcuts.entries
                     .filter { it.key.endsWith("/$sysPress") }
                     .associate { it.key.substringBefore('/') to it.value }
-                LetterKeyGrid(dark = dark, map = map, sysMap = sysMap) { editing = it to press }
+                LetterKeyGrid(dark = dark, nav = nav, map = map, sysMap = sysMap) { editing = it to press }
 
                 Spacer(Modifier.height(10.dp))
                 if (sysMap.isEmpty()) {
@@ -2622,21 +2623,26 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
 }
 
 /**
- * A–Z + 0–9 的字母键网格。
+ * A–Z 的字母键网格（数字行已去掉，见 [LetterKeys.CODES]）。
  *
- * 格子里的内容按优先级：
- *  ① 桌面快捷键（本页设置的应用 / 系统动作）—— 蓝底；
- *  ② 系统设置里配的字母键 —— 蓝框，显示对应应用图标或名称；
+ * 格子里的内容按来源区分：
+ *  ① 启动器里设置的快捷键（应用 / 系统动作）—— **蓝框**，点一下改绑；
+ *  ② 只在系统按键设置里配的 —— **红框**，点一下直接跳到系统按键页去改，
+ *     长按仍可给这个键补一个启动器快捷键；
  *  ③ 都没设 —— 只显示字母。
- * 两种都设了时，桌面图标为主，右上角一个小蓝点提示系统里也绑了。
+ * 两种都设了时，桌面绑定为主，右上角一个红点提示系统里也绑了。
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun LetterKeyGrid(
     dark: Boolean,
+    nav: Nav,
     map: Map<String, String>,
     sysMap: Map<String, String>,
     onPick: (Int) -> Unit
 ) {
+    val ctx = LocalContext.current
+    val sysRed = Color(0xFFFF3B30)
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         LetterKeys.CODES.chunked(7).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2652,24 +2658,33 @@ private fun LetterKeyGrid(
                         DuoState.apps.firstOrNull { it.label.equals(title, ignoreCase = true) }
                     }
                     val systemOnly = target == null && sysTitle != null
+                    val boxBorder = when {
+                        target != null -> 1.dp to glassBlue.copy(alpha = 0.70f)
+                        sysTitle != null -> 1.5.dp to sysRed.copy(alpha = 0.75f)
+                        else -> 1.dp to Color.Transparent
+                    }
                     Box(
                         Modifier.weight(1f).height(52.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(
                                 when {
                                     target != null -> glassBlue.copy(alpha = 0.20f)
-                                    sysTitle != null -> glassBlue.copy(alpha = 0.10f)
+                                    sysTitle != null -> sysRed.copy(alpha = 0.12f)
                                     else -> glassSubTextColor(dark).copy(alpha = 0.10f)
                                 }
                             )
-                            .then(
-                                if (systemOnly)
-                                    Modifier.border(
-                                        1.dp, glassBlue.copy(alpha = 0.45f), RoundedCornerShape(12.dp)
-                                    )
-                                else Modifier
-                            )
-                            .clickable { onPick(code) },
+                            .border(boxBorder.first, boxBorder.second, RoundedCornerShape(12.dp))
+                            .combinedClickable(
+                                onClick = {
+                                    // 只有系统里配的键：点一下直接去系统页改，不在启动器里另开一套
+                                    if (systemOnly) {
+                                        if (!ShortcutManager.openSystemPage(ctx)) {
+                                            nav.toast(Lang.s(R.string.shortcut_native_missing))
+                                        }
+                                    } else onPick(code)
+                                },
+                                onLongClick = { if (systemOnly) onPick(code) else Unit }
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
                         when {
@@ -2694,14 +2709,14 @@ private fun LetterKeyGrid(
                                     rememberDrawablePainter(rememberAppIcon(sysApp)), null,
                                     Modifier.size(20.dp).clip(squircle(20))
                                 )
-                                Text(label, fontSize = 9.sp, color = glassBlue)
+                                Text(label, fontSize = 9.sp, color = sysRed)
                             }
 
                             sysTitle != null -> Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier.padding(horizontal = 2.dp)
                             ) {
-                                Text(label, fontSize = 11.sp, color = glassBlue)
+                                Text(label, fontSize = 11.sp, color = sysRed)
                                 Text(
                                     sysTitle, fontSize = 7.sp, color = glassSubTextColor(dark),
                                     maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -2710,11 +2725,11 @@ private fun LetterKeyGrid(
 
                             else -> Text(label, fontSize = 14.sp, color = glassSubTextColor(dark))
                         }
-                        // 系统里也绑了同一个键：角标提示，不抢桌面绑定的位置
+                        // 系统里也绑了同一个键：红点提示（桌面这条优先执行，蓝框仍是桌面绑定）
                         if (target != null && sysTitle != null) {
                             Box(
                                 Modifier.align(Alignment.TopEnd).padding(4.dp).size(4.dp)
-                                    .clip(CircleShape).background(glassBlue)
+                                    .clip(CircleShape).background(sysRed)
                             )
                         }
                     }

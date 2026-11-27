@@ -496,9 +496,19 @@ fun HomePage(
         fun updateDrag(token: String, d: Offset) {
             dragDelta += d
             dragFinger += d
-            // 手指进了右侧「新页面」框：这一次落位不算格子里，腾出来建新页
+            // 手指进了右侧「新页面」框：这一次落位不算格子里，腾出来建新页。
+            // 框现在贴在屏幕右侧外面，判定也改用**和落格完全相同的锚点**
+            // （条目左上角 + 半格）：手指还停在最后一列时锚点仍在网格内，
+            // 两者天然互斥，不会出现「想放到最右一列却被判成新建一页」。
+            val dropAnchor = if (cellWpx > 0f && rowPitchPx > 0f)
+                dragFromRect.topLeft + dragDelta +
+                    Offset(cellWpx * 0.35f, rowPitchPx * 0.35f)
+            else dragFinger
             newPageArmed = onLastHomePage && newPageRect != Rect.Zero &&
-                    newPageRect.contains(dragFinger)
+                    dropAnchor.y >= newPageRect.top && dropAnchor.y <= newPageRect.bottom &&
+                    // 只判左边界：框右边就是屏幕外，拖得再远也算「拖到外面」，
+                    // 否则手指一冲过框右边就又变回落格，反而更难新开一页
+                    dropAnchor.x >= newPageRect.left
             hoverCell = if (newPageArmed) null else cellForDrop(token)
             trackEdge(dragFinger.x)
             dropRemoveArmed = !newPageArmed && dropRemoveRect != Rect.Zero &&
@@ -948,16 +958,20 @@ fun HomePage(
                 }
 
                 // 最后一页拖动时，右侧露出「新页面」框：拖进去松手就新开一页。
-                // 比"贴边停一会儿等它翻页"直观得多，也不用先猜能不能新建。
+                // 框贴在屏幕**外面**只露一条边——以前贴在里面，正好压住最后一列图标，
+                // 想把图标放到最右一列时永远被它抢走（齐老师 2026-11-27 反馈）。
                 if (dragToken != null && onLastHomePage) {
-                    // 命中区向左放宽一格的一半：窄条本身太细，手指很难恰好停在框里；
-                    // 松手位置仍在最后一列时不算新页（见 finishDrag 的 cell 判定）。
-                    val hitPad = with(LocalDensity.current) { 30.dp.toPx() }
+                    // 命中区只往外扩一点点：框本身已经露出十几 dp，
+                    // 再往左放宽就会吃掉最后一列。
+                    val hitPad = with(LocalDensity.current) { 10.dp.toPx() }
                     NewPageTarget(
                         armed = newPageArmed,
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
                             .padding(vertical = 6.dp)
+                            // 框宽 34dp、再往右推 34dp：整块贴到网格右边界外面，
+                            // 一个像素都不压最后一列（以前压住整列，图标拖不过去）
+                            .offset(x = 34.dp)
                             .onGloballyPositioned {
                                 val r = it.boundsInRoot()
                                 newPageRect = Rect(r.left - hitPad, r.top, r.right, r.bottom)
@@ -1473,42 +1487,31 @@ private fun DropHighlight(
 }
 
 /**
- * 最后一页拖动时的「新页面」投放框（右侧竖条）。
- * 手指进去就加宽高亮，松手新建一页并把条目放进去——比贴边等待翻页直接。
+ * 最后一页拖动时的「新页面」投放框。
+ *
+ * 竖条贴在网格右边界**外面**（侧栏通道里），一点不压最后一列图标；
+ * 条目拖过网格右边界再往右，框会加亮，松手就新建一页放进去。
  */
 @Composable
 private fun NewPageTarget(armed: Boolean, modifier: Modifier) {
-    val w by androidx.compose.animation.core.animateDpAsState(
-        targetValue = if (armed) 68.dp else 46.dp,
-        animationSpec = tween(160),
-        label = "newPageW"
-    )
-    Column(
+    Box(
         modifier
-            .width(w)
+            .width(34.dp)
             .fillMaxHeight()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = if (armed) 0.26f else 0.11f))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = if (armed) 0.30f else 0.13f))
             .border(
-                if (armed) 2.dp else 1.5.dp,
-                Color.White.copy(alpha = if (armed) 0.88f else 0.45f),
-                RoundedCornerShape(20.dp)
+                if (armed) 2.dp else 1.dp,
+                Color.White.copy(alpha = if (armed) 0.90f else 0.50f),
+                RoundedCornerShape(16.dp)
             ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        // 内容靠左：可见的只有屏幕边上的那一条，居中的加号会被推到屏幕外面
+        contentAlignment = Alignment.CenterStart
     ) {
         Icon(
             Icons.Filled.Add, null,
-            tint = Color.White.copy(alpha = if (armed) 1f else 0.8f),
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            Lang.s(R.string.new_page),
-            color = Color.White.copy(alpha = if (armed) 1f else 0.85f),
-            fontSize = 11.sp,
-            lineHeight = 14.sp,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            tint = Color.White.copy(alpha = if (armed) 1f else 0.85f),
+            modifier = Modifier.padding(start = 3.dp).size(16.dp)
         )
     }
 }
