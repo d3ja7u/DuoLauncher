@@ -2833,56 +2833,62 @@ private fun LetterKeyDialog(
         R.string.shortcut_short_press else R.string.shortcut_long_press)
 
     DuoDialog(Lang.s(R.string.letter_keys_pick_title, label, pressLabel), dark, onDismiss) {
-        // 系统里占了这个键：先说清楚，否则选完发现没反应，只会以为功能坏了
-        if (sysBindings.isNotEmpty()) {
-            val sysDesc = listOf("short", "long", "double").mapNotNull { k ->
-                sysBindings[k]?.let { title ->
-                    Lang.s(
-                        R.string.letter_key_sys_item,
-                        Lang.s(
-                            when (k) {
-                                "short" -> R.string.shortcut_short_press
-                                "long" -> R.string.shortcut_long_press
-                                else -> R.string.shortcut_double_press
-                            }
-                        ),
-                        title
-                    )
-                }
-            }.joinToString("、")
-            Column(
-                Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFFFB454).copy(alpha = 0.14f))
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    Lang.s(R.string.letter_key_sys_block, sysDesc),
-                    fontSize = 12.sp, color = Color(0xFFFFB454)
-                )
-                TextButton(
-                    onClick = {
-                        val ok = ShortcutManager.openKeyboardShortcuts(
-                            ctx, label.firstOrNull(), sysBindings.containsKey("long")
-                        )
-                        if (!ok) nav.toast(Lang.s(R.string.shortcut_native_missing))
-                    },
-                    modifier = Modifier.padding(top = 2.dp)
-                ) { Text(Lang.s(R.string.letter_key_sys_clear), fontSize = 12.sp) }
-            }
-        }
-        if (current != null) {
-            TextButton(onClick = {
-                LetterKeys.clear(code, press)
-                nav.toast(Lang.s(R.string.letter_keys_cleared, label))
-                onPicked()
-            }) { Text(Lang.s(R.string.letter_key_clear), color = Color(0xFFFF6B6B), fontSize = 13.sp) }
-            Spacer(Modifier.height(6.dp))
-        }
+        // 整块内容统一滚动：带橙色提示的弹窗比平时高一大截，原来只给列表区限高，
+        // 结果「去系统里清除」「取消」被挤出可点范围——点了只关弹窗、不跳转
+        // （2026-11-27 齐老师反馈）。现在所有内容一起滚，任何一项都拿得到正常高度。
         Column(
-            Modifier.heightIn(max = (screenH.dp - 260.dp).coerceAtLeast(180.dp))
+            Modifier.fillMaxWidth()
+                .heightIn(max = (screenH.dp * 0.64f).coerceAtLeast(200.dp))
                 .verticalScroll(rememberScrollState())
         ) {
+            // 系统里占了这个键：先说清楚，否则选完发现没反应，只会以为功能坏了
+            if (sysBindings.isNotEmpty()) {
+                val sysDesc = listOf("short", "long", "double").mapNotNull { k ->
+                    sysBindings[k]?.let { title ->
+                        Lang.s(
+                            R.string.letter_key_sys_item,
+                            Lang.s(
+                                when (k) {
+                                    "short" -> R.string.shortcut_short_press
+                                    "long" -> R.string.shortcut_long_press
+                                    else -> R.string.shortcut_double_press
+                                }
+                            ),
+                            title
+                        )
+                    }
+                }.joinToString("、")
+                Column(
+                    Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFFFB454).copy(alpha = 0.14f))
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        Lang.s(R.string.letter_key_sys_block, sysDesc),
+                        fontSize = 12.sp, color = Color(0xFFFFB454)
+                    )
+                    TextButton(
+                        onClick = {
+                            android.util.Log.d("DuoSysKeys", "sys-clear tap letter=$label long=${sysBindings.containsKey("long")}")
+                            val ok = ShortcutManager.openKeyboardShortcuts(
+                                ctx, label.firstOrNull(), sysBindings.containsKey("long")
+                            )
+                            android.util.Log.d("DuoSysKeys", "sys-clear open ok=$ok")
+                            if (!ok) nav.toast(Lang.s(R.string.shortcut_native_missing))
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                    ) { Text(Lang.s(R.string.letter_key_sys_clear), fontSize = 13.sp) }
+                }
+            }
+            if (current != null) {
+                TextButton(onClick = {
+                    LetterKeys.clear(code, press)
+                    nav.toast(Lang.s(R.string.letter_keys_cleared, label))
+                    onPicked()
+                }) { Text(Lang.s(R.string.letter_key_clear), color = Color(0xFFFF6B6B), fontSize = 13.sp) }
+                Spacer(Modifier.height(6.dp))
+            }
             // 系统动作（无权限要求的一组）
             SectionTitle(Lang.s(R.string.letter_actions_title), dark)
             ShortcutActions.ALL.forEach { action ->
