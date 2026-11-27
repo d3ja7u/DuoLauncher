@@ -242,6 +242,7 @@ Version matrix:
 
 | Version | Changes |
 |---|---|
+| 1.7.2 | Long-press a home screen widget to resize it by columns and rows; new "Sidebar icon spacing" in Settings → Sidebar; fixed the home screen shifting by one page after turning off "Show search page", which left the first page blank, put newly added widgets on the second page and made it impossible to swipe back; fixed widgets not showing after being moved to another home screen page; fixed the "Key settings" entry not showing on some full-keyboard devices |
 | 1.7.1 | Fixed the input box still receiving letters after opening an app with a letter shortcut; fixed the home screen stopping between two pages when switching with a trackpad on some devices; letter keys already used by system shortcuts are now marked in orange with a shortcut to clear them in the system settings. Android 17 support, smoother icon and widget moving, faster icon loading and page switching, lower power use |
 | 1.7.0 | Desktop letter shortcuts: assign an app or action to a letter key, with separate short-press and long-press bindings; letter shortcuts already configured in the system appear automatically and open the system settings. New "Lock layout". Update checks can use Gitee or GitHub with a configurable interval, and a new version shows a banner at the bottom of the home screen that opens the notes and download. Settings regrouped by category with better large-screen layouts. Smoother icon and widget moving, faster icon loading and page switching, lower power use. Android 17 support |
 | 1.6.1 | Tapping the music capsule opens a playback panel with progress dragging, favourite, previous / next and a lyrics entry, while a long press pauses or resumes; the panel can sit at the top, centre or bottom; the status bar clock and tri-status badge can be hidden independently; the search bar or the whole search page can be turned off, and the recent-apps count accepts 0 to hide the section; improved the capsule spectrum and album art loading and switching |
@@ -285,7 +286,7 @@ Version matrix:
 Release flow: bump `versionName` / `versionCode` in `app/build.gradle.kts` → commit → tag `v*` → **push source and tags to both GitHub and Gitee**, then create a Release and upload the same APK on each platform. Version numbers, release notes and assets stay identical on both.
 
 ```bash
-git tag v1.7.1
+git tag v1.7.2
 git push origin main --tags      # GitHub
 git push gitee main --tags       # Gitee
 ```
