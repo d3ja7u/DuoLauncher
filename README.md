@@ -17,6 +17,8 @@
   <img src="screenshots/04-library-list.jpg" width="23%">
   <img src="screenshots/05-player-panel.jpg" width="23%">
   <img src="screenshots/06-player-lyrics.jpg" width="23%">
+  <img src="screenshots/07-settings.jpg" width="23%">
+  <img src="screenshots/08-shortcut-keys.jpg" width="23%">
 </p>
 
 > 截图均为 Unihertz Titan 2 Elite 实机运行截图（v1.6.1），展示的是中文界面；界面语言会跟随设备，也可在「设置 → 系统 → 语言」里手动切换。
