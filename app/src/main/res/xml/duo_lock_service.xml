@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  本服务只用三件事：
+  本服务只用四件事：
   ① onKeyEvent 过滤按键（靠 flagRequestFilterKeyEvents + canRequestFilterKeyEvents，与事件类型无关）；
   ② performGlobalAction 执行息屏 / 下拉面板；
-  ③ 读系统快捷键页上的字母键绑定（只读展示）。
+  ③ 读系统快捷键页上的字母键绑定（只读展示）；
+  ④ 从红框格跳到系统页后，把页面滚到刚才点的那个字母（dispatchGesture，需要 canPerformGestures）。
 
   ③ 需要窗口事件，但监听范围由代码（DuoLockService.applyCaptureConfig）限定成
   com.agui.shortcutsettings / com.agui.keyboard 两个包的窗口变化 —— 包过滤在系统侧完成，
@@ -11,7 +12,8 @@
   不要改回「全量监听」，也不要退回「只在设置页临时开、离开就关」：
   用户在系统设置里改完字母键不会再回启动器设置页，那样读不到新绑定。
 
-  flagRetrieveInteractiveWindows / canRetrieveWindowContent 必须在 XML 里声明才能生效。
+  flagRetrieveInteractiveWindows / canRetrieveWindowContent / canPerformGestures
+  必须在 XML 里声明才能生效（少了 canPerformGestures，dispatchGesture 会静默失败）。
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/duo_lock_desc"
@@ -19,4 +21,5 @@
     android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
     android:notificationTimeout="1000"
     android:canRequestFilterKeyEvents="true"
-    android:canRetrieveWindowContent="true" />
+    android:canRetrieveWindowContent="true"
+    android:canPerformGestures="true" />

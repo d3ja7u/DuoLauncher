@@ -23,12 +23,25 @@ object ShortcutManager {
     private const val SYSTEM_ENTRY = "com.agui.shortcutsettings.ui.EntryAppActivity"
     const val NOOP_ACTIVITY = "NoOperate"
 
+    /**
+     * 从启动器跳过去时要定位到的字母键。
+     *
+     * 系统页只接受一个无参 Intent，没法指定「打开后停在哪个键」，所以跳转前先把字母记下来，
+     * 由无障碍服务在系统页出现后自己滚过去（见 `DuoLockService.revealPendingLetter`）。
+     * 超过 [REVEAL_TTL_MS] 自动作废，避免下次从别处打开系统页时莫名滚动。
+     */
+    @Volatile var pendingRevealLetter: Char? = null
+    @Volatile var pendingRevealAt: Long = 0L
+    const val REVEAL_TTL_MS = 8_000L
+
     fun hasSystemSupport(ctx: Context): Boolean = runCatching {
         ctx.packageManager.getPackageInfo(SYSTEM_PACKAGE, 0)
         true
     }.getOrDefault(false)
 
-    fun openSystemPage(ctx: Context): Boolean {
+    fun openSystemPage(ctx: Context, letter: Char? = null): Boolean {
+        pendingRevealLetter = letter
+        pendingRevealAt = android.os.SystemClock.uptimeMillis()
         val direct = runCatching {
             ctx.startActivity(
                 Intent().setComponent(ComponentName(SYSTEM_PACKAGE, SYSTEM_ENTRY))

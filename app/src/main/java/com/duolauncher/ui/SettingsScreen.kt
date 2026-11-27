@@ -2676,9 +2676,9 @@ private fun LetterKeyGrid(
                             .border(boxBorder.first, boxBorder.second, RoundedCornerShape(12.dp))
                             .combinedClickable(
                                 onClick = {
-                                    // 只有系统里配的键：点一下直接去系统页改，不在启动器里另开一套
+                                    // 只有系统里配的键：点一下直接去系统页改，并让页面滚到这个字母
                                     if (systemOnly) {
-                                        if (!ShortcutManager.openSystemPage(ctx)) {
+                                        if (!ShortcutManager.openSystemPage(ctx, label.firstOrNull())) {
                                             nav.toast(Lang.s(R.string.shortcut_native_missing))
                                         }
                                     } else onPick(code)

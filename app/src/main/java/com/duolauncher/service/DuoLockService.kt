@@ -1,8 +1,12 @@
 package com.duolauncher.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.accessibilityservice.GestureDescription
 import android.content.ComponentName
 import android.content.Context
+import android.graphics.Path
+import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -10,10 +14,10 @@ import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.provider.Settings
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
 import com.duolauncher.data.AppRepository
 import com.duolauncher.data.DuoState
 import com.duolauncher.util.LetterKeys
@@ -46,6 +50,8 @@ class DuoLockService : AccessibilityService() {
      */
     private val captureHandler = Handler(Looper.getMainLooper())
     private var captureRunnable: Runnable? = null
+    /** 跳转后「滚到该字母」的排队任务，多个窗口事件只留最后一个 */
+    private var revealRunnable: Runnable? = null
 
     private fun dbg(): Boolean =
         (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -144,6 +150,91 @@ class DuoLockService : AccessibilityService() {
         val runnable = Runnable { captureNow(0) }
         captureRunnable = runnable
         captureHandler.post(runnable)
+        // 从启动器的红框格跳过来时，把页面滚到刚点的那个字母（多次事件只排一次）
+        if (pkg == ShortcutManager.SYSTEM_PACKAGE && ShortcutManager.pendingRevealLetter != null) {
+            revealRunnable?.let { captureHandler.removeCallbacks(it) }
+            val r = Runnable { revealPendingLetter(0) }
+            revealRunnable = r
+            captureHandler.postDelayed(r, 700)
+        }
+    }
+
+    /**
+     * 把系统页滚到刚才点的那个字母。
+     *
+     * 系统页能记住上次的滚动位置，从启动器跳过来时可能停在下半部分（字母键盘已经滑出屏幕）。
+     * 先找节点，找不到就往上翻一屏再找；找到后若不在屏幕中部，用手势把它滑到中部。
+     */
+    private fun revealPendingLetter(attempt: Int) {
+        val letter = ShortcutManager.pendingRevealLetter ?: return
+        if (SystemClock.uptimeMillis() - ShortcutManager.pendingRevealAt > ShortcutManager.REVEAL_TTL_MS) {
+            ShortcutManager.pendingRevealLetter = null
+            return
+        }
+        val root = runCatching { rootInActiveWindow }.getOrNull()
+        // 系统页可能还在启动动画里，等一会儿再试
+        if (root == null || root.packageName?.toString() != ShortcutManager.SYSTEM_PACKAGE) {
+            if (attempt < 4) captureHandler.postDelayed({ revealPendingLetter(attempt + 1) }, 400)
+            return
+        }
+
+        val node = findLetterCell(root, letter, 0)
+        if (node == null) {
+            // 该字母所在的那一行还没铺出来，说明页面停在下半部分：往上翻一屏再试
+            if (attempt < 3 && scrollBack(root)) {
+                captureHandler.postDelayed({ revealPendingLetter(attempt + 1) }, 320)
+            } else if (attempt >= 3) {
+                ShortcutManager.pendingRevealLetter = null
+            }
+            return
+        }
+
+        val r = Rect().also { node.getBoundsInScreen(it) }
+        val dm = resources.displayMetrics
+        val mid = dm.heightPixels / 2f
+        // 目标：该字母落在屏幕上部三分之一，上面那块设备示意图让出去，下面露出按键设置
+        val aim = dm.heightPixels * 0.36f
+        val dy = r.centerY() - aim
+        ShortcutManager.pendingRevealLetter = null
+        if (kotlin.math.abs(dy) < dm.heightPixels * 0.10f) return // 已经在那儿了，不用动
+        val x = dm.widthPixels / 2f
+        val target = (mid - dy).coerceIn(dm.heightPixels * 0.22f, dm.heightPixels * 0.78f)
+        if (dbg()) android.util.Log.d("DuoReveal", "letter=$letter dy=$dy -> swipe $mid->$target")
+        swipe(x, mid, target)
+    }
+
+    /** 在系统页窗口里找 `K，长按 xxx` 这类字母格 */
+    private fun findLetterCell(node: AccessibilityNodeInfo?, letter: Char, depth: Int): AccessibilityNodeInfo? {
+        if (node == null || depth > 20) return null
+        val desc = node.contentDescription?.toString()?.trim()
+        if (desc != null && desc.length >= 2 &&
+            desc[0].equals(letter, ignoreCase = true) && (desc[1] == '，' || desc[1] == ',')
+        ) return node
+        for (i in 0 until node.childCount) {
+            findLetterCell(node.getChild(i), letter, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    /** 让页面往上翻一屏；返回 false 表示已经到顶或者找不到可滚动容器 */
+    private fun scrollBack(node: AccessibilityNodeInfo?, depth: Int = 0): Boolean {
+        if (node == null || depth > 20) return false
+        if (node.isScrollable) {
+            val ok = node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            if (ok) return true
+        }
+        for (i in 0 until node.childCount) {
+            if (scrollBack(node.getChild(i), depth + 1)) return true
+        }
+        return false
+    }
+
+    private fun swipe(x: Float, y0: Float, y1: Float) {
+        runCatching {
+            val path = Path().apply { moveTo(x, y0); lineTo(x, y1) }
+            val stroke = GestureDescription.StrokeDescription(path, 0L, 550L)
+            dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+        }
     }
 
     /**
