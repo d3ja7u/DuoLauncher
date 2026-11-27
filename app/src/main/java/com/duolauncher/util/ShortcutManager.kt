@@ -56,6 +56,53 @@ object ShortcutManager {
         true
     }.getOrDefault(false)
 
+    // ─────────────────── 「键盘快捷方式」列表页 ───────────────────
+
+    /**
+     * com.agui.keyboard 的 MainActivity 就是系统里那张「键盘快捷方式」列表页
+     * （`按键A, 未设置` / `按键C, 启动秒表`，上面对应短按 / 长按两个 tab）。
+     *
+     * 它不带参数启动就直接落在列表页，所以从红框格跳过去最省事：改绑定、删绑定
+     * 都是在这一页完成的，比先到键盘图页再点一下更直接。
+     */
+    const val KEYBOARD_PACKAGE = "com.agui.keyboard"
+    private const val KEYBOARD_ENTRY = "com.agui.keyboard.MainActivity"
+
+    /** 跳过去之后要定位到的字母；null 表示不用定位 */
+    @Volatile var pendingShortcutLetter: Char? = null
+
+    /**
+     * 要切到的 tab：true = 长按，false = 短按。
+     * 服务处理完一次就置 null（表示"tab 已对齐"），[hasPendingShortcut] 靠字母维持。
+     */
+    @Volatile var pendingShortcutLong: Boolean? = null
+
+    @Volatile var pendingShortcutAt: Long = 0L
+    const val SHORTCUT_TTL_MS = 8_000L
+
+    fun hasPendingShortcut(): Boolean = pendingShortcutLetter != null || pendingShortcutLong != null
+
+    fun clearPendingShortcut() {
+        pendingShortcutLetter = null
+        pendingShortcutLong = null
+    }
+
+    fun openKeyboardShortcuts(ctx: Context, letter: Char?, long: Boolean): Boolean {
+        pendingShortcutLetter = letter
+        pendingShortcutLong = long
+        pendingShortcutAt = android.os.SystemClock.uptimeMillis()
+        val ok = runCatching {
+            ctx.startActivity(
+                Intent(Intent.ACTION_MAIN)
+                    .setComponent(ComponentName(KEYBOARD_PACKAGE, KEYBOARD_ENTRY))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            true
+        }.getOrDefault(false)
+        if (!ok) clearPendingShortcut()
+        return ok
+    }
+
     fun openSystemPage(
         ctx: Context,
         letter: Char? = null,

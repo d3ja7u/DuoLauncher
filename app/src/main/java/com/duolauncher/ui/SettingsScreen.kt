@@ -2563,7 +2563,7 @@ private fun ShortcutSettingsScreen(nav: Nav, dark: Boolean, onBack: () -> Unit) 
                 val sysMap = DuoState.systemLetterShortcuts.entries
                     .filter { it.key.endsWith("/$sysPress") }
                     .associate { it.key.substringBefore('/') to it.value }
-                LetterKeyGrid(dark = dark, nav = nav, map = map, sysMap = sysMap) { editing = it to press }
+                LetterKeyGrid(dark = dark, nav = nav, map = map, sysMap = sysMap, press = press) { editing = it to press }
 
                 Spacer(Modifier.height(10.dp))
                 if (sysMap.isEmpty()) {
@@ -2639,6 +2639,7 @@ private fun LetterKeyGrid(
     nav: Nav,
     map: Map<String, String>,
     sysMap: Map<String, String>,
+    press: LetterKeys.Press,
     onPick: (Int) -> Unit
 ) {
     val ctx = LocalContext.current
@@ -2676,11 +2677,13 @@ private fun LetterKeyGrid(
                             .border(boxBorder.first, boxBorder.second, RoundedCornerShape(12.dp))
                             .combinedClickable(
                                 onClick = {
-                                    // 只有系统里配的键：点一下直接去系统页改，并让页面滚到这个字母
+                                    // 只有系统里配的键：直接进系统那张「键盘快捷方式」列表页，
+                                    // 对齐短按/长按并定位到该字母（改绑定、删绑定都在这一页）
                                     if (systemOnly) {
-                                        if (!ShortcutManager.openSystemPage(ctx, label.firstOrNull())) {
-                                            nav.toast(Lang.s(R.string.shortcut_native_missing))
-                                        }
+                                        val ok = ShortcutManager.openKeyboardShortcuts(
+                                            ctx, label.firstOrNull(), press == LetterKeys.Press.LONG
+                                        )
+                                        if (!ok) nav.toast(Lang.s(R.string.shortcut_native_missing))
                                     } else onPick(code)
                                 },
                                 onLongClick = { if (systemOnly) onPick(code) else Unit }

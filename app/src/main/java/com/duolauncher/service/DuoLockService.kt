@@ -52,6 +52,13 @@ class DuoLockService : AccessibilityService() {
     private var captureRunnable: Runnable? = null
     /** 跳转后「滚到该字母」的排队任务，多个窗口事件只留最后一个 */
     private var revealRunnable: Runnable? = null
+    private var shortcutRunnable: Runnable? = null
+
+    /** 列表页当前停在哪个 tab（"short"/"long"）：该页读不到选中态，只能记住我们点过哪个 */
+    private var shortcutTabPress: String? = null
+
+    /** 列表页兜底轮询是否在跑（避免每次事件都叠一条链） */
+    private var kbPolling = false
 
     private fun dbg(): Boolean =
         (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -143,7 +150,7 @@ class DuoLockService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
-        if (pkg != ShortcutManager.SYSTEM_PACKAGE && pkg != "com.agui.keyboard") return
+        if (pkg != ShortcutManager.SYSTEM_PACKAGE && pkg != ShortcutManager.KEYBOARD_PACKAGE) return
         // 改动可能发生在任意一屏（键盘图页 / 键盘快捷方式列表页），做完往往立刻返回，
         // 所以不再等 500ms：先立即读一次，再补读几次，覆盖页面异步铺开和返回动画的空档
         captureRunnable?.let { captureHandler.removeCallbacks(it) }
@@ -157,6 +164,126 @@ class DuoLockService : AccessibilityService() {
             revealRunnable = r
             captureHandler.postDelayed(r, 700)
         }
+        // 跳到 com.agui.keyboard 的「键盘快捷方式」列表页：先对齐短按/长按 tab，再滚到该字母
+        if (pkg == ShortcutManager.KEYBOARD_PACKAGE) {
+            if (ShortcutManager.hasPendingShortcut()) {
+                shortcutRunnable?.let { captureHandler.removeCallbacks(it) }
+                val r = Runnable { revealShortcutList(0) }
+                shortcutRunnable = r
+                captureHandler.postDelayed(r, 550)
+            }
+            // 这一页的删除是原地刷新，常常没有窗口事件，靠短轮询兜底（最多一条链）
+            if (kbHint() != null && !kbPolling) {
+                kbPolling = true
+                pollKeyboardPage(18)
+            }
+        }
+    }
+
+    /**
+     * 在「键盘快捷方式」列表页上定位：切到对应的短按 / 长按 tab，再滚到该字母。
+     *
+     * 这一页是原生 View（GridView + 一组 TextView），节点上 clickable 是真的，
+     * 直接 performAction(ACTION_CLICK) 比模拟手势稳。
+     */
+    private fun revealShortcutList(attempt: Int) {
+        if (!ShortcutManager.hasPendingShortcut()) return
+        if (SystemClock.uptimeMillis() - ShortcutManager.pendingShortcutAt > ShortcutManager.SHORTCUT_TTL_MS) {
+            ShortcutManager.clearPendingShortcut()
+            return
+        }
+        val root = runCatching { rootInActiveWindow }.getOrNull()
+        if (root == null || root.packageName?.toString() != ShortcutManager.KEYBOARD_PACKAGE) {
+            if (attempt < 5) captureHandler.postDelayed({ revealShortcutList(attempt + 1) }, 400)
+            return
+        }
+
+        // ① 对齐 tab：只做一次，做完把标记清掉表示"已对齐"
+        val wantLong = ShortcutManager.pendingShortcutLong
+        if (wantLong != null) {
+            ShortcutManager.pendingShortcutLong = null
+            val tab = findClickableText(root, if (wantLong) "长按" else "短按", 0)
+            if (tab == null) {
+                // 页面还没铺完，tab 都没出来，下一步再找条目时一并重试
+                captureHandler.postDelayed({ revealShortcutList(attempt + 1) }, 300)
+                return
+            }
+            shortcutTabPress = if (wantLong) "long" else "short"
+            tab.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            captureHandler.postDelayed({ revealShortcutList(attempt + 1) }, 450)
+            return
+        }
+
+        // ② 滚到该字母
+        val letter = ShortcutManager.pendingShortcutLetter
+        if (letter != null) {
+            val cell = findShortcutItem(root, letter, 0)
+            if (cell != null) {
+                // 贴到屏幕最底下时再往下带一点，否则那一行会被导航条压住看不清
+                val r = Rect().also { cell.getBoundsInScreen(it) }
+                val dm2 = resources.displayMetrics
+                val h = dm2.heightPixels
+                if (r.bottom > h - (h * 0.06f).toInt() && attempt < 3) {
+                    // 这一页外层是 ScrollView、里面才是 GridView，ACTION_SCROLL_FORWARD
+                    // 经常被外层吃掉，直接用手势上滑一小段最保险
+                    swipe(dm2.widthPixels / 2f, h * 0.78f, h * 0.50f)
+                    captureHandler.postDelayed({ revealShortcutList(attempt + 1) }, 500)
+                    return
+                }
+            }
+            if (cell == null) {
+                if (attempt < 8 && scrollForward(root)) {
+                    captureHandler.postDelayed({ revealShortcutList(attempt + 1) }, 320)
+                } else {
+                    ShortcutManager.clearPendingShortcut()
+                }
+                return
+            }
+        }
+        ShortcutManager.clearPendingShortcut()
+    }
+
+    /** 找 text 完全等于 [text] 且可点击的节点（「短按」「长按」两个 tab） */
+    private fun findClickableText(
+        node: AccessibilityNodeInfo?,
+        text: String,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (node == null || depth > 20) return null
+        if (node.text?.toString()?.trim() == text && node.isClickable) return node
+        for (i in 0 until node.childCount) {
+            findClickableText(node.getChild(i), text, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    /** 找列表条目：contentDescription 形如 `按键C, 启动秒表` / `按键A, 未设置` */
+    private fun findShortcutItem(
+        node: AccessibilityNodeInfo?,
+        letter: Char,
+        depth: Int
+    ): AccessibilityNodeInfo? {
+        if (node == null || depth > 20) return null
+        val desc = node.contentDescription?.toString()?.trim()
+        if (desc != null && desc.startsWith("按键") && desc.length >= 3 &&
+            desc[2].equals(letter, ignoreCase = true)
+        ) return node
+        for (i in 0 until node.childCount) {
+            findShortcutItem(node.getChild(i), letter, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    /** 让可滚动容器往下翻一屏；返回 false 表示滑到底/没有可滚容器 */
+    private fun scrollForward(node: AccessibilityNodeInfo?, depth: Int = 0): Boolean {
+        if (node == null || depth > 20) return false
+        if (node.isScrollable) {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true
+        }
+        for (i in 0 until node.childCount) {
+            if (scrollForward(node.getChild(i), depth + 1)) return true
+        }
+        return false
     }
 
     /**
@@ -278,7 +405,12 @@ class DuoLockService : AccessibilityService() {
      * （每次都会整体覆盖同一批字母，不会重复写；内容没变时不落盘）。
      */
     private fun captureNow(attempt: Int) {
-        val n = SystemLetterShortcuts.capture(systemRoots())
+        val roots = systemRoots()
+        // 列表页（com.agui.keyboard）读不到短按/长按的选中态，只能用"刚才点过哪个 tab"去归属。
+        // 注意不能在窗口一消失就清掉：点条目选完应用那一瞬活动窗口可能已经不在这个包上，
+        // 清早了返回列表页时就只剩旧值。这里改为「本次跳转 5 分钟内都算有效」。
+        val kbPresent = roots.any { it?.packageName?.toString() == ShortcutManager.KEYBOARD_PACKAGE }
+        val n = SystemLetterShortcuts.capture(roots, if (kbPresent) kbHint() else null)
         if (n > 0) {
             if (dbg()) android.util.Log.d("DuoSysKeys", "captured $n system letter shortcuts")
             DuoState.systemShortcutsUpdated = SystemClock.uptimeMillis()
@@ -286,6 +418,37 @@ class DuoLockService : AccessibilityService() {
         if (attempt < 3) {
             captureHandler.postDelayed({ captureNow(attempt + 1) }, 300L + attempt * 500L)
         }
+    }
+
+    /**
+     * 列表页的短按/长按提示：该页读不到选中态，只能用"刚才点过哪个 tab"。
+     *
+     * 生效窗口是「本次跳转 5 分钟内」——点条目选应用、删绑定时活动窗口会短暂离开这个包，
+     * 不能一离开就清掉，否则回来只剩旧值。
+     */
+    private fun kbHint(): String? {
+        if (!ShortcutManager.hasPendingShortcut() &&
+            SystemClock.uptimeMillis() - ShortcutManager.pendingShortcutAt > 5 * 60_000L
+        ) return null
+        return shortcutTabPress
+            ?: ShortcutManager.pendingShortcutLong?.let { if (it) "long" else "short" }
+    }
+
+    /**
+     * 「键盘快捷方式」列表页的兜底轮询。
+     *
+     * 新增绑定会走页面跳转（有窗口事件），但**删除/清空是原地刷新**，常常一个事件都不发，
+     * 光靠事件会漏。停在那一页时每 700ms 读一次，离开就停，最多 12 秒。
+     */
+    private fun pollKeyboardPage(left: Int) {
+        val pkg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+        if (pkg != ShortcutManager.KEYBOARD_PACKAGE) {  // 已经离开，停止
+            kbPolling = false
+            return
+        }
+        captureNow(9)   // 9 不再排补读链，只读这一次
+        if (left > 1) captureHandler.postDelayed({ pollKeyboardPage(left - 1) }, 700)
+        else kbPolling = false
     }
 
     override fun onInterrupt() = Unit
