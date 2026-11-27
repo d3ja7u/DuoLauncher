@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1700,9 +1701,9 @@ private fun cleanReleaseNotes(src: String): String = src
     .replace(Regex("\n{3,}"), "\n\n")
     .take(700)
 
-/** 检查结果弹窗：新版本 / 已是最新 / 检查失败三种形态 */
+/** 检查结果弹窗：新版本 / 已是最新 / 检查失败三种形态（桌面的更新提示条也复用这个弹窗） */
 @Composable
-private fun UpdateResultDialog(
+internal fun UpdateResultDialog(
     dark: Boolean,
     localVersion: String,
     info: UpdateChecker.ReleaseInfo?,
@@ -1743,27 +1744,69 @@ private fun UpdateResultDialog(
             }
         } else if (info != null) {
             val rel = info
-            Text(Lang.s(R.string.update_versions, localVersion, rel.version), fontSize = 13.sp, color = glassTextColor(dark))
-            if (rel.publishedAt.isNotBlank()) {
-                Text(Lang.s(R.string.update_published, rel.publishedAt), fontSize = 11.sp, color = glassSubTextColor(dark))
-            }
-            if (rel.apkName.isNotBlank()) {
-                Text(
-                    Lang.s(R.string.update_apk, rel.apkName) +
-                            if (rel.sizeText.isNotBlank()) Lang.s(R.string.update_apk_size, rel.sizeText) else "",
-                    fontSize = 11.sp, color = glassSubTextColor(dark)
-                )
-            }
-            val notes = remember(rel.notes) { cleanReleaseNotes(rel.notes) }
-            if (notes.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
-                Column(
-                    Modifier.fillMaxWidth().heightIn(max = 220.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
+            val st = dlState
+            // 说明区整体可滚动：更新说明的长度不可控（Release 正文有多长都不一定），
+            // 不同机型屏幕高度又差很多，写死像素高度在长说明时会把下面的按钮顶出弹窗。
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.46f).dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(Lang.s(R.string.update_versions, localVersion, rel.version), fontSize = 13.sp, color = glassTextColor(dark))
+                if (rel.publishedAt.isNotBlank()) {
+                    Text(Lang.s(R.string.update_published, rel.publishedAt), fontSize = 11.sp, color = glassSubTextColor(dark))
+                }
+                if (rel.apkName.isNotBlank()) {
+                    Text(
+                        Lang.s(R.string.update_apk, rel.apkName) +
+                                if (rel.sizeText.isNotBlank()) Lang.s(R.string.update_apk_size, rel.sizeText) else "",
+                        fontSize = 11.sp, color = glassSubTextColor(dark)
+                    )
+                }
+                val notes = remember(rel.notes) { cleanReleaseNotes(rel.notes) }
+                if (notes.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
                     Text(notes, fontSize = 12.sp, lineHeight = 17.sp, color = glassTextColor(dark))
                 }
+
+                Spacer(Modifier.height(14.dp))
+                when (st) {
+                    is ApkUpdater.State.Downloading -> {
+                        Text(
+                            Lang.s(R.string.update_downloading),
+                            fontSize = 12.sp, color = glassTextColor(dark)
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            if (st.total > 0) Lang.s(
+                                R.string.update_download_progress,
+                                "%.1f".format(st.downloaded / 1024f / 1024f),
+                                "%.1f".format(st.total / 1024f / 1024f),
+                                "${(st.fraction * 100).toInt()}%"
+                            ) else Lang.s(
+                                R.string.update_download_unknown,
+                                "%.1f".format(st.downloaded / 1024f / 1024f)
+                            ),
+                            fontSize = 11.sp, color = glassSubTextColor(dark)
+                        )
+                    }
+                    is ApkUpdater.State.Failed -> {
+                        Text(st.reason, fontSize = 12.sp, color = Color(0xFFD65A5A))
+                    }
+                    else -> {
+                        if (hasNew && rel.apkUrl.isNotBlank()) {
+                            Text(
+                                Lang.s(R.string.update_install_hint),
+                                fontSize = 11.sp, color = glassSubTextColor(dark)
+                            )
+                        }
+                    }
+                }
             }
+
             val openPage = {
                 val target = rel.pageUrl.ifBlank { rel.apkUrl }
                 if (!UpdateChecker.openInBrowser(ctx, target)) {
@@ -1772,72 +1815,38 @@ private fun UpdateResultDialog(
                 onDismiss()
             }
 
-            Spacer(Modifier.height(14.dp))
-            val st = dlState
-            when (st) {
-                is ApkUpdater.State.Downloading -> {
-                    Text(
-                        Lang.s(R.string.update_downloading),
-                        fontSize = 12.sp, color = glassTextColor(dark)
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(4.dp))
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        if (st.total > 0) Lang.s(
-                            R.string.update_download_progress,
-                            "%.1f".format(st.downloaded / 1024f / 1024f),
-                            "%.1f".format(st.total / 1024f / 1024f),
-                            "${(st.fraction * 100).toInt()}%"
-                        ) else Lang.s(
-                            R.string.update_download_unknown,
-                            "%.1f".format(st.downloaded / 1024f / 1024f)
-                        ),
-                        fontSize = 11.sp, color = glassSubTextColor(dark)
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
-                is ApkUpdater.State.Failed -> {
-                    Text(st.reason, fontSize = 12.sp, color = Color(0xFFD65A5A))
-                    Spacer(Modifier.height(8.dp))
-                }
-                else -> {
-                    if (hasNew && rel.apkUrl.isNotBlank()) {
-                        Text(
-                            Lang.s(R.string.update_install_hint),
-                            fontSize = 11.sp, color = glassSubTextColor(dark)
-                        )
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-            }
-
+            Spacer(Modifier.height(6.dp))
+            // 次要动作单独一行、主按钮独占一行：三项挤在一行时「下载并安装」会被压成两行，
+            // 长说明的机型上甚至整块溢出弹窗。
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (rel.apkUrl.isNotBlank()) {
-                    TextButton(onClick = { UpdateChecker.copy(ctx, Lang.s(R.string.clip_apk_link), rel.apkUrl) }) {
-                        Text(Lang.s(R.string.copy_link), fontSize = 12.sp, color = glassSubTextColor(dark))
-                    }
-                }
-                Spacer(Modifier.weight(1f))
                 if (st is ApkUpdater.State.Downloading) {
                     TextButton(onClick = onCancelDownload) {
                         Text(Lang.s(R.string.update_download_cancel), fontSize = 12.sp, color = glassSubTextColor(dark))
                     }
                 } else {
-                    val canDownload = hasNew && rel.apkUrl.isNotBlank()
-                    if (canDownload) {
+                    if (rel.apkUrl.isNotBlank()) {
+                        TextButton(onClick = { UpdateChecker.copy(ctx, Lang.s(R.string.clip_apk_link), rel.apkUrl) }) {
+                            Text(Lang.s(R.string.copy_link), fontSize = 12.sp, color = glassSubTextColor(dark))
+                        }
+                    }
+                    if (hasNew && rel.apkUrl.isNotBlank()) {
                         TextButton(onClick = openPage) {
                             Text(Lang.s(R.string.open_download_page), fontSize = 12.sp, color = glassSubTextColor(dark))
                         }
-                        GlassPrimaryButton(
-                            if (st is ApkUpdater.State.Failed) Lang.s(R.string.retry)
-                            else Lang.s(R.string.update_download_install),
-                            dark, onDownload
-                        )
-                    } else {
-                        GlassPrimaryButton(Lang.s(R.string.open_download_page), dark, onClick = openPage)
                     }
                 }
+                Spacer(Modifier.weight(1f))
+            }
+            if (st !is ApkUpdater.State.Downloading) {
+                val canDownload = hasNew && rel.apkUrl.isNotBlank()
+                GlassPrimaryButton(
+                    if (!canDownload) Lang.s(R.string.open_download_page)
+                    else if (st is ApkUpdater.State.Failed) Lang.s(R.string.retry)
+                    else Lang.s(R.string.update_download_install),
+                    dark,
+                    if (canDownload) onDownload else openPage,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

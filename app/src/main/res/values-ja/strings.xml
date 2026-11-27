@@ -308,6 +308,9 @@
     <string name="update_latest">最新です v%1$s · タップして再確認</string>
     <string name="update_current">現在 v%1$s · タップして確認</string>
     <string name="update_new_version">新バージョン v%1$s</string>
+    <string name="update_banner_title">新しいバージョン v%1$s があります</string>
+    <string name="update_banner_sub">タップして更新内容を確認・インストール</string>
+    <string name="view">表示</string>
     <string name="update_versions">現在 v%1$s  →  最新 v%2$s</string>
     <string name="update_published">公開日 %1$s</string>
     <string name="update_apk">パッケージ: %1$s</string>

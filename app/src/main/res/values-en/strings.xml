@@ -308,6 +308,9 @@
     <string name="update_latest">Up to date v%1$s · tap to check again</string>
     <string name="update_current">Current v%1$s · tap to check for updates</string>
     <string name="update_new_version">New version v%1$s available</string>
+    <string name="update_banner_title">New version v%1$s available</string>
+    <string name="update_banner_sub">Tap to see what\'s new and install</string>
+    <string name="view">View</string>
     <string name="update_versions">Current v%1$s  →  Latest v%2$s</string>
     <string name="update_published">Published %1$s</string>
     <string name="update_apk">Package: %1$s</string>

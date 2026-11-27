@@ -19,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -28,9 +29,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
@@ -57,6 +60,12 @@ class MainActivity : ComponentActivity() {
 
     /** Home 键回到主屏的信号 */
     private var homeSignal by mutableStateOf(0)
+
+    /**
+     * 自动检查到新版本后，桌面上那条常驻提示（不自动消失）。
+     * 点「查看」才打开更新说明与下载，点「×」只是本次不再显示。
+     */
+    private var updatePrompt by mutableStateOf<UpdateChecker.ReleaseInfo?>(null)
     private var packageReceiver: BroadcastReceiver? = null
 
     /** 应用列表全量扫描的节流状态：避免回桌面时反复枚举应用、解码图标 */
@@ -184,15 +193,11 @@ class MainActivity : ComponentActivity() {
             DuoState.lastUpdateCheck = System.currentTimeMillis()
             r.onSuccess { info ->
                 DuoState.lastSeenVersion = info.version
-                if (UpdateChecker.isNewer(info.version, local) && DuoState.notifiedVersion != info.version) {
+                // 查到更高版本就在桌面上挂一条常驻提示条（不自动消失，不会一闪就没）。
+                // 已经挂着同一个版本时不重复刷值，免得每次回桌面都把这块重排一遍。
+                if (UpdateChecker.isNewer(info.version, local) && updatePrompt?.version != info.version) {
                     DuoState.notifiedVersion = info.version
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            Lang.s(R.string.update_found_toast, info.version),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+                    withContext(Dispatchers.Main) { updatePrompt = info }
                 }
             }
             DuoState.save()
@@ -376,6 +381,15 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(if (Lang.consumeReopenSettings(ctx)) "settings" else null)
         }
         var settingsSub by remember { mutableStateOf<String?>(null) }
+        /** 更新提示条被点开：弹出更新说明与下载 */
+        var showUpdatePrompt by remember { mutableStateOf(false) }
+        // 提示条只在主屏页出现：翻到搜索页（底下是键盘）、资源库页时收起来，别挡内容
+        val onHomePage by remember(searchPagerPage, libraryPagerPage) {
+            derivedStateOf {
+                pagerState.currentPage != searchPagerPage &&
+                        pagerState.currentPage != libraryPagerPage
+            }
+        }
         // 首次启动的一次性统计告知：未确认前 InstallStats 不会发任何请求
         var statsConsentVisible by remember {
             mutableStateOf(!DuoState.statsConsentShown && DuoState.statsEnabled)
@@ -707,10 +721,33 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // 更新提示条：常驻在桌面底部，不自动消失（更新只提示一次，一闪就没等于没提示）。
+                    // 进设置、弹小组件选择器时收起，避免盖住浮层。
+                    val prompt = updatePrompt
+                    if (prompt != null && overlay == null && !widgetPickerOpen && onHomePage) {
+                        UpdateBanner(
+                            version = prompt.version,
+                            dark = dark,
+                            onOpen = { showUpdatePrompt = true },
+                            onDismiss = { updatePrompt = null },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(start = 16.dp, end = 16.dp, bottom = 36.dp)
+                        )
+                    }
+
                     when (overlay) {
                         "settings" -> SettingsScreen(nav, dark, wallpaper, initialSub = settingsSub) {
                             overlay = null; settingsSub = null
                         }
+                    }
+
+                    if (prompt != null && showUpdatePrompt) {
+                        UpdateCenter(
+                            info = prompt,
+                            dark = dark,
+                            onDismiss = { showUpdatePrompt = false }
+                        )
                     }
 
                     if (widgetPickerOpen) {
