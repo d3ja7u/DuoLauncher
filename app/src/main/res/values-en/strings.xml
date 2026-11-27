@@ -523,7 +523,7 @@
     <string name="letter_apps_title">Apps (including clones)</string>
     <string name="sys_letters_title">Configured system letter shortcuts</string>
     <string name="sys_letters_empty">Open the system key settings above to show configured letter shortcuts here</string>
-    <string name="sys_letters_in_grid">Red: set in system settings — tap to edit there, long press to bind here. Blue: set in the launcher</string>
+    <string name="sys_letters_in_grid">Red: set in system settings — tap to edit there. Blue: set in the launcher; long-press a key to set its long-press action. A key already set in the system cannot also be set in the launcher</string>
     <string name="sys_letters_open">Open system key settings</string>
     <string name="letter_keys_footer">Cloned apps can be picked directly from the list. Configure function and side keys in System shortcut settings above.</string>
     <string name="letter_key_clear">Clear this binding</string>

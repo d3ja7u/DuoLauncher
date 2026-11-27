@@ -523,7 +523,7 @@
     <string name="letter_apps_title">アプリ（分身を含む）</string>
     <string name="sys_letters_title">設定済みの英数字キーショートカット</string>
     <string name="sys_letters_empty">上のシステムキー設定を開くと、設定済みのショートカットがここに表示されます</string>
-    <string name="sys_letters_in_grid">赤枠はシステム設定済み（タップでシステム設定、長押しでランチャーに割り当て）。青枠はランチャーの設定</string>
+    <string name="sys_letters_in_grid">赤枠はシステム設定済み（タップでシステム設定へ）。青枠はランチャーの設定で、長押しで長押しアクションを設定できます。システムで設定済みのキーはランチャー側では設定できません</string>
     <string name="sys_letters_open">システムキー設定を開く</string>
     <string name="letter_keys_footer">分身アプリは一覧から直接選択できます。ファンクションキーとサイドキーは上の「システムショートカット設定」で設定してください。</string>
     <string name="letter_key_clear">この割り当てを解除</string>
