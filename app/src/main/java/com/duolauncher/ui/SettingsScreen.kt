@@ -685,6 +685,8 @@ private fun MainSettings(nav: Nav, dark: Boolean, onClose: () -> Unit, mainListS
                             0.6f..1.1f, dark) { DuoState.sidebarIconScale = it; DuoState.save() }
                         SettingSliderRow(Lang.s(R.string.sidebar_glass), "${"%.1f".format(DuoState.sidebarGlass)}×", DuoState.sidebarGlass,
                             0.4f..2.4f, dark) { DuoState.sidebarGlass = it; DuoState.save() }
+                        SettingSliderRow(Lang.s(R.string.sidebar_gap), "${DuoState.sidebarGapDp.toInt()} dp", DuoState.sidebarGapDp,
+                            0f..24f, dark) { DuoState.sidebarGapDp = it; DuoState.save() }
                         SettingRow(Lang.s(R.string.sidebar_align), Lang.s(R.string.sidebar_align), dark)
                         Row(
                             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)

@@ -100,6 +100,13 @@ object DuoState {
     /** 小组件占几列（provider 的 minWidth 换算）。有了它小组件才能只占半行、左右挪动 */
     val widgetColMap = mutableStateMapOf<String, Int>()
     /**
+     * 用户手动「拉伸」过尺寸的小组件 id。
+     *
+     * 启动时会按 provider 声明给老数据补一次尺寸（[ensureWidgetSize]），
+     * 如果不做标记，用户调过的 2×4 每次重启又会被 provider 的 6×2 覆盖回去。
+     */
+    val widgetUserSized = mutableSetOf<String>()
+    /**
      * 主屏自由摆放：token → `"页,行,列"`。
      *
      * 只有被手动拖动过的条目才在这里有坐标，其余条目按 [layoutHome] 的自动流式规则
@@ -283,6 +290,8 @@ object DuoState {
     var gestureSearch by mutableStateOf(true)       // 桌面最左页右滑打开搜索
     var iconScale by mutableStateOf(1.0f)            // 主屏图标大小
     var sidebarIconScale by mutableStateOf(0.82f)   // 侧边栏图标相对主屏更小（参考 iPhone Duo）
+    /** 侧边栏图标之间的纵向间距（dp）。数量多时按需自动收窄，绝不重叠 */
+    var sidebarGapDp by mutableStateOf(9f)
     /** 主屏图标每行列数：手机 4–5、平板 6–7 */
     var homeColumns by mutableStateOf(4)
     /** 主屏图标每页行数：手机 5–6、平板可更多；每页容量 = 列数 × 行数 */
@@ -404,6 +413,7 @@ object DuoState {
             o.optJSONObject("wgCols")?.let { obj ->
                 obj.keys().forEach { k -> widgetColMap[k] = obj.optInt(k, 4) }
             }
+            widgetUserSized.clear(); widgetUserSized.addAll(o.strArray("wgUserSize"))
             homeSlots.clear()
             o.optJSONObject("homeSlots")?.let { obj ->
                 obj.keys().forEach { k ->
@@ -417,6 +427,7 @@ object DuoState {
                 ?.let { a -> (0 until a.length()).mapNotNull { FolderItem.decode(a.optString(it)) } } ?: emptyList())
             iconPack = o.optString("iconPack", "")
             sidebarIconScale = o.optDouble("sidebarIconScale", 0.82).toFloat()
+            sidebarGapDp = o.optDouble("sbGap", 9.0).toFloat().coerceIn(0f, 24f)
             categoryOverride.clear()
             o.optJSONObject("cats")?.let { obj ->
                 obj.keys().forEach { k -> categoryOverride[k] = obj.optString(k) }
@@ -671,6 +682,7 @@ object DuoState {
             o.put("wgRows", wgRows)
             val wgCols = JSONObject(); widgetColMap.forEach { (k, v) -> wgCols.put(k, v) }
             o.put("wgCols", wgCols)
+            o.put("wgUserSize", JSONArray(widgetUserSized.toList()))
             val slots = JSONObject(); homeSlots.forEach { (k, v) -> slots.put(k, v) }
             o.put("homeSlots", slots)
             o.put("sidebar", JSONArray(sidebar.map { it.encode() }))
@@ -678,6 +690,7 @@ object DuoState {
             o.put("folders", JSONArray(folders.map { it.encode() }))
             o.put("iconPack", iconPack)
             o.put("sidebarIconScale", sidebarIconScale.toDouble())
+            o.put("sbGap", sidebarGapDp.toDouble())
             val cats = JSONObject(); categoryOverride.forEach { (k, v) -> cats.put(k, v) }
             o.put("cats", cats)
             o.put("userCats", JSONArray(customCategories.map { it.encode() }))
@@ -804,7 +817,7 @@ object DuoState {
     /** 由用户主动决定、可被「重置所有设置」清零的字段（key 与 [save] 里的一致） */
     private val SETTING_KEYS = listOf(
         "smart", "left", "cutout", "glass", "dark", "hideStatus", "dots", "reverse",
-        "dblSleep", "lockLayout", "gsPanels", "gsSearch", "iconScale", "sidebarIconScale",
+        "dblSleep", "lockLayout", "gsPanels", "gsSearch", "iconScale", "sidebarIconScale", "sbGap",
         "homeCols", "homeRows", "autoNew", "sbGlass", "sbAlign",
         "npOn", "npPos", "npLyric",
         "duoStatus", "statusRight", "status24h", "statusTop", "statusScale", "net4g",
@@ -1099,7 +1112,7 @@ object DuoState {
     }
 
     /** 主屏某个小组件实际占几行（添加时写入，缺失则按 2 行兜底） */
-    fun widgetRowsOf(key: String): Int = (widgetRowMap[key] ?: 2).coerceIn(1, 4)
+    fun widgetRowsOf(key: String): Int = (widgetRowMap[key] ?: 2).coerceIn(1, 12)
 
     /**
      * 主屏小组件占几列。4×2 的 provider minWidth≈250 → 4 列，4×1 的≈110 → 2 列。
@@ -1113,7 +1126,7 @@ object DuoState {
         return raw.coerceIn(2, 6)
     }
 
-    fun widgetColsOf(key: String): Int = (widgetColMap[key] ?: 4).coerceIn(2, 6)
+    fun widgetColsOf(key: String): Int = (widgetColMap[key] ?: 4).coerceIn(1, 12)
 
     /** 主屏网格底部固定留白（底部页码 / 搜索那一条） */
     const val GRID_BOTTOM_PAD_DP = 76f
@@ -1418,6 +1431,7 @@ object DuoState {
     fun ensureWidgetRows(appWidgetId: Int, minHeightDp: Int) {
         val key = appWidgetId.toString()
         if (!homeWidgets.contains(key)) return
+        if (key in widgetUserSized) return   // 用户拉伸过的，别被 provider 尺寸覆盖
         val want = rowsFromMinHeight(minHeightDp)
         if (widgetRowMap[key] != want) { widgetRowMap[key] = want; save() }
     }
@@ -1426,6 +1440,7 @@ object DuoState {
     fun ensureWidgetSize(appWidgetId: Int, minWidthDp: Int, minHeightDp: Int) {
         val key = appWidgetId.toString()
         if (!homeWidgets.contains(key)) return
+        if (key in widgetUserSized) return   // 同上：拉伸过的尺寸以用户为准
         var dirty = false
         val wantRows = rowsFromMinHeight(minHeightDp)
         if (widgetRowMap[key] != wantRows) { widgetRowMap[key] = wantRows; dirty = true }
@@ -1440,10 +1455,67 @@ object DuoState {
         homeOrder.remove("widget:$key")
         widgetRowMap.remove(key)
         widgetColMap.remove(key)
+        widgetUserSized.remove(key)
         save()
     }
 
     fun isHomeWidget(appWidgetId: Int): Boolean = homeWidgets.contains(appWidgetId.toString())
+
+    /**
+     * 调整主屏小组件的占格大小（列 × 行），供「长按 → 调整大小」面板使用。
+     *
+     * 与系统桌面拖角的手感一致：**只改尺寸，不换页**。左上角尽量保持不动，
+     * 超出网格右边/下边时往回夹；原来被它压住的条目清掉坐标、交给流式重排
+     * （不会丢，只是重新补空位）。尺寸夹在 1..主屏列数 / 1..主屏行数。
+     *
+     * 返回是否真的改了（尺寸没变返回 false）。
+     */
+    fun resizeHomeWidget(
+        appWidgetId: Int,
+        cols: Int,
+        rows: Int,
+        gridCols: Int = homeColumns,
+        gridRows: Int = homeRows
+    ): Boolean {
+        val key = appWidgetId.toString()
+        if (!homeWidgets.contains(key)) return false
+        val c = gridCols.coerceIn(1, 12)
+        val r = gridRows.coerceIn(1, 12)
+        val token = "widget:$key"
+        val newCs = cols.coerceIn(1, c)
+        val newRs = rows.coerceIn(1, r)
+        if (widgetColMap[key] == newCs && widgetRowMap[key] == newRs) return false
+
+        // 先按旧尺寸拿到当前位置
+        val cur = placements(c, r).firstOrNull { it.token == token }
+        val page = cur?.page ?: 0
+
+        widgetColMap[key] = newCs
+        widgetRowMap[key] = newRs
+        widgetUserSized.add(key)   // 标记为用户自己定的尺寸，重启后不再被 provider 覆盖
+
+        val targetRow = (cur?.row ?: 0).coerceIn(0, (r - newRs).coerceAtLeast(0))
+        val targetCol = (cur?.col ?: 0).coerceIn(0, (c - newCs).coerceAtLeast(0))
+
+        // 新矩形压住的条目：清坐标，重新流式排布（同 placeToken 的处理）
+        homeSlots.entries.toList().forEach { (t, raw) ->
+            if (t == token) return@forEach
+            val parts = raw.split(",")
+            if (parts.size < 3) return@forEach
+            val p = parts[0].toIntOrNull() ?: return@forEach
+            if (p != page) return@forEach
+            val rw = parts[1].toIntOrNull() ?: return@forEach
+            val cl = parts[2].toIntOrNull() ?: return@forEach
+            val trs = tokenRowSpan(t, r)
+            val tcs = tokenColSpan(t, c)
+            if (rw < targetRow + newRs && rw + trs > targetRow &&
+                cl < targetCol + newCs && cl + tcs > targetCol
+            ) homeSlots.remove(t)
+        }
+        homeSlots[token] = "$page,$targetRow,$targetCol"
+        save()
+        return true
+    }
 
     /**
      * 把主屏小组件整体挪到相邻一屏（[dir] = -1 上一屏 / +1 下一屏）。

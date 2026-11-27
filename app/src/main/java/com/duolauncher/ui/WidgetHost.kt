@@ -129,6 +129,18 @@ fun SystemWidgetCardDraggable(
                 android.widget.TextView(ctx).apply { text = Lang.s(R.string.widget_cannot_show) }
             }
             box.setContent(hostView)
+            // 首次组合时 Compose 还没把这一页画完，AppWidgetHostView 的 RemoteViews
+            // 有时会停在“已布局但没上屏”的状态（表现：小组件挪到别的屏后整块空白，
+            // 一弹菜单/一翻页强制重绘又出现了）。attach 之后补一次 requestLayout +
+            // invalidate，让它跟着桌面这一帧一起画出来。
+            box.post {
+                runCatching {
+                    hostView.requestLayout()
+                    hostView.invalidate()
+                    box.requestLayout()
+                    box.invalidate()
+                }
+            }
             box
         },
         update = { box ->

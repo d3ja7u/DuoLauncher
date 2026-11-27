@@ -88,6 +88,11 @@
     <string name="restore_auto_icon">恢复自动图标</string>
     <string name="widget_recents">最近常用</string>
     <string name="system_widget">系统小组件…</string>
+    <string name="done">完成</string>
+    <string name="widget_resize">调整大小</string>
+    <string name="widget_resize_cols">列数</string>
+    <string name="widget_resize_rows">行数</string>
+    <string name="widget_resize_hint">当前 %1$d × %2$d 格（宽 × 高），点加号放大、减号缩小</string>
     <string name="charging">充电中</string>
     <string name="widget_service_not_ready">小组件服务未就绪</string>
     <string name="widget_cannot_show">无法显示该小组件</string>
@@ -154,6 +159,7 @@
     <string name="home_rows">主屏图标行数</string>
     <string name="home_rows_desc">手机建议 5–6 行，平板可设更多</string>
     <string name="sidebar_glass">侧边栏玻璃浓度</string>
+    <string name="sidebar_gap">侧栏图标间距</string>
     <string name="sec_now_playing">音乐胶囊</string>
     <string name="now_playing_switch">播放时显示胶囊</string>
     <string name="now_playing_desc">音乐播放时在右上角显示控制胶囊，点击展开播放面板，长按暂停 / 继续播放</string>

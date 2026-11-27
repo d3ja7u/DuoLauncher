@@ -88,6 +88,11 @@
     <string name="restore_auto_icon">Restore Auto Icon</string>
     <string name="widget_recents">Recent</string>
     <string name="system_widget">System widgets…</string>
+    <string name="done">Done</string>
+    <string name="widget_resize">Resize</string>
+    <string name="widget_resize_cols">Columns</string>
+    <string name="widget_resize_rows">Rows</string>
+    <string name="widget_resize_hint">Currently %1$d × %2$d cells (width × height)</string>
     <string name="charging">Charging</string>
     <string name="widget_service_not_ready">Widget service not ready</string>
     <string name="widget_cannot_show">Cannot display this widget</string>
@@ -154,6 +159,7 @@
     <string name="home_rows">Home grid rows</string>
     <string name="home_rows_desc">5–6 rows for phones, more for tablets</string>
     <string name="sidebar_glass">Sidebar glass opacity</string>
+    <string name="sidebar_gap">Sidebar icon spacing</string>
     <string name="sec_now_playing">Music Capsule</string>
     <string name="now_playing_switch">Show capsule while playing</string>
     <string name="now_playing_desc">Show a control capsule at top-right while music plays; tap to expand the playback panel, long-press to pause / resume</string>

@@ -736,8 +736,16 @@ class MainActivity : ComponentActivity() {
                                 isActive = pagerState.currentPage == page && overlay == null
                             )
                             else -> {
-                                // pager 下标 → 主屏真实序号（倒序时反过来）
-                                val actual = if (DuoState.reversePages) libraryPage - page else page - 1
+                                // pager 下标 → 主屏真实序号：直接查页语义表。
+                                //
+                                // 以前这里写死了「非倒序时 page - 1」「倒序时 libraryPage - page」，
+                                // 隐含「搜索页一定占着 pager 第一页」这个前提。一旦用户把
+                                // 「显示搜索页面」关掉，pager 第一页就变成主屏第 0 页，公式整体
+                                // 错位一屏：第 0 页拿到 -1 渲染成空白，第 1 页显示的是第 0 页内容
+                                // （小组件像是加到了"第二栏"），右滑又被 HomePage 的搜索手势吃掉，
+                                // 于是回不到第一屏、也删不掉（2026-11-27 齐老师反馈）。
+                                // pagerPages 里的元素此时只剩主屏页号（搜索页/资源库页已在上面分支处理）。
+                                val actual = pagerPages.getOrElse(page) { 0 }
                                 HomePage(
                                     nav = nav,
                                     dark = dark,
@@ -746,8 +754,9 @@ class MainActivity : ComponentActivity() {
                                     homePageIndex = actual,
                                     homePageCount = homePageCount,
                                     libraryPage = libraryPage,
-                                    // 只有紧挨搜索页的那一主屏页，才需要处理「关闭手势」的拦截
-                                    allowSwipeRight = actual == 0
+                                    // 最左主屏页、且搜索页真的存在时，才拦截「朝搜索页方向」的手势；
+                                    // 搜索页关掉后那边没有页可翻，拦截只会让右滑没反应。
+                                    allowSwipeRight = actual == 0 && showSearch
                                 )
                             }
                         }

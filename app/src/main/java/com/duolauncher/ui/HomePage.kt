@@ -116,6 +116,8 @@ fun HomePage(
     var folderRename by remember { mutableStateOf<FolderItem?>(null) }
     /** 长按主屏系统小组件后弹出的菜单（值为该小组件的 AppWidget id） */
     var widgetMenu by remember { mutableStateOf<Int?>(null) }
+    /** 正在「调整大小」的小组件 id（null = 面板关闭） */
+    var resizeWidget by remember { mutableStateOf<Int?>(null) }
     val widgetBridge = LocalWidgetBridge.current
     /** 编辑态点「-」后待确认移除的应用 */
     var removeTarget by remember { mutableStateOf<AppInfo?>(null) }
@@ -126,7 +128,7 @@ fun HomePage(
     // 图标之间不重合（否则被裁切/挤压后会叠在一起）
     val sidebarItemN = DuoState.sidebar.size.coerceAtMost(9)
     val sidebarBaseSize = 54f * DuoState.sidebarIconScale
-    val sbGapF = if (sidebarItemN >= 8) 5f else 9f
+    val sbGapF = DuoState.sidebarGapDp
     val sbAvail = 430f - 14f - (sidebarItemN - 1).coerceAtLeast(0) * sbGapF
     val sbMaxByH = if (sidebarItemN > 0) sbAvail / sidebarItemN else sidebarBaseSize
     val sidebarIconSize = minOf(sidebarBaseSize, sbMaxByH).dp
@@ -195,8 +197,9 @@ fun HomePage(
     // 侧栏改为垂直居中（见下方 GlassCard 的 align）：框始终在屏幕竖直中线，
     // 应用数量少时整条偏短、居中；数量多时对称变长，不再贴顶或贴底。
     val sidebarMaxHeight = 430.dp
-    // 纵向间距：图标多（8 个以上）时收紧，否则下方搜索键会顶到侧栏
-    val sidebarItemGap = if (sidebarItemN >= 8) 5.dp else 9.dp
+    // 纵向间距：走设置里的「图标间距」；图标数量多时由上面的收敛公式自动缩小图标，
+    // 保证整条侧栏不超 430dp、图标之间不重叠（间距调多大都不会叠在一起）
+    val sidebarItemGap = DuoState.sidebarGapDp.dp
     // 侧边栏隐藏后，主屏网格不再为那条玻璃通道留白，左右都回到常规边距
     val showSidebar = DuoState.showSidebar
     val gridStart = if (!showSidebar) 14.dp else if (leftSide) lane else 14.dp
@@ -1344,10 +1347,54 @@ fun HomePage(
                     widgetMenu = null
                 }
             }
+            // 拉伸大小：改占几列几行，不换页
+            MenuRow(Icons.Filled.OpenInFull, Lang.s(R.string.widget_resize), dark = dark) {
+                resizeWidget = wId
+                widgetMenu = null
+            }
             MenuRow(Icons.Filled.Delete, Lang.s(R.string.remove), danger = true, dark = dark) {
                 runCatching { widgetBridge?.host?.deleteAppWidgetId(wId) }
                 DuoState.removeHomeWidget(wId)
                 widgetMenu = null
+            }
+        }
+    }
+
+    // 「调整大小」面板：列 / 行各自 ± ，每点一次立即生效（背后桌面同步变化），
+    // 比拖角更稳（小组件本身是真正的 Android View，拖角手势容易和它的内部滚动打架）。
+    resizeWidget?.let { wId ->
+        val key = wId.toString()
+        val gridCols = DuoState.homeColumns.coerceAtLeast(1)
+        val gridRows = DuoState.effectiveHomeRows(cfg.screenHeightDp, landscape).coerceAtLeast(1)
+        val curCols = DuoState.widgetColsOf(key).coerceIn(1, gridCols)
+        val curRows = DuoState.widgetRowsOf(key).coerceIn(1, gridRows)
+        DuoDialog(
+            title = Lang.s(R.string.widget_resize),
+            dark = dark,
+            onDismiss = { resizeWidget = null }
+        ) {
+            WidgetSizeStepper(
+                label = Lang.s(R.string.widget_resize_cols),
+                value = curCols,
+                min = 1,
+                max = gridCols,
+                dark = dark
+            ) { n -> DuoState.resizeHomeWidget(wId, n, curRows, gridCols, gridRows) }
+            WidgetSizeStepper(
+                label = Lang.s(R.string.widget_resize_rows),
+                value = curRows,
+                min = 1,
+                max = gridRows,
+                dark = dark
+            ) { n -> DuoState.resizeHomeWidget(wId, curCols, n, gridCols, gridRows) }
+            Text(
+                Lang.s(R.string.widget_resize_hint, curCols, curRows),
+                fontSize = 12.sp,
+                color = glassSubTextColor(dark),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+            )
+            MenuRow(Icons.Filled.Check, Lang.s(R.string.done), dark = dark) {
+                resizeWidget = null
             }
         }
     }
@@ -1515,6 +1562,72 @@ private fun NewPageTarget(armed: Boolean, modifier: Modifier) {
 
 /** 音乐胶囊高度：顶部定位与「侧栏避让胶囊」共用这一个值，改一处两处同步 */
 private val NpCapsuleHeight = 34.dp
+
+/**
+ * 「调整大小」面板里的一行加减器：`列数  −  4  +`。
+ *
+ * 每次点击都立刻回调（调用方直接 resizeHomeWidget），面板背后的桌面同步变化，
+ * 调大调小是「所见即所得」，不用再点确定。
+ */
+@Composable
+private fun WidgetSizeStepper(
+    label: String,
+    value: Int,
+    min: Int,
+    max: Int,
+    dark: Boolean,
+    onChange: (Int) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 14.sp, color = glassTextColor(dark), modifier = Modifier.weight(1f))
+        StepperButton(
+            icon = Icons.Filled.Remove,
+            enabled = value > min,
+            dark = dark
+        ) { onChange((value - 1).coerceIn(min, max)) }
+        Text(
+            "$value",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = glassTextColor(dark),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(38.dp)
+        )
+        StepperButton(
+            icon = Icons.Filled.Add,
+            enabled = value < max,
+            dark = dark
+        ) { onChange((value + 1).coerceIn(min, max)) }
+    }
+}
+
+@Composable
+private fun StepperButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    dark: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = if (enabled) 0.16f else 0.05f))
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon, null,
+            tint = glassTextColor(dark).copy(alpha = if (enabled) 1f else 0.35f),
+            modifier = Modifier.size(17.dp)
+        )
+    }
+}
 
 /**
  * 胶囊的「读取边界」：把 `showNowPlaying` / `nowPlaying` 的读取收进这一层。
